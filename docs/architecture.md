@@ -20,6 +20,7 @@ owned by exactly one package under `src/recommender/`.
 | Offline | Candidate retrieval | `recommender.retrieval` | Two-tower embedding model, Faiss candidate index |
 | Offline | Ranking | `recommender.ranking` | Personalized ranking model scoring retrieved candidates |
 | Offline | Reranking policy | `recommender.reranking` | Diversity/freshness slate construction after ranking |
+| Both | Evaluation | `recommender.evaluation` | Metric definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) shared by offline evaluation and online replay |
 | Online | Event streaming | `recommender.streaming` | Historical replay, Kafka producer/consumer, recent user state |
 | Online | Serving | `recommender.serving` | Typed recommendation API integrating retrieval, ranking, reranking |
 | Both | Observability | `recommender.monitoring` | Structured logging, operational and quality metrics |
@@ -59,7 +60,7 @@ flowchart TD
         C --> D["Baselines<br/>popularity / content / collaborative"]
         C -->|"recommender.retrieval"| E["Two-tower embeddings<br/>Faiss candidate index"]
         E -->|"recommender.ranking"| F["Personalized ranking model"]
-        F --> G["Evaluation<br/>frozen contract"]
+        F -->|"recommender.evaluation"| G["Evaluation<br/>frozen contract"]
         G --> H["Model / artifact registry"]
     end
 
@@ -81,6 +82,9 @@ flowchart TD
 The eight subpackages created in Step 0.2 map directly onto the stages
 above; each currently contains only an `__init__.py` and will gain real
 code as its owning phase starts, per the project's lazy-dependency policy.
+A ninth subpackage, `recommender.evaluation`, was added in Phase 2 Step
+2.1 — see the design-decisions log below for why it wasn't part of the
+original eight.
 
 ## Cross-cutting controls
 
@@ -126,3 +130,11 @@ and never participates in retrieval, ranking, or reranking decisions.
   separation between N (retrieval-stage candidate count) and K (served
   Top-K), since RQ1 and RQ2 evaluate different quantities and must not be
   conflated in later reporting.
+- **2026-08-16** — Added `recommender.evaluation`, a ninth subpackage not
+  present in the guide's original eight-package skeleton. Metric
+  definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) don't belong to
+  any single existing package: they're not the ranking model itself
+  (`recommender.ranking`), and they're consumed by both the offline
+  evaluation path and the online replay path, so folding them into either
+  one would misattribute ownership. A dedicated package keeps the metric
+  contract in one place that both paths import from.
