@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from recommender.data.mind import load_behaviors, load_news
+from recommender.data.mind import explode_impressions, load_behaviors, load_news
 from recommender.data.schema import SchemaError, validate_behaviors, validate_news
 
 NEWS_ROW = "N1\tsports\tfootball\tSome Title\tSome abstract\thttp://x\t[]\t[]\n"
@@ -47,6 +47,20 @@ def test_validate_news_rejects_duplicate_news_id():
     )
     with pytest.raises(SchemaError):
         validate_news(df)
+
+
+def test_explode_impressions_one_row_per_candidate_item(tmp_path):
+    path = tmp_path / "behaviors.tsv"
+    path.write_text(BEHAVIORS_ROW)  # "N1-1 N2-0" -> two candidate items
+    behaviors = load_behaviors(path)
+
+    exploded = explode_impressions(behaviors)
+
+    assert len(exploded) == 2
+    assert set(exploded["news_id"]) == {"N1", "N2"}
+    clicked_by_item = dict(zip(exploded["news_id"], exploded["clicked"], strict=True))
+    assert clicked_by_item == {"N1": 1, "N2": 0}
+    assert (exploded["user_id"] == "U1").all()
 
 
 def test_validate_behaviors_rejects_null_user_id():

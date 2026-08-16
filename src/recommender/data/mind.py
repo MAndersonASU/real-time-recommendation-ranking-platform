@@ -47,3 +47,12 @@ def load_behaviors(path: Path) -> pd.DataFrame:
     df["time"] = pd.to_datetime(df["time"], format=TIME_FORMAT)
     validate_behaviors(df)
     return df
+
+
+def explode_impressions(behaviors: pd.DataFrame) -> pd.DataFrame:
+    """One row per (impression, candidate item) pair, with its click label."""
+    pairs = behaviors["impressions"].str.split().explode()
+    split = pairs.str.rsplit("-", n=1, expand=True)
+    split.columns = ["news_id", "clicked"]
+    split["clicked"] = split["clicked"].astype("int8")
+    return split.join(behaviors[["impression_id", "user_id", "time"]])
