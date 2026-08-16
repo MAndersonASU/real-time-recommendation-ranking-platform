@@ -1,0 +1,26 @@
+# Environment
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Data and licensed datasets — never committed, see docs/research-scenario.md
+/data/
+
+# Generated model/experiment artifacts
+models/
+mlruns/
+mlflow.db
+
+# Test/tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Local secrets/config
+.env
+
+# OS
+.DS_Store
+Thumbs.db
