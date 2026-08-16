@@ -55,12 +55,24 @@ authoritative text.
 
 ## Checksums
 
-No official checksums are published by Microsoft or Hugging Face for the
-MIND zip files. This project computes and records its own SHA-256 hash for
-each downloaded file at ingestion time (Step 1.2) as a self-consistency
-check across repeated downloads on this machine — not as verification
-against an authoritative source hash, since none exists to compare
-against.
+Microsoft does not publish checksums for the original files. The Hugging
+Face mirror does, indirectly: each file's HTTP response carries an
+`X-Linked-ETag` header that matches its SHA-256 content hash exactly
+(verified 2026-08-16 by computing `sha256sum` on both downloaded files and
+comparing against the `X-Linked-ETag` seen in a `HEAD` request against the
+same URLs — both matched). This project treats that ETag as the reference
+integrity value for files fetched from this specific mirror, and records
+the hashes below:
+
+| File | SHA-256 |
+|---|---|
+| `MINDsmall_train.zip` | `6ef97a271580b98ccfc4301ada55cc639423cb0576a78b8dcfcf74a4dbcc3194` |
+| `MINDsmall_dev.zip` | `d6ce515dcaa6b6d47ddf0a326eebc8a31b84735ae410285c9882ca2a06eec669` |
+
+This confirms the specific bytes this project ingested match what Hugging
+Face served at download time; it is not an assertion that this matches
+whatever Microsoft's own original files' hashes would be, since Microsoft
+does not publish those for comparison.
 
 ## What stays local-only
 
