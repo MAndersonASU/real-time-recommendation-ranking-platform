@@ -138,3 +138,11 @@ and never participates in retrieval, ranking, or reranking decisions.
   evaluation path and the online replay path, so folding them into either
   one would misattribute ownership. A dedicated package keeps the metric
   contract in one place that both paths import from.
+- **2026-08-16** — The Phase 2 baselines (popularity, and the content/
+  collaborative baselines to follow) live in `recommender/ranking/
+  baselines.py`, inside the package already planned for Phase 4's learned
+  ranking model, rather than a new tenth package. A popularity ranker and
+  a learned ranker do the same conceptual job — order a fixed set of
+  candidates — so they share a module rather than each baseline earning
+  its own top-level package, which would multiply the module count faster
+  than the actual complexity justifies.
