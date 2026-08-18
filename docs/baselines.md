@@ -88,3 +88,57 @@ stand-in for that. What this result does establish is a second, stronger
 rung on the same ladder — Phase 3's embedding model now has to beat this
 content-similarity baseline, not just the popularity one, to demonstrate
 real value from learned representations.
+
+## Collaborative baseline
+
+Ranks each impression's candidates by predicted affinity — a dot product
+between a user's and a candidate's TruncatedSVD latent factors (20
+components), fit on the training click matrix. Candidates never clicked
+during training score `-inf`, not 0, since a raw dot product isn't bounded
+at zero the way TF-IDF cosine similarity was. Falls back to the popularity
+baseline for users with no training click history at all. Implementation:
+`src/recommender/ranking/baselines.py` (`build_collaborative_factors`,
+`rank_by_collaborative_filtering`).
+
+| Metric | Popularity | Content similarity | Collaborative |
+|---|---|---|---|
+| Hit rate@10 | 0.5697 | 0.6557 | 0.5709 |
+| Recall@10 | 0.5034 | 0.5743 | 0.5046 |
+| NDCG@10 | 0.2830 | 0.3526 | 0.2847 |
+| MRR | 0.2484 | 0.3236 | 0.2509 |
+| Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 |
+
+**Collaborative filtering essentially matches popularity — it does not
+come close to content similarity — and this was predictable before
+running anything, not a surprise discovered after the fact.** Before
+writing any ranking code, a direct check of the training click matrix
+against the validation split found that only 29.2% of validation
+candidate items were ever clicked during training at all (Step 2.4's
+lesson), versus 80.2% of validation *users* having a known factor. News
+articles churn fast enough that most of what's a candidate on any given
+day simply wasn't old enough to have accumulated click history during the
+training window. With roughly 71% of each impression's candidates scoring
+`-inf` — no real signal at all — this baseline can only meaningfully rank
+the minority of candidates it has actual information about, and the rest
+fall back to an arbitrary (alphabetical) order among themselves. On
+average that's still usually enough real candidates to mostly fill a
+top-10, which is why the result isn't catastrophic, just unimpressive.
+4,958 of 30,270 impressions (16.4%) used the full popularity fallback for
+having no known user at all — close to, though not identical to, the
+19.8% estimated from distinct-user overlap, the difference explained by
+counting at the impression level rather than the distinct-user level.
+
+**This result was diagnosed, not just observed.** The weak showing traces
+directly and specifically to item cold-start, a structural property of
+news measured *before* the model was built, not a mysterious shortfall
+discovered by comparing numbers after the fact. A hybrid that blends
+collaborative and popularity signal per-candidate (rather than falling
+back only when a user is entirely unknown) might close some of this gap,
+but that's a different, more complex model than "test what pure
+collaborative signal alone can do here" — which is what this baseline was
+built to measure, honestly, including a result that isn't flattering.
+
+Runtime: all three baselines combined took about 2m51s locally (up from
+1m31s for two), still an accepted local-script tradeoff per Step 2.2/2.3's
+reasoning — not optimized, since nothing here has been profiled as an
+actual bottleneck yet.

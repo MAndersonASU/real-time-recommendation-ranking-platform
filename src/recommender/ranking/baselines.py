@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from recommender.data.mind import explode_impressions
@@ -58,3 +60,60 @@ def rank_by_content_similarity(
 
     scored = exploded_impression.assign(similarity=similarity)
     return scored.sort_values(["similarity", "news_id"], ascending=[False, True])
+
+
+def build_collaborative_factors(behaviors: pd.DataFrame, n_components: int = 20, random_state: int = 42):
+    """Factorize the training click matrix (users x items) into a small
+    number of latent factors per user and per item via TruncatedSVD.
+    """
+    clicks = explode_impressions(behaviors)
+    clicks = clicks[clicks["clicked"] == 1]
+
+    users = clicks["user_id"].astype("category")
+    items = clicks["news_id"].astype("category")
+
+    matrix = sp.csr_matrix(
+        (np.ones(len(clicks)), (users.cat.codes, items.cat.codes)),
+        shape=(len(users.cat.categories), len(items.cat.categories)),
+    )
+
+    svd = TruncatedSVD(n_components=n_components, random_state=random_state)
+    user_factors = svd.fit_transform(matrix)
+    item_factors = svd.components_.T
+
+    user_row_by_id = {uid: i for i, uid in enumerate(users.cat.categories)}
+    item_row_by_id = {iid: i for i, iid in enumerate(items.cat.categories)}
+    return user_factors, item_factors, user_row_by_id, item_row_by_id
+
+
+def rank_by_collaborative_filtering(
+    exploded_impression: pd.DataFrame,
+    user_id: str,
+    user_factors: np.ndarray,
+    item_factors: np.ndarray,
+    user_row_by_id: dict,
+    item_row_by_id: dict,
+    popularity: pd.Series,
+) -> pd.DataFrame:
+    """Order one impression's candidates by predicted user-item affinity
+    (dot product of latent factors). Falls back to rank_by_popularity when
+    the user has no training click history at all. A candidate item never
+    clicked during training scores -inf, not 0 — a raw dot product isn't
+    bounded at zero the way cosine similarity was, so 0 would misrepresent
+    "no signal" as "average affinity."
+    """
+    if user_id not in user_row_by_id:
+        return rank_by_popularity(exploded_impression, popularity)
+
+    user_vector = user_factors[user_row_by_id[user_id]]
+    scores = np.array(
+        [
+            float(user_vector @ item_factors[item_row_by_id[nid]])
+            if nid in item_row_by_id
+            else -np.inf
+            for nid in exploded_impression["news_id"]
+        ]
+    )
+
+    scored = exploded_impression.assign(cf_score=scores)
+    return scored.sort_values(["cf_score", "news_id"], ascending=[False, True])

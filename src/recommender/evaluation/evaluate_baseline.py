@@ -13,8 +13,10 @@ from recommender.evaluation.metrics import (
     reciprocal_rank,
 )
 from recommender.ranking.baselines import (
+    build_collaborative_factors,
     build_content_vectors,
     compute_popularity,
+    rank_by_collaborative_filtering,
     rank_by_content_similarity,
     rank_by_popularity,
 )
@@ -97,10 +99,45 @@ def evaluate_content_similarity_baseline(k: int = K) -> dict:
     return report
 
 
+def evaluate_collaborative_baseline(k: int = K) -> dict:
+    train = pd.read_parquet(SPLITS_DIR / "train" / "behaviors.parquet")
+    validation = pd.read_parquet(SPLITS_DIR / "validation" / "behaviors.parquet")
+    catalog_size = len(pd.read_parquet(CATALOG_PATH))
+
+    popularity = compute_popularity(train)
+    user_factors, item_factors, user_row_by_id, item_row_by_id = build_collaborative_factors(train)
+    exploded_validation = explode_impressions(validation)
+
+    per_impression = {"hit_rate": [], "recall": [], "ndcg": [], "rr": []}
+    recommended_items: set = set()
+    fallback_count = 0
+
+    for (impression_id, user_id), group in exploded_validation.groupby(
+        ["impression_id", "user_id"], sort=False
+    ):
+        if user_id not in user_row_by_id:
+            fallback_count += 1
+
+        ordered = rank_by_collaborative_filtering(
+            group, user_id, user_factors, item_factors, user_row_by_id, item_row_by_id, popularity
+        )
+        relevance = ordered["clicked"].to_numpy()
+        per_impression["hit_rate"].append(hit_rate_at_k(relevance, k))
+        per_impression["recall"].append(recall_at_k(relevance, k))
+        per_impression["ndcg"].append(ndcg_at_k(relevance, k))
+        per_impression["rr"].append(reciprocal_rank(relevance))
+        recommended_items.update(ordered["news_id"].iloc[:k])
+
+    report = _aggregate("collaborative_baseline", per_impression, recommended_items, catalog_size)
+    report["fallback_to_popularity_count"] = fallback_count
+    return report
+
+
 def main() -> None:
     report = {
         "popularity": evaluate_popularity_baseline(),
         "content_similarity": evaluate_content_similarity_baseline(),
+        "collaborative": evaluate_collaborative_baseline(),
     }
     REPORT_PATH.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
