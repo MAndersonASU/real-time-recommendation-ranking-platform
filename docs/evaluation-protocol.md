@@ -1,0 +1,64 @@
+# Evaluation Protocol (Frozen)
+
+Locked 2026-08-18, Phase 2 Step 2.5, after three baselines already had real
+results measured under it. Changing any item below after that point would
+invalidate every comparison already made in `docs/baselines.md` — the same
+principle `docs/research-scenario.md` already applies to the research
+questions themselves.
+
+## What's frozen
+
+- **Evaluation split**: `validation` (Step 1.5) — 30,270 impressions from
+  2019-11-14. Never used for training or tuning by any model evaluated
+  against it.
+- **Held out, untouched by any evaluation to date**: `replay`
+  (2019-11-15) — reserved for Phase 6 streaming replay and Phase 9
+  evaluation.
+- **K = 10** for every Top-K metric (Recall@K, NDCG@K, hit rate@K,
+  catalog coverage@K). A result reported at a different K is a different,
+  not-directly-comparable number.
+- **Metrics**: `hit_rate_at_k`, `recall_at_k`, `ndcg_at_k`,
+  `reciprocal_rank` (MRR), `catalog_coverage` — defined once in
+  `src/recommender/evaluation/metrics.py`, hand-verified against a
+  worked example in Step 2.1.
+- **Catalog size for coverage**: the `train` split's `news.parquet` row
+  count (51,282) — the same catalog both `train` and `validation` draw
+  from.
+- **Candidate set (Phase 2 baselines only)**: exactly the items listed in
+  MIND's own `impressions` field for that row. No candidate generation
+  happens at this stage. This definition does not automatically extend to
+  Phase 3: a real retrieval system generates its own candidate sets from
+  the full catalog rather than reusing MIND's pre-built impression lists,
+  so Phase 3 needs its own explicit candidate-set definition rather than
+  silently inheriting this one.
+
+## Enforced, not just documented
+
+`src/recommender/evaluation/contract.py` centralizes the split paths, the
+catalog path, and `TOP_K` as the single source every evaluation script
+imports from. `src/recommender/evaluation/evaluate_baseline.py` was
+refactored in this step to import from it instead of redefining its own
+copies of these values — verified to produce bit-for-bit identical results
+to the pre-refactor numbers already published in `docs/baselines.md`.
+`tests/test_contract.py` asserts the frozen values directly, so an
+accidental future change can't pass CI silently.
+
+## Results locked under this protocol
+
+See `docs/baselines.md` for full detail. Summary (K=10, same 30,270
+validation impressions throughout):
+
+| | Popularity | Content similarity | Collaborative |
+|---|---|---|---|
+| Hit rate | 0.5697 | 0.6557 | 0.5709 |
+| NDCG | 0.2830 | 0.3526 | 0.2847 |
+| Catalog coverage | 0.0370 | 0.0722 | 0.0389 |
+
+## What would break this contract
+
+Changing K, swapping the validation split for a different one, altering
+what counts as a candidate, or redefining a metric after these baseline
+numbers exist would invalidate the comparisons above. Any of those needs
+to be treated as a new, explicitly versioned protocol — with its own
+re-run of all three baselines under the new conditions — not a silent
+edit to this document or to `contract.py`.

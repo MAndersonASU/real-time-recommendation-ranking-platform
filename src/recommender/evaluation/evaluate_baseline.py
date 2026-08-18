@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from recommender.data.mind import explode_impressions
+from recommender.evaluation.contract import TOP_K, load_catalog, load_split
 from recommender.evaluation.metrics import (
     catalog_coverage,
     hit_rate_at_k,
@@ -21,16 +22,13 @@ from recommender.ranking.baselines import (
     rank_by_popularity,
 )
 
-SPLITS_DIR = Path("data/processed/mind_small/splits")
-CATALOG_PATH = Path("data/processed/mind_small/train/news.parquet")
 REPORT_PATH = Path("data/processed/mind_small/baseline_report.json")
-K = 10
 
 
-def _aggregate(model: str, per_impression: dict, recommended_items: set, catalog_size: int) -> dict:
+def _aggregate(model: str, k: int, per_impression: dict, recommended_items: set, catalog_size: int) -> dict:
     return {
         "model": model,
-        "k": K,
+        "k": k,
         "impressions_evaluated": len(per_impression["hit_rate"]),
         "hit_rate_at_k": float(np.mean(per_impression["hit_rate"])),
         "recall_at_k": float(np.mean(per_impression["recall"])),
@@ -42,10 +40,10 @@ def _aggregate(model: str, per_impression: dict, recommended_items: set, catalog
     }
 
 
-def evaluate_popularity_baseline(k: int = K) -> dict:
-    train = pd.read_parquet(SPLITS_DIR / "train" / "behaviors.parquet")
-    validation = pd.read_parquet(SPLITS_DIR / "validation" / "behaviors.parquet")
-    catalog_size = len(pd.read_parquet(CATALOG_PATH))
+def evaluate_popularity_baseline(k: int = TOP_K) -> dict:
+    train = load_split("train")
+    validation = load_split("validation")
+    catalog_size = len(load_catalog())
 
     popularity = compute_popularity(train)
     exploded_validation = explode_impressions(validation)
@@ -62,13 +60,13 @@ def evaluate_popularity_baseline(k: int = K) -> dict:
         per_impression["rr"].append(reciprocal_rank(relevance))
         recommended_items.update(ordered["news_id"].iloc[:k])
 
-    return _aggregate("popularity_baseline", per_impression, recommended_items, catalog_size)
+    return _aggregate("popularity_baseline", k, per_impression, recommended_items, catalog_size)
 
 
-def evaluate_content_similarity_baseline(k: int = K) -> dict:
-    train = pd.read_parquet(SPLITS_DIR / "train" / "behaviors.parquet")
-    validation = pd.read_parquet(SPLITS_DIR / "validation" / "behaviors.parquet")
-    news = pd.read_parquet(CATALOG_PATH)
+def evaluate_content_similarity_baseline(k: int = TOP_K) -> dict:
+    train = load_split("train")
+    validation = load_split("validation")
+    news = load_catalog()
     catalog_size = len(news)
 
     popularity = compute_popularity(train)
@@ -94,15 +92,15 @@ def evaluate_content_similarity_baseline(k: int = K) -> dict:
         per_impression["rr"].append(reciprocal_rank(relevance))
         recommended_items.update(ordered["news_id"].iloc[:k])
 
-    report = _aggregate("content_similarity_baseline", per_impression, recommended_items, catalog_size)
+    report = _aggregate("content_similarity_baseline", k, per_impression, recommended_items, catalog_size)
     report["fallback_to_popularity_count"] = fallback_count
     return report
 
 
-def evaluate_collaborative_baseline(k: int = K) -> dict:
-    train = pd.read_parquet(SPLITS_DIR / "train" / "behaviors.parquet")
-    validation = pd.read_parquet(SPLITS_DIR / "validation" / "behaviors.parquet")
-    catalog_size = len(pd.read_parquet(CATALOG_PATH))
+def evaluate_collaborative_baseline(k: int = TOP_K) -> dict:
+    train = load_split("train")
+    validation = load_split("validation")
+    catalog_size = len(load_catalog())
 
     popularity = compute_popularity(train)
     user_factors, item_factors, user_row_by_id, item_row_by_id = build_collaborative_factors(train)
@@ -128,7 +126,7 @@ def evaluate_collaborative_baseline(k: int = K) -> dict:
         per_impression["rr"].append(reciprocal_rank(relevance))
         recommended_items.update(ordered["news_id"].iloc[:k])
 
-    report = _aggregate("collaborative_baseline", per_impression, recommended_items, catalog_size)
+    report = _aggregate("collaborative_baseline", k, per_impression, recommended_items, catalog_size)
     report["fallback_to_popularity_count"] = fallback_count
     return report
 
