@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from recommender.data.mind import explode_impressions
+
 MAX_HISTORY = 20
 
 
@@ -43,3 +45,32 @@ def build_history_arrays(
 
     impression_row = pd.Series(np.arange(n), index=behaviors["impression_id"].to_numpy())
     return cat, subcat, mask, impression_row
+
+
+def build_catalog_arrays(news: pd.DataFrame, item_vocab: dict) -> tuple:
+    """Parallel (category_idx, subcategory_idx) arrays, one row per
+    catalog item, in the same row order as `news`. Sampling a random
+    negative is then just drawing a row index uniformly and indexing
+    directly, with no news_id round-trip.
+    """
+    news_ids = news["news_id"].to_numpy()
+    cat = np.array([item_vocab[nid][0] for nid in news_ids], dtype=np.int64)
+    subcat = np.array([item_vocab[nid][1] for nid in news_ids], dtype=np.int64)
+    row_by_news_id = {nid: i for i, nid in enumerate(news_ids)}
+    return cat, subcat, row_by_news_id
+
+
+def build_user_clicked_rows(behaviors: pd.DataFrame, row_by_news_id: dict) -> dict:
+    """user_id -> set of catalog row positions this user actually clicked
+    anywhere in this split. Used only to keep sampled negatives honest --
+    never sample an item this user is known to like as a "negative".
+    Built exclusively from the given split (train, in practice): using
+    validation or replay clicks here would leak evaluation-time
+    information into what training treats as a legitimate negative.
+    """
+    exploded = explode_impressions(behaviors)
+    clicks = exploded[exploded["clicked"] == 1]
+    result: dict = {}
+    for user_id, group in clicks.groupby("user_id"):
+        result[user_id] = {row_by_news_id[nid] for nid in group["news_id"] if nid in row_by_news_id}
+    return result

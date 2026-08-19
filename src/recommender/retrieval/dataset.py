@@ -42,3 +42,47 @@ class TwoTowerDataset(Dataset):
             torch.tensor(self.cand_subcategory[idx]),
             torch.tensor(self.labels[idx]),
         )
+
+
+class SampledNegativeDataset(Dataset):
+    """One example per (positive impression, sampled random negative
+    item). Reuses the same per-impression history arrays as
+    TwoTowerDataset -- a sampled negative is evaluated against that same
+    user's history, not a different one. Output shape matches
+    TwoTowerDataset exactly, so the two combine via ConcatDataset.
+    """
+
+    def __init__(
+        self,
+        impression_rows: np.ndarray,
+        negative_rows: np.ndarray,
+        history_category: np.ndarray,
+        history_subcategory: np.ndarray,
+        history_mask: np.ndarray,
+        catalog_category: np.ndarray,
+        catalog_subcategory: np.ndarray,
+    ):
+        num_negatives = negative_rows.shape[1]
+        self.impression_row = np.repeat(impression_rows, num_negatives)
+        self.negative_row = negative_rows.ravel()
+
+        self.history_category = history_category
+        self.history_subcategory = history_subcategory
+        self.history_mask = history_mask
+        self.catalog_category = catalog_category
+        self.catalog_subcategory = catalog_subcategory
+
+    def __len__(self) -> int:
+        return len(self.negative_row)
+
+    def __getitem__(self, idx: int):
+        row = self.impression_row[idx]
+        neg_row = self.negative_row[idx]
+        return (
+            torch.from_numpy(self.history_category[row]),
+            torch.from_numpy(self.history_subcategory[row]),
+            torch.from_numpy(self.history_mask[row]),
+            torch.tensor(self.catalog_category[neg_row]),
+            torch.tensor(self.catalog_subcategory[neg_row]),
+            torch.tensor(0.0),
+        )

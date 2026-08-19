@@ -21,10 +21,11 @@ this one. Implementation: `src/recommender/retrieval/` (`features.py`,
   batching tractable without variable-length sequence handling).
 - **Score**: dot product of the user and item vectors, plus a single
   learnable global bias term.
-- **Training labels**: the click/no-click labels MIND's own impression log
-  already provides — not yet a deliberately engineered negative-sampling
-  strategy, which is explicitly out of scope here and reserved for
-  dedicated follow-up work.
+- **Training labels**: MIND's own in-impression click/no-click labels,
+  plus randomly sampled catalog negatives per positive example (see
+  "Negative sampling" below) — narrow reranking-style negatives alone
+  aren't sufficient once the model has to judge the full catalog, not a
+  pre-filtered shortlist.
 
 ## A real bug found during verification, not glossed over
 
@@ -44,7 +45,7 @@ scalar (`global_bias`, added to the dot product) let the model absorb the
 base rate directly. Re-run under the same conditions, loss dropped steadily
 and predictably instead of plateauing early.
 
-## Real training result
+## Initial training result (in-impression negatives only)
 
 6,000 steps, batch size 2,048, embedding dimension 32, on the `train`
 split (`docs/splits.md`, 4,621,015 examples) — about 1.3 passes over the
@@ -68,6 +69,55 @@ evaluation pass against the frozen protocol is for, using the same Recall@K,
 NDCG@K, MRR, hit rate, and catalog coverage metrics already applied to all
 three Phase 2 baselines — not something this step's training loss can
 answer on its own.
+
+## Negative sampling
+
+In-impression negatives were only ever items MIND's own candidate
+generation already considered relevant enough to show — a narrow signal,
+adequate for reranking a pre-filtered shortlist but not for retrieval,
+which has to judge the entire catalog. Every positive example now also
+gets 4 randomly sampled catalog items as additional negatives
+(`src/recommender/retrieval/negatives.py`), rejected and redrawn if the
+sampled item is one that specific user is actually known to have clicked
+elsewhere in `train` — an unfiltered random negative that happens to be
+something the user likes would be false training data, not harmless
+noise. The click history used for this check is built exclusively from
+`train`; using validation or replay clicks here would leak evaluation-time
+information into what training treats as a legitimate negative.
+
+Implementation: `build_catalog_arrays` and `build_user_clicked_rows`
+(`features.py`), `sample_negative_rows`/`sample_negatives_for_positives`
+(`negatives.py`), `SampledNegativeDataset` (`dataset.py`) — combined with
+the original in-impression dataset via `ConcatDataset`. The model, loss
+function, and training loop from the initial run are unchanged; only what
+feeds into them changed.
+
+### Real result with sampled negatives added
+
+Same 6,000-step budget, same batch size and embedding dimension, for a
+direct comparison against the initial run. Dataset grew from 4,621,015 to
+5,379,091 examples (189,519 real positive clicks × 4 sampled negatives
+each = 758,076 added rows — matches the arithmetic exactly). Elapsed:
+8m3s locally.
+
+| Step | Mean loss (last 500) |
+|---|---|
+| 500 | 0.6189 |
+| 1,500 | 0.3366 |
+| 3,000 | 0.2012 |
+| 4,500 | 0.1609 |
+| 6,000 | 0.1510 |
+
+Adding sampled negatives changes the overall label balance (positives now
+3.52% of examples, down from 4.04%), so the entropy floor to compare
+against is a different, recomputed number:
+`-0.03523·ln(0.03523) - 0.96477·ln(0.96477) ≈ 0.1525`. Final loss (0.1510)
+again essentially matches this recomputed floor — the same honest
+conclusion as before: this confirms training is behaving correctly for
+the new label distribution, not that the embeddings have learned
+meaningful signal beyond the base rate. That's still a question for a
+dedicated evaluation pass against the frozen protocol, not for training
+loss alone.
 
 Model saved to `data/processed/mind_small/two_tower_model.pt` (gitignored,
 reproducible via `python -m recommender.retrieval.train`); reload verified
