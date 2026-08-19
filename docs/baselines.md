@@ -1,9 +1,10 @@
 # Baselines
 
 Reproducible results for each baseline defined in Phase 2, evaluated
-against the Step 1.5 `validation` split using the frozen metrics from
-`docs/research-scenario.md` and `src/recommender/evaluation/metrics.py`.
-K=10 throughout. Methodology for each model:
+against the frozen `validation` split (`docs/splits.md`) using the
+metrics from `docs/research-scenario.md` and
+`src/recommender/evaluation/metrics.py`. K=10 throughout. Methodology for
+each model:
 `src/recommender/evaluation/evaluate_baseline.py` (popularity) and its
 successors as later baselines are added.
 
@@ -30,16 +31,18 @@ themselves.** Hit rate and recall look surprisingly strong for a model
 with zero personalization — but that's explained by, not in spite of, the
 weak class balance already measured in `docs/data-quality.md`: overall CTR
 is only ~4%, and a small number of globally popular items already capture
-a large share of all clicks (Step 1.4's category analysis showed the same
-concentration pattern one level up). A baseline that just always guesses
+a large share of all clicks (the category-level CTR analysis in
+`docs/data-quality.md` showed the same concentration pattern one level
+up). A baseline that just always guesses
 "popular" will look reasonable exactly because popular items really do get
 clicked disproportionately often — that's a property of the data, not
 evidence the baseline understands users.
 
 Catalog coverage is the metric that exposes what hit rate and recall
 can't: 3.70% is far below the 12.7–39.6% coverage the real, curated MIND
-impression logs themselves showed in Step 1.3. That gap is the expected,
-measured cost of pure popularity ranking — it repeatedly surfaces the same
+impression logs themselves showed (`docs/data-quality.md`). That gap is
+the expected, measured cost of pure popularity ranking — it repeatedly
+surfaces the same
 narrow slice of the catalog to everyone. Any later model (Phase 3 onward)
 that improves hit rate/NDCG/recall by narrowing coverage further, rather
 than widening it, hasn't actually solved the problem this baseline
@@ -74,9 +77,10 @@ Evaluated on the same 30,270 validation impressions. Content similarity
 beats popularity on every metric, including catalog coverage — 3,704
 distinct items were recommended in a top-10, versus popularity's 1,896,
 roughly double, though still well short of the 12.7–39.6% real curated
-logs showed in Step 1.3. 772 of the 30,270 impressions (2.5%) had no
-usable history and fell back to the popularity ranking, consistent with
-the ~2–3% null-history rate already measured in Steps 1.2–1.3.
+logs showed (`docs/data-quality.md`). 772 of the 30,270 impressions (2.5%)
+had no usable history and fell back to the popularity ranking, consistent
+with the ~2–3% null-history rate already measured during ingestion and
+profiling.
 
 **This is real, if modest, evidence toward RQ1** — even a non-learned,
 purely lexical content signal (word overlap via TF-IDF, nothing trained)
@@ -113,8 +117,8 @@ come close to content similarity — and this was predictable before
 running anything, not a surprise discovered after the fact.** Before
 writing any ranking code, a direct check of the training click matrix
 against the validation split found that only 29.2% of validation
-candidate items were ever clicked during training at all (Step 2.4's
-lesson), versus 80.2% of validation *users* having a known factor. News
+candidate items were ever clicked during training at all, versus 80.2% of
+validation *users* having a known factor. News
 articles churn fast enough that most of what's a candidate on any given
 day simply wasn't old enough to have accumulated click history during the
 training window. With roughly 71% of each impression's candidates scoring
@@ -139,6 +143,6 @@ collaborative signal alone can do here" — which is what this baseline was
 built to measure, honestly, including a result that isn't flattering.
 
 Runtime: all three baselines combined took about 2m51s locally (up from
-1m31s for two), still an accepted local-script tradeoff per Step 2.2/2.3's
-reasoning — not optimized, since nothing here has been profiled as an
-actual bottleneck yet.
+1m31s for two), still an accepted local-script tradeoff for the same
+reasons given for the two baselines above — not optimized, since nothing
+here has been profiled as an actual bottleneck yet.

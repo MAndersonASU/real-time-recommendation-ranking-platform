@@ -1,6 +1,6 @@
 # Evaluation Protocol (Frozen)
 
-Locked 2026-08-18, Phase 2 Step 2.5, after three baselines already had real
+Locked 2026-08-18, after Phase 2's three baselines already had real
 results measured under it. Changing any item below after that point would
 invalidate every comparison already made in `docs/baselines.md` — the same
 principle `docs/research-scenario.md` already applies to the research
@@ -8,9 +8,9 @@ questions themselves.
 
 ## What's frozen
 
-- **Evaluation split**: `validation` (Step 1.5) — 30,270 impressions from
-  2019-11-14. Never used for training or tuning by any model evaluated
-  against it.
+- **Evaluation split**: `validation` (`docs/splits.md`) — 30,270
+  impressions from 2019-11-14. Never used for training or tuning by any
+  model evaluated against it.
 - **Held out, untouched by any evaluation to date**: `replay`
   (2019-11-15) — reserved for Phase 6 streaming replay and Phase 9
   evaluation.
@@ -20,7 +20,7 @@ questions themselves.
 - **Metrics**: `hit_rate_at_k`, `recall_at_k`, `ndcg_at_k`,
   `reciprocal_rank` (MRR), `catalog_coverage` — defined once in
   `src/recommender/evaluation/metrics.py`, hand-verified against a
-  worked example in Step 2.1.
+  worked example (`tests/test_metrics.py`) before any baseline used them.
 - **Catalog size for coverage**: the `train` split's `news.parquet` row
   count (51,282) — the same catalog both `train` and `validation` draw
   from.

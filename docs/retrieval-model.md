@@ -2,9 +2,9 @@
 
 Phase 3's first learned model. Architecture and training only — full
 retrieval evaluation against the frozen protocol
-(`docs/evaluation-protocol.md`) is Step 3.5's job, not this one.
-Implementation: `src/recommender/retrieval/` (`features.py`, `model.py`,
-`dataset.py`, `train.py`).
+(`docs/evaluation-protocol.md`) is a separate, later evaluation pass, not
+this one. Implementation: `src/recommender/retrieval/` (`features.py`,
+`model.py`, `dataset.py`, `train.py`).
 
 ## Architecture
 
@@ -13,8 +13,9 @@ Implementation: `src/recommender/retrieval/` (`features.py`, `model.py`,
   regardless of click history, since these features never depend on it.
 - **User tower**: not a separate set of parameters. A user's vector is the
   mean of the item tower's vectors for whatever's in their (fixed-length,
-  masked) click history — the same content-similarity idea from Step 2.3,
-  now built from learned rather than fixed vectors.
+  masked) click history — the same idea as the earlier content-similarity
+  baseline (`docs/baselines.md`), now built from learned rather than fixed
+  vectors.
 - **History length**: capped at the 20 most recent items (median training
   history length: 19; 90th percentile: 77; max: 558 — a fixed cap keeps
   batching tractable without variable-length sequence handling).
@@ -22,7 +23,8 @@ Implementation: `src/recommender/retrieval/` (`features.py`, `model.py`,
   learnable global bias term.
 - **Training labels**: the click/no-click labels MIND's own impression log
   already provides — not yet a deliberately engineered negative-sampling
-  strategy, which is explicitly Step 3.3's scope, not this step's.
+  strategy, which is explicitly out of scope here and reserved for
+  dedicated follow-up work.
 
 ## A real bug found during verification, not glossed over
 
@@ -44,9 +46,9 @@ and predictably instead of plateauing early.
 
 ## Real training result
 
-6,000 steps, batch size 2,048, embedding dimension 32, on the Step 1.5
-`train` split (4,621,015 examples) — about 1.3 passes over the full training
-set. Elapsed: 7m35s locally (CPU only).
+6,000 steps, batch size 2,048, embedding dimension 32, on the `train`
+split (`docs/splits.md`, 4,621,015 examples) — about 1.3 passes over the
+full training set. Elapsed: 7m35s locally (CPU only).
 
 | Step | Mean loss (last 500) |
 |---|---|
@@ -61,8 +63,8 @@ Final loss (0.1678) essentially matches the theoretical entropy floor
 worked and training is behaving correctly, not evidence by itself that the
 embeddings learned meaningful per-user or per-item signal beyond the base
 rate. Distinguishing "the model learned the base rate" from "the model
-learned to actually rank candidates well" is exactly what Step 3.5's
-evaluation against the frozen protocol is for, using the same Recall@K,
+learned to actually rank candidates well" is exactly what a dedicated
+evaluation pass against the frozen protocol is for, using the same Recall@K,
 NDCG@K, MRR, hit rate, and catalog coverage metrics already applied to all
 three Phase 2 baselines — not something this step's training loss can
 answer on its own.

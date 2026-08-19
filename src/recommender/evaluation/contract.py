@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Frozen 2026-08-18, Phase 2 Step 2.5. Every evaluation script imports these
+# Frozen 2026-08-18. Every evaluation script imports these
 # rather than redefining its own copy -- see docs/evaluation-protocol.md for
 # what's frozen and why changing any of these invalidates prior comparisons.
 SPLITS_DIR = Path("data/processed/mind_small/splits")

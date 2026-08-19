@@ -18,9 +18,9 @@ untouched until Phase 6 and Phase 9: no earlier phase trains, tunes, or
 selects a model against it.
 
 Row counts are internally consistent by construction: `train` (126,695) +
-`validation` (30,270) = 156,965, the exact row count of the original
-official train split (Step 1.2); `replay` (73,152) exactly matches the
-original official dev split.
+`validation` (30,270) = 156,965, the exact row count of the ingested
+official train split; `replay` (73,152) exactly matches the original
+official dev split.
 
 ## Leakage check
 

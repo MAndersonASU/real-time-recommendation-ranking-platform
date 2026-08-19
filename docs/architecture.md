@@ -79,12 +79,12 @@ flowchart TD
 
 ### Module ownership (`src/recommender/`)
 
-The eight subpackages created in Step 0.2 map directly onto the stages
-above; each currently contains only an `__init__.py` and will gain real
-code as its owning phase starts, per the project's lazy-dependency policy.
-A ninth subpackage, `recommender.evaluation`, was added in Phase 2 Step
-2.1 — see the design-decisions log below for why it wasn't part of the
-original eight.
+The eight subpackages created during initial repository setup map directly
+onto the stages above; each currently contains only an `__init__.py` and
+will gain real code as its owning phase starts, per the project's
+lazy-dependency policy. A ninth subpackage, `recommender.evaluation`, was
+added in Phase 2 — see the design-decisions log below for why it wasn't
+part of the original eight.
 
 ## Cross-cutting controls
 
@@ -131,7 +131,7 @@ and never participates in retrieval, ranking, or reranking decisions.
   Top-K), since RQ1 and RQ2 evaluate different quantities and must not be
   conflated in later reporting.
 - **2026-08-16** — Added `recommender.evaluation`, a ninth subpackage not
-  present in the guide's original eight-package skeleton. Metric
+  present in the original eight-package skeleton design. Metric
   definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) don't belong to
   any single existing package: they're not the ranking model itself
   (`recommender.ranking`), and they're consumed by both the offline

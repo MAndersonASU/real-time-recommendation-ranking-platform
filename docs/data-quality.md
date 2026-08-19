@@ -3,9 +3,9 @@
 Concise EDA over the ingested MIND-small train/dev splits, scoped to the
 measurements later phases actually depend on rather than a general
 exploration. Methodology: `src/recommender/data/profile.py`, run against
-the Step 1.2 Parquet output. The report itself is a local, gitignored,
-reproducible artifact — the findings below are transcribed from an actual
-run, not estimated.
+the ingestion pipeline's Parquet output (`src/recommender/data/ingest.py`).
+The report itself is a local, gitignored, reproducible artifact — the
+findings below are transcribed from an actual run, not estimated.
 
 ## Scale
 
@@ -102,4 +102,5 @@ that window.
 
 Train spans 2019-11-09 through 2019-11-14; dev is exactly 2019-11-15 (a
 single day). The official split is already a clean, non-overlapping date
-boundary, useful context for Step 1.5's leakage-safe splits.
+boundary, useful context for the leakage-safe time-aware splits
+(`docs/splits.md`).

@@ -82,7 +82,7 @@ Unless independently measured and verified at the time of writing:
 
 ---
 
-*Locked 2026-08-15 under Master Guide v1.1. This document is the fixed
-reference point every later phase's evaluation is measured against;
-revising it after model results exist would invalidate prior comparisons
-and must be treated as a new locked version, not a silent edit.*
+*Locked 2026-08-15. This document is the fixed reference point every later
+phase's evaluation is measured against; revising it after model results
+exist would invalidate prior comparisons and must be treated as a new
+locked version, not a silent edit.*
