@@ -67,7 +67,7 @@ def dominant_category(history_ids: list, category_by_id: pd.Series):
     return pd.Series(cats).mode().iloc[0]
 
 
-def _content_profile(history_ids: list, tfidf_vectors, tfidf_row_by_id: dict):
+def content_profile(history_ids: list, tfidf_vectors, tfidf_row_by_id: dict):
     rows = [tfidf_row_by_id[nid] for nid in history_ids if nid in tfidf_row_by_id]
     if not rows:
         return None
@@ -106,7 +106,7 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
         history_ids = history_ids_from_raw(history_by_impression.loc[impression_id])
         user_emb = user_embeddings[impression_row.loc[impression_id]]
         user_dominant_category = dominant_category(history_ids, category_by_id)
-        profile = _content_profile(history_ids, tfidf_vectors, tfidf_row_by_id)
+        profile = content_profile(history_ids, tfidf_vectors, tfidf_row_by_id)
 
         news_ids = group["news_id"].to_numpy()
         item_rows = np.array([row_by_news_id[nid] for nid in news_ids])
