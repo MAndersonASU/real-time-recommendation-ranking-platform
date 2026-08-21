@@ -51,11 +51,11 @@ def build_feature_context(train: pd.DataFrame, news: pd.DataFrame, model: TwoTow
     }
 
 
-def _history_ids(history_raw) -> list:
+def history_ids_from_raw(history_raw) -> list:
     return history_raw.split() if isinstance(history_raw, str) and history_raw else []
 
 
-def _dominant_category(history_ids: list, category_by_id: pd.Series):
+def dominant_category(history_ids: list, category_by_id: pd.Series):
     """The single most common category among a user's history items, or
     None if the user has no usable history -- distinguishing "no signal"
     from "matches nothing" the same way rank_by_content_similarity falls
@@ -103,9 +103,9 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
 
     frames = []
     for impression_id, group in exploded.groupby("impression_id", sort=False):
-        history_ids = _history_ids(history_by_impression.loc[impression_id])
+        history_ids = history_ids_from_raw(history_by_impression.loc[impression_id])
         user_emb = user_embeddings[impression_row.loc[impression_id]]
-        dominant_category = _dominant_category(history_ids, category_by_id)
+        user_dominant_category = dominant_category(history_ids, category_by_id)
         profile = _content_profile(history_ids, tfidf_vectors, tfidf_row_by_id)
 
         news_ids = group["news_id"].to_numpy()
@@ -114,8 +114,8 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
         pops = np.log1p(np.array([popularity.get(nid, 0) for nid in news_ids], dtype=np.float64))
         cats = np.array([category_by_id[nid] for nid in news_ids])
         category_matches = (
-            (cats == dominant_category).astype(float)
-            if dominant_category is not None
+            (cats == user_dominant_category).astype(float)
+            if user_dominant_category is not None
             else np.zeros(len(news_ids))
         )
         if profile is not None:
