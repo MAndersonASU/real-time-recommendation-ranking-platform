@@ -76,6 +76,7 @@ class StreamConsumer:
         elif event.event_type is EventType.CLICK:
             state.clicks_seen += 1
             state.recent_clicked_items.append(event.item_id)
+        self._on_state_updated(event.user_id, state)
 
         self.counters.events_by_type[event.event_type.value] = (
             self.counters.events_by_type.get(event.event_type.value, 0) + 1
@@ -84,6 +85,16 @@ class StreamConsumer:
         self.counters.distinct_items.add(event.item_id)
         self.counters.total_processed += 1
         return True
+
+    def _on_state_updated(self, user_id: str, state: UserState) -> None:
+        """Hook called every time an event updates a user's state, with
+        the user id and their state exactly as it stands right after that
+        update. No-op here -- a plain StreamConsumer's only job is
+        in-process state. A subclass that also needs to push each update
+        through to an external low-latency store (Step 7.2's Redis) can
+        override this without touching the parsing, dedup, or counting
+        logic above it at all.
+        """
 
 
 def run_consumer(
