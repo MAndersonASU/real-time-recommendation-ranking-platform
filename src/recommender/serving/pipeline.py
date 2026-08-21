@@ -9,7 +9,6 @@ import torch
 
 from recommender.evaluation.contract import load_catalog, load_split
 from recommender.features.cold_start import get_online_features
-from recommender.features.online_features import compute_durable_features
 from recommender.features.state_store import build_client
 from recommender.ranking.baselines import build_content_vectors
 from recommender.ranking.features import content_profile
@@ -26,6 +25,7 @@ from recommender.retrieval.index import compute_catalog_embeddings
 from recommender.retrieval.model import TwoTowerModel
 from recommender.retrieval.train import EMBEDDING_DIM
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
+from recommender.serving.cache import DurableFeatureCache, build_durable_feature_cache
 from recommender.serving.contract import (
     RecommendationRequest,
     RecommendationResponse,
@@ -52,7 +52,7 @@ class ServingContext:
     faiss_index: faiss.IndexFlatIP
     two_tower_model: TwoTowerModel
     ranking_model: object
-    durable_features_by_user: dict
+    durable_cache: DurableFeatureCache
     first_seen: pd.Series
     redis_client: object
 
@@ -94,7 +94,7 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
         faiss_index=faiss_index,
         two_tower_model=two_tower_model,
         ranking_model=ranking_model,
-        durable_features_by_user=compute_durable_features(load_split("validation"), news),
+        durable_cache=build_durable_feature_cache(load_split("validation"), news),
         first_seen=compute_first_seen(train),
         redis_client=build_client(redis_url),
     )
@@ -131,7 +131,9 @@ def recommend(request: RecommendationRequest, context: ServingContext) -> Recomm
     `lifetime_click_count` specifically because that one field *does*
     carry the same uncapped meaning training used.
     """
-    lookup = get_online_features(request.user_id, context.durable_features_by_user, context.redis_client)
+    lookup = get_online_features(
+        request.user_id, context.durable_cache.features_by_user, context.redis_client
+    )
     history_ids = lookup.recent.recent_clicked_items
 
     hist_cat, hist_subcat, hist_mask = encode_recent_history(history_ids, context.item_vocab)

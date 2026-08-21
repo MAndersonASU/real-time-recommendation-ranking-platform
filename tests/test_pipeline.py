@@ -3,7 +3,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from recommender.features.online_features import RecentUserFeatures, compute_durable_features
+from recommender.features.online_features import RecentUserFeatures
 from recommender.features.state_store import save_recent_features
 from recommender.ranking.baselines import build_content_vectors
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
@@ -11,6 +11,7 @@ from recommender.reranking.freshness import compute_first_seen
 from recommender.retrieval.features import build_catalog_arrays, build_item_vocab
 from recommender.retrieval.index import build_exact_index, compute_catalog_embeddings
 from recommender.retrieval.model import TwoTowerModel
+from recommender.serving.cache import build_durable_feature_cache
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import ServingContext, recommend
 
@@ -81,7 +82,7 @@ def _build_context() -> ServingContext:
     # mismatch between fit and predict triggers a real sklearn warning.
     ranking_model.fit(synthetic[MODEL_FEATURE_COLUMNS].to_numpy(), synthetic["clicked"])
 
-    durable_features_by_user = compute_durable_features(TRAIN_BEHAVIORS, NEWS)
+    durable_cache = build_durable_feature_cache(TRAIN_BEHAVIORS, NEWS)
     first_seen = compute_first_seen(TRAIN_BEHAVIORS)
 
     return ServingContext(
@@ -93,7 +94,7 @@ def _build_context() -> ServingContext:
         faiss_index=faiss_index,
         two_tower_model=model,
         ranking_model=ranking_model,
-        durable_features_by_user=durable_features_by_user,
+        durable_cache=durable_cache,
         first_seen=first_seen,
         redis_client=_FakeRedis(),
     )
