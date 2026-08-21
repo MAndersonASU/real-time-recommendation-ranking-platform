@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -118,7 +119,11 @@ def encode_recent_history(item_ids: list, item_vocab: dict, max_history: int = M
     return cat, subcat, mask
 
 
-def recommend(request: RecommendationRequest, context: ServingContext) -> RecommendationResponse:
+def recommend(
+    request: RecommendationRequest,
+    context: ServingContext,
+    stage_timings: dict[str, float] | None = None,
+) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
     -> reranking -> a Top-K response, exactly the phase's named path.
 
@@ -132,25 +137,45 @@ def recommend(request: RecommendationRequest, context: ServingContext) -> Recomm
     `user_history_length` below instead uses the durable
     `lifetime_click_count` specifically because that one field *does*
     carry the same uncapped meaning training used.
+
+    `stage_timings`, when given a dict, gets one entry per stage in
+    milliseconds -- opt-in instrumentation of this exact code path, not a
+    separate copy kept in sync by hand. Left None by default so a normal
+    request pays only the cost of a few `perf_counter()` calls, not any
+    bookkeeping overhead.
     """
+    def _stage_start() -> float:
+        return time.perf_counter() if stage_timings is not None else 0.0
+
+    def _stage_end(name: str, start: float) -> None:
+        if stage_timings is not None:
+            stage_timings[name] = (time.perf_counter() - start) * 1000
+
+    t = _stage_start()
     lookup = get_online_features(
         request.user_id, context.durable_cache.features_by_user, context.redis_client
     )
     history_ids = lookup.recent.recent_clicked_items
+    _stage_end("feature_lookup_ms", t)
 
+    t = _stage_start()
     hist_cat, hist_subcat, hist_mask = encode_recent_history(history_ids, context.item_vocab)
     with torch.no_grad():
         user_emb = context.two_tower_model.user_vector(
             torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
         ).numpy()
+    _stage_end("embedding_ms", t)
 
+    t = _stage_start()
     n_retrieve = min(
         max(request.num_candidates * RETRIEVAL_MULTIPLIER, MIN_RETRIEVAL_CANDIDATES),
         context.faiss_index.ntotal,
     )
     retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
     candidate_news_ids = context.news_ids[item_rows[0]]
+    _stage_end("retrieval_ms", t)
 
+    t = _stage_start()
     profile = content_profile(history_ids, context.tfidf_vectors, context.tfidf_row_by_id)
     cats = np.array([context.category_by_id.get(nid) for nid in candidate_news_ids])
     user_dominant_category = lookup.durable.dominant_category
@@ -176,6 +201,9 @@ def recommend(request: RecommendationRequest, context: ServingContext) -> Recomm
             "hour_of_day": request_time.hour,
         }
     )
+    _stage_end("feature_build_ms", t)
+
+    t = _stage_start()
     # .to_numpy(), not the DataFrame itself -- train.py fits this same
     # pipeline on a plain array (no recorded feature names), and passing
     # a named DataFrame here instead triggers a real sklearn mismatch
@@ -183,14 +211,17 @@ def recommend(request: RecommendationRequest, context: ServingContext) -> Recomm
     frame["ranking_score"] = context.ranking_model.predict_proba(
         frame[MODEL_FEATURE_COLUMNS].to_numpy()
     )[:, 1]
-    frame["age_days"] = compute_age_days(frame, pd.Timestamp(request_time), context.first_seen)
+    _stage_end("ranking_ms", t)
 
+    t = _stage_start()
+    frame["age_days"] = compute_age_days(frame, pd.Timestamp(request_time), context.first_seen)
     slate = build_diverse_slate(
         frame, "ranking_score", request.num_candidates, context.category_by_id,
         context.tfidf_vectors, context.tfidf_row_by_id,
     )
     slate = apply_freshness_quota(slate, frame, "ranking_score")
     slate = slate.sort_values("ranking_score", ascending=False).head(request.num_candidates).reset_index(drop=True)
+    _stage_end("reranking_ms", t)
 
     recommendations = [
         RecommendedItem(
