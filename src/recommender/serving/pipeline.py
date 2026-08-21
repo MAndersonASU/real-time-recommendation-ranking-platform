@@ -10,7 +10,7 @@ import torch
 from recommender.evaluation.contract import load_catalog, load_split
 from recommender.features.cold_start import get_online_features
 from recommender.features.state_store import build_client
-from recommender.ranking.baselines import build_content_vectors
+from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.features import content_profile
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
 from recommender.ranking.train import MODEL_PATH as RANKING_MODEL_PATH
@@ -54,6 +54,7 @@ class ServingContext:
     ranking_model: object
     durable_cache: DurableFeatureCache
     first_seen: pd.Series
+    popularity: pd.Series
     redis_client: object
 
 
@@ -96,6 +97,7 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
         ranking_model=ranking_model,
         durable_cache=build_durable_feature_cache(load_split("validation"), news),
         first_seen=compute_first_seen(train),
+        popularity=compute_popularity(train),
         redis_client=build_client(redis_url),
     )
 

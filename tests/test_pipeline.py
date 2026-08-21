@@ -5,7 +5,7 @@ from sklearn.preprocessing import StandardScaler
 
 from recommender.features.online_features import RecentUserFeatures
 from recommender.features.state_store import save_recent_features
-from recommender.ranking.baselines import build_content_vectors
+from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
 from recommender.reranking.freshness import compute_first_seen
 from recommender.retrieval.features import build_catalog_arrays, build_item_vocab
@@ -51,7 +51,7 @@ class _FakeRedis:
         return self._data.get(key)
 
 
-def _build_context() -> ServingContext:
+def _build_context(redis_client=None) -> ServingContext:
     item_vocab, categories, subcategories = build_item_vocab(NEWS)
     catalog_cat, catalog_subcat, _ = build_catalog_arrays(NEWS, item_vocab)
 
@@ -96,7 +96,8 @@ def _build_context() -> ServingContext:
         ranking_model=ranking_model,
         durable_cache=durable_cache,
         first_seen=first_seen,
-        redis_client=_FakeRedis(),
+        popularity=compute_popularity(TRAIN_BEHAVIORS),
+        redis_client=redis_client if redis_client is not None else _FakeRedis(),
     )
 
 
