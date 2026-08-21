@@ -1,0 +1,146 @@
+import json
+import time
+from pathlib import Path
+
+import pandas as pd
+
+from recommender.data.mind import explode_impressions
+from recommender.evaluation.contract import load_split
+from recommender.streaming.kafka_client import (
+    DEFAULT_BOOTSTRAP_SERVERS,
+    build_producer,
+    ensure_topic,
+)
+from recommender.streaming.schema import EventType, make_event
+
+TOPIC = "interaction-events"
+DEFAULT_SPEED = 3600.0  # 1 simulated hour per real second
+REPLAY_REPORT_PATH = Path("data/processed/mind_small/replay_producer_report.json")
+
+
+def order_and_limit(exploded: pd.DataFrame, limit: int | None = None) -> pd.DataFrame:
+    """Chronological ordering, ties broken by impression id for a fully
+    deterministic replay order. Kept separate from `load_replay_events` so
+    the ordering logic is testable without the real (gitignored, licensed)
+    dataset.
+    """
+    ordered = exploded.sort_values(["time", "impression_id"], kind="stable").reset_index(drop=True)
+    if limit is not None:
+        ordered = ordered.head(limit)
+    return ordered
+
+
+def load_replay_events(limit: int | None = None) -> pd.DataFrame:
+    """Chronologically ordered (impression, candidate) rows from the
+    reserved `replay` split (docs/splits.md) -- MIND's official dev day,
+    held untouched since Step 1.5 specifically for this phase.
+    """
+    behaviors = load_split("replay")
+    exploded = explode_impressions(behaviors)
+    return order_and_limit(exploded, limit)
+
+
+def sleep_seconds_for_gap(gap_seconds: float, speed: float) -> float:
+    """Real-time sleep duration for a simulated gap of `gap_seconds`,
+    scaled down by `speed` -- speed=3600 means 1 real second stands in
+    for 1 simulated hour. Never negative, even if timestamps are (they
+    shouldn't be, given chronological ordering, but a defensive floor
+    costs nothing).
+    """
+    return max(gap_seconds, 0.0) / speed
+
+
+def events_for_row(row) -> tuple:
+    """The two events one exploded (impression, candidate) row produces:
+    an impression, always, plus either a click or a derived skip
+    (docs/event-schema.md). MIND carries no separate click timestamp, so
+    both share the impression's own time rather than fabricating a delay.
+    """
+    timestamp = row.time.isoformat()
+    impression_event = make_event(
+        EventType.IMPRESSION, row.user_id, row.news_id, row.impression_id, timestamp
+    )
+    outcome_type = EventType.CLICK if row.clicked == 1 else EventType.SKIP
+    outcome_event = make_event(outcome_type, row.user_id, row.news_id, row.impression_id, timestamp)
+    return impression_event, outcome_event
+
+
+def replay(
+    events: pd.DataFrame,
+    speed: float = DEFAULT_SPEED,
+    bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS,
+    topic: str = TOPIC,
+) -> dict:
+    """Publishes `events` in the given (chronological) order, sleeping
+    between rows in proportion to the real gap between their original
+    timestamps, scaled down by `speed` -- speed=3600 replays a full day
+    of history in about 24 real seconds. Never loaded or sent as one
+    batch: each row is paced individually against the row before it, and
+    every candidate produces two events -- an impression, always, plus
+    either a click or a derived skip (docs/event-schema.md) -- since MIND
+    carries no separate click timestamp, both share the impression's own
+    time rather than fabricating a delay.
+    """
+    ensure_topic(topic, bootstrap_servers=bootstrap_servers)
+    producer = build_producer(bootstrap_servers)
+
+    counts = {"impressions": 0, "clicks": 0, "skips": 0}
+    delivery_errors: list = []
+
+    def on_delivery(err, _msg) -> None:
+        if err is not None:
+            delivery_errors.append(str(err))
+
+    previous_time = None
+    for row in events.itertuples():
+        if previous_time is not None:
+            gap_seconds = (row.time - previous_time).total_seconds()
+            sleep_seconds = sleep_seconds_for_gap(gap_seconds, speed)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+        previous_time = row.time
+
+        impression_event, outcome_event = events_for_row(row)
+        producer.produce(
+            topic,
+            key=row.news_id.encode(),
+            value=impression_event.to_json().encode(),
+            callback=on_delivery,
+        )
+        counts["impressions"] += 1
+
+        producer.produce(
+            topic,
+            key=row.news_id.encode(),
+            value=outcome_event.to_json().encode(),
+            callback=on_delivery,
+        )
+        counts["clicks" if outcome_event.event_type is EventType.CLICK else "skips"] += 1
+
+        producer.poll(0)
+
+    producer.flush(30)
+
+    return {
+        "topic": topic,
+        "speed": speed,
+        "rows_replayed": len(events),
+        "events_sent": sum(counts.values()),
+        "impressions_sent": counts["impressions"],
+        "clicks_sent": counts["clicks"],
+        "skips_sent": counts["skips"],
+        "delivery_errors": delivery_errors,
+    }
+
+
+def main(limit: int = 2000, speed: float = 7200.0) -> None:
+    events = load_replay_events(limit=limit)
+    started = time.monotonic()
+    report = replay(events, speed=speed)
+    report["wall_clock_seconds"] = time.monotonic() - started
+    REPLAY_REPORT_PATH.write_text(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()
