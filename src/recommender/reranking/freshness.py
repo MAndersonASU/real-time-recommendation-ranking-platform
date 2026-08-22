@@ -11,14 +11,20 @@ DEFAULT_FRESH_THRESHOLD_DAYS = 0.5
 DEFAULT_MIN_FRESH_IN_SLATE = 2
 
 
-def compute_first_seen(train: pd.DataFrame) -> pd.Series:
+def compute_first_seen(train: pd.DataFrame, exploded: pd.DataFrame | None = None) -> pd.Series:
     """Earliest impression time at which each item appears as a candidate
     in `train` -- the only per-item timestamp signal this dataset has at
     all. `news.tsv` carries no publish date (already found in
     docs/ranking-features.md), and a `history` entry carries no timestamp
     of its own; only the surrounding impression's own time does.
+
+    `exploded` lets a caller that already has `explode_impressions(train)`
+    (e.g. `recommender.serving.pipeline.build_serving_context`, which also
+    needs it for `compute_popularity`) pass it straight through instead of
+    this function re-deriving its own copy of the same multi-million-row
+    frame (docs/profile-hotspots.md).
     """
-    exploded = explode_impressions(train)
+    exploded = exploded if exploded is not None else explode_impressions(train)
     return exploded.groupby("news_id")["time"].min()
 
 

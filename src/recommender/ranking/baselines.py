@@ -7,9 +7,17 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from recommender.data.mind import explode_impressions
 
 
-def compute_popularity(behaviors: pd.DataFrame) -> pd.Series:
-    """Click count per item, computed only from the given (training) split."""
-    exploded = explode_impressions(behaviors)
+def compute_popularity(behaviors: pd.DataFrame, exploded: pd.DataFrame | None = None) -> pd.Series:
+    """Click count per item, computed only from the given (training) split.
+
+    `exploded` lets a caller that already has `explode_impressions(behaviors)`
+    (e.g. `recommender.serving.pipeline.build_serving_context`, which also
+    needs it for `compute_first_seen`) pass it straight through instead of
+    this function re-deriving its own copy -- found to cost ~210MB of real,
+    wasted memory re-exploding the same multi-million-row impression log a
+    second time (docs/profile-hotspots.md).
+    """
+    exploded = exploded if exploded is not None else explode_impressions(behaviors)
     return exploded.groupby("news_id")["clicked"].sum()
 
 

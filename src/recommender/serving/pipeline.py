@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import load_catalog, load_split
 from recommender.features.cold_start import get_online_features
 from recommender.features.state_store import build_client
@@ -73,7 +74,20 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     and computes durable per-user features from the `validation` split --
     the most recent offline split, so its `history` field carries the
     longest available click history for each training-window user.
+
+    Also caps PyTorch's own intraop thread count to 1 for the whole
+    process. Profiling found a single request's CPU time at ~5x its own
+    wall time -- torch spreading one request's math across several
+    threads by default -- and a real concurrency test confirmed the
+    fix: at concurrency 4, throughput rose from 62.7 to 80.3 req/s and
+    p50 latency dropped from 61ms to 48ms (docs/optimization.md). This
+    process expects to serve many concurrent requests, not minimize one
+    request's own wall time in isolation, so a single math thread per
+    operation -- leaving concurrency to the request-level thread pool
+    instead -- is the right tradeoff here.
     """
+    torch.set_num_threads(1)
+
     news = load_catalog()
     train = load_split("train")
     item_vocab, categories, subcategories = build_item_vocab(news)
@@ -87,6 +101,12 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
     ranking_model = joblib.load(RANKING_MODEL_PATH)
 
+    # Exploded once and shared, rather than each function re-deriving its
+    # own copy of the same multi-million-row frame -- found to cost
+    # ~210MB of real, wasted memory the first time this was profiled
+    # (docs/profile-hotspots.md).
+    exploded_train = explode_impressions(train)
+
     return ServingContext(
         item_vocab=item_vocab,
         news_ids=news["news_id"].to_numpy(),
@@ -97,8 +117,8 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
         two_tower_model=two_tower_model,
         ranking_model=ranking_model,
         durable_cache=build_durable_feature_cache(load_split("validation"), news),
-        first_seen=compute_first_seen(train),
-        popularity=compute_popularity(train),
+        first_seen=compute_first_seen(train, exploded=exploded_train),
+        popularity=compute_popularity(train, exploded=exploded_train),
         redis_client=build_client(redis_url),
     )
 
