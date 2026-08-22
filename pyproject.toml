@@ -7,10 +7,10 @@ name = "recommender"
 version = "0.1.0"
 description = "Real-time personalized recommendation and ranking research platform"
 requires-python = ">=3.11,<3.12"
-dependencies = ["pandas>=2.2", "pyarrow>=17", "duckdb>=1.0", "numpy>=1.26", "scikit-learn>=1.5", "scipy>=1.13", "torch>=2.3", "faiss-cpu>=1.8", "confluent-kafka>=2.5", "redis>=5.0", "pydantic>=2.7", "psutil>=6.0"]
+dependencies = ["pandas>=2.2", "pyarrow>=17", "duckdb>=1.0", "numpy>=1.26", "scikit-learn>=1.5", "scipy>=1.13", "torch>=2.3", "faiss-cpu>=1.8", "confluent-kafka>=2.5", "redis>=5.0", "pydantic>=2.7", "psutil>=6.0", "fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "httpx2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

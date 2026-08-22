@@ -31,3 +31,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build: .
+    container_name: recommender-api
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      # Trained model, index, ranking pipeline, and reserved splits --
+      # gitignored local research output, never baked into the image.
+      - ./data:/app/data:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
