@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
@@ -51,11 +51,46 @@ def _context() -> ServingContext:
 
 @app.get("/health")
 def health() -> dict:
-    """Process liveness only -- is this process running at all. Whether
-    its model/index/feature dependencies are actually ready to serve is
-    a separate, later concern (docs/health-checks.md).
+    """Process liveness only -- is this process running at all, with no
+    check of whether it can actually serve a request. A process stuck
+    mid-startup, or one whose model failed to load, is still alive; a
+    liveness probe should restart it only if the process itself has
+    hung or crashed, not because a dependency is degraded (that's what
+    /ready is for).
     """
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict:
+    """Readiness, separated from liveness (docs/health-checks.md).
+    "Ready" means the model, index, and ranking pipeline actually loaded
+    -- the one dependency with no per-request fallback, so a caller
+    hitting this service before it finishes loading needs a real 503,
+    not a response built from a context that doesn't exist yet.
+
+    Redis is checked too, but reported as a separate, non-fatal
+    dependency status rather than failing readiness outright: an
+    unreachable Redis degrades personalization (`safe_recommend` falls
+    back to popularity ranking) without making the service unable to
+    serve a valid response at all, so pulling it out of a load
+    balancer's rotation over a degraded-but-working Redis would be the
+    wrong call.
+    """
+    context = _state.get("context")
+    if context is None:
+        raise HTTPException(status_code=503, detail="serving context not loaded yet")
+
+    try:
+        context.redis_client.ping()
+        redis_status = "ok"
+    except Exception:  # noqa: BLE001 -- any real connection failure means "degraded", not a crash
+        redis_status = "degraded (falls back to popularity ranking)"
+
+    return {
+        "ready": True,
+        "dependencies": {"model_index_ranking": "ok", "redis": redis_status},
+    }
 
 
 @app.post("/recommend", response_model=RecommendationResponse)

@@ -50,6 +50,9 @@ class _FakeRedis:
     def get(self, key):
         return self._data.get(key)
 
+    def ping(self):
+        return True
+
 
 def _build_context(redis_client=None) -> ServingContext:
     item_vocab, categories, subcategories = build_item_vocab(NEWS)
