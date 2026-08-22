@@ -2,7 +2,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from recommender.monitoring.metrics import (
@@ -13,12 +13,18 @@ from recommender.monitoring.metrics import (
     update_quality_gauges,
 )
 from recommender.monitoring.quality_signals import QualitySignalTracker, compute_model_version
+from recommender.monitoring.structured_logging import (
+    configure_structured_logging,
+    hash_user_id,
+    new_request_id,
+)
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext, build_serving_context
 
+configure_structured_logging()
 logger = logging.getLogger("recommender.serving.app")
 
 _state: dict = {}
@@ -57,6 +63,36 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Recommendation Service", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_id_and_access_log(request: Request, call_next):
+    """Every request gets a real, unique id -- generated here, attached
+    to the request for handlers to log against, echoed back in a real
+    `X-Request-ID` response header, and included in one structured
+    "request_completed" log line per request. This is the actual trace
+    a real failure gets diagnosed from: given one id from a client
+    report or an alert, every log line for that specific request can be
+    found, without scanning by timestamp and guessing.
+    """
+    request.state.request_id = new_request_id()
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    response.headers["X-Request-ID"] = request.state.request_id
+    logger.info(
+        "request_completed",
+        extra={
+            "event": "request_completed",
+            "request_id": request.state.request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    return response
 
 
 def _context() -> ServingContext:
@@ -119,7 +155,7 @@ def metrics() -> Response:
 
 
 @app.post("/recommend", response_model=RecommendationResponse)
-def recommend_endpoint(request: RecommendationRequest) -> RecommendationResponse:
+def recommend_endpoint(payload: RecommendationRequest, http_request: Request) -> RecommendationResponse:
     fell_back = {"value": False}
 
     def _mark_fallback() -> None:
@@ -129,7 +165,7 @@ def recommend_endpoint(request: RecommendationRequest) -> RecommendationResponse
     start = time.perf_counter()
     try:
         response = safe_recommend(
-            request, _context(), on_fallback=_mark_fallback, stage_timings=stage_timings
+            payload, _context(), on_fallback=_mark_fallback, stage_timings=stage_timings
         )
     except Exception:
         record_error()
@@ -141,5 +177,23 @@ def recommend_endpoint(request: RecommendationRequest) -> RecommendationResponse
     tracker: QualitySignalTracker = _state["quality_tracker"]
     tracker.record(response)
     update_quality_gauges(tracker.snapshot())
+
+    # The user id is hashed, not logged raw (docs/structured-logging.md):
+    # enough for an operator to correlate every log line for one user
+    # while debugging, without the real identifier ever sitting in a
+    # log file.
+    logger.info(
+        "recommend_served",
+        extra={
+            "event": "recommend_served",
+            "request_id": getattr(http_request.state, "request_id", None),
+            "user_id_hash": hash_user_id(payload.user_id),
+            "num_candidates_requested": payload.num_candidates,
+            "num_candidates_returned": len(response.recommendations),
+            "is_fallback": fell_back["value"],
+            "durable_features_used": response.durable_features_used,
+            "recent_features_used": response.recent_features_used,
+        },
+    )
 
     return response
