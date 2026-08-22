@@ -25,7 +25,8 @@ from the one place a response is actually produced. Implementation:
   **`recommend_recent_cache_total{result}`** — hit/miss rate for each
   feature store, read directly off the response's own honesty flags.
 - **`recommend_feature_lookup_latency_seconds`** — the same
-  `feature_lookup_ms` stage timing Step 8.5 already produces internally,
+  `feature_lookup_ms` stage timing already produced internally by the
+  per-stage latency breakdown (`docs/serving-latency.md`),
   now exported as a real, queryable metric via `stage_timings`, which
   `safe_recommend()` forwards straight through to `recommend()`.
 
@@ -34,7 +35,8 @@ from the one place a response is actually produced. Implementation:
 `recommend_kafka_consumer_lag` exists as a Gauge — the metric *contract*
 a running stream consumer would report into — but it has no real value
 here, because the live API never consumes from Kafka at request time
-(Step 11.5 confirmed and removed that exact coupling). Reporting a
+(`docs/restart-and-failure-testing.md` confirmed and removed that exact
+coupling). Reporting a
 number here would mean inventing a value with nothing behind it. The
 gauge is the honest version: the shape a real consumer process would
 fill in, left at its default until one actually runs continuously as

@@ -1,8 +1,8 @@
 # ML Quality Signals
 
 Real signals about the *model's* behavior, computed over a rolling
-window of actual recent responses — distinct from Step 12.1's
-per-request operational metrics, since a score distribution, a
+window of actual recent responses — distinct from the per-request
+operational metrics (`docs/operational-metrics.md`), since a score distribution, a
 diversity figure, or a concentration measure only means something in
 aggregate. Implementation: `src/recommender/monitoring/
 quality_signals.py`.
@@ -32,10 +32,9 @@ quality_signals.py`.
   file path rather than producing a new one — a real content fingerprint
   is the honest substitute for a version number that doesn't exist.
 
-## Feature missingness lives in Step 12.1, not duplicated here
+## Feature missingness lives in `docs/operational-metrics.md`, not duplicated here
 
-The guide's own list for this step includes feature missingness — this
-project already measures that exactly, as
+Feature missingness is already measured exactly by this project, as
 `recommend_durable_cache_total{result}` /
 `recommend_recent_cache_total{result}` from the previous step. Building
 a second, parallel "missingness" signal here would just be the same

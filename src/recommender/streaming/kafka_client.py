@@ -18,8 +18,9 @@ def build_consumer(
             "bootstrap.servers": bootstrap_servers,
             "group.id": group_id,
             "auto.offset.reset": auto_offset_reset,
-            # Manual commits, deliberately: recovery testing (Step 6.5)
-            # needs direct control over exactly when an offset is
+            # Manual commits, deliberately: recovery testing
+            # (docs/recovery-testing.md) needs direct control over
+            # exactly when an offset is
             # considered processed, which auto-commit would hide.
             "enable.auto.commit": False,
         }

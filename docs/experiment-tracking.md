@@ -8,8 +8,8 @@ backfilled by `src/recommender/tracking/backfill.py`.
 
 ## MLflow was evaluated, and rejected, with real evidence
 
-The guide's own framing for this step is to introduce MLflow only if it
-actually reduces manual tracking. A dry-run install
+This project's own complexity-boundary policy is to introduce a tracking
+tool only if it actually reduces manual tracking. A dry-run install
 (`pip install mlflow --dry-run`) against this project's real
 environment showed the real cost: it would downgrade the pinned
 `pandas` from 3.0.5 to 2.3.3, and pull in roughly 60 additional
@@ -43,9 +43,11 @@ and logs each as a structured run. Two pairs of runs share a
 near-identical name in the source data but measure genuinely different
 things, and are kept explicitly distinct here rather than collapsed:
 
-- `retrieval_full_catalog_n100` (Step 3.5) — the two-tower model alone,
-  searching the whole ~51,000-item catalog. Weak: 0.44% hit rate.
-- `retrieval_score_as_sort_key_k10` (Step 4.5) — the same model's raw
+- `retrieval_full_catalog_n100` (`docs/retrieval-evaluation.md`) — the
+  two-tower model alone, searching the whole ~51,000-item catalog.
+  Weak: 0.44% hit rate.
+- `retrieval_score_as_sort_key_k10` (`docs/ranking-evaluation.md`) —
+  the same model's raw
   score, used only to sort MIND's own small, already-narrowed candidate
   pool. A much easier task, and a much higher number (66.0% hit rate)
   — the exact asymmetry documented in `docs/inference-path.md`.

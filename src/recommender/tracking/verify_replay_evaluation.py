@@ -16,7 +16,7 @@ def main() -> None:
         params={"k": report["k"], "impressions_sampled": report["impressions_sampled"], "split": "replay"},
         metrics={"hit_rate_at_k": report["hit_rate_at_k"]},
         notes=(
-            "Phase 9 Step 9.2 -- real full pipeline (retrieval+ranking+reranking) against real "
+            "Phase 9 replay evaluation -- real full pipeline (retrieval+ranking+reranking) against real "
             "replay-split impressions; a replay simulation, not a live A/B test"
         ),
     )

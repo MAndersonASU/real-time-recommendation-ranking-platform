@@ -15,9 +15,10 @@ def verify_inference_path(num_users: int = 20) -> dict:
     real catalog, and durable features from the real validation split --
     then runs `recommend()` for real users pulled from that split,
     including at least one user known to have real history. Confirms
-    every response actually validates against the typed contract (Step
-    8.1) and measures real, if rough, end-to-end latency; Step 8.5 does
-    the rigorous per-stage version of that measurement.
+    every response actually validates against the typed contract
+    (`docs/serving-contract.md`) and measures real, if rough, end-to-end
+    latency; `docs/serving-latency.md` does the rigorous per-stage
+    version of that measurement.
     """
     context = build_serving_context()
     validation_users = load_split("validation")["user_id"].drop_duplicates().head(num_users).tolist()

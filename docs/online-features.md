@@ -31,4 +31,5 @@ hours, which defeats the point of the streaming work in Phase 6. This is
 also what decides where each kind of feature is allowed to live: durable
 features stay in the existing offline pandas pipeline; recent features
 need a store that can be written and read in milliseconds as events
-arrive, which is what Step 7.2 adds next.
+arrive, which is what the low-latency state store (`docs/state-store.md`)
+adds next.

@@ -33,8 +33,8 @@ treats it as "no match" rather than crashing.
 
 ## Unseen items were already handled
 
-The guide's cold-start concerns also include unseen items, which this
-project already covers without any new code: `popularity.get(nid, 0)`
+Unseen items are also a cold-start concern, and this project already
+covers them without any new code: `popularity.get(nid, 0)`
 in `ranking/features.py` gives an item with no interaction history a
 popularity of zero rather than raising, and the content-similarity path
 skips any item missing from the TF-IDF vocabulary the same way. This

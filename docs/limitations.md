@@ -8,7 +8,7 @@ finding links back to the step that actually measured it.
 ## Sparse-user behavior
 
 A given window's users mostly interact once or twice, not repeatedly.
-Step 1.3's real measurement of the training window: median 1–2
+A direct measurement of the training window found a median of 1–2
 interactions per user, with a small number of much more active users
 (max 18–62) pulling the mean up. Most of what any model in this project
 learns about "typical" user behavior is shaped by that thin, one- or
@@ -21,7 +21,7 @@ bolted on afterward.
 ## Cold start, measured directly, not assumed
 
 Phase 7.5 built explicit fallback behavior for users with no known
-features. Step 9.2's replay-based evaluation (`docs/replay-
+features. Replay-based evaluation (`docs/replay-
 evaluation.md`) measured how common that actually is in practice, using
 this project's own real feature stores: of 499 sampled `replay`-split
 users, **92.4% never appeared in the `validation` split** the durable
@@ -49,8 +49,9 @@ request:
   request can be scored against a durable snapshot that is, by design,
   up to a day old.
 
-Step 9.2 is the first place these two gaps were actually measured
-together on real data, rather than reasoned about individually.
+Replay-based evaluation (`docs/replay-evaluation.md`) is the first place
+these two gaps were actually measured together on real data, rather than
+reasoned about individually.
 
 ## Selection bias in the underlying data
 
@@ -79,5 +80,6 @@ prove. Confirming that this project's system would perform differently
 against genuinely different candidate sets — the actual question a real
 production deployment cares about — requires a live experiment (a real
 A/B test) that this project's frozen research scope (`docs/research-
-scenario.md`) explicitly does not attempt, and Step 9.2 was equally
+scenario.md`) explicitly does not attempt, and the replay-based
+evaluation (`docs/replay-evaluation.md`) was equally
 explicit about not pretending to be one.

@@ -16,8 +16,8 @@ ZIP_NAMES = {"train": "MINDlarge_train.zip", "dev": "MINDlarge_dev.zip"}
 
 def _extract_verified(split: str) -> None:
     """Unzips one MIND-large archive after checking its own internal
-    integrity (`testzip()`), the same verification Step 1.2 already
-    applied to MIND-small -- returns the name of the first bad file, or
+    integrity (`testzip()`), the same verification already applied to
+    MIND-small's ingestion -- returns the name of the first bad file, or
     None if every file's checksum matches, so a truncated download
     fails loudly here rather than surfacing as a confusing parse error
     later.

@@ -27,8 +27,9 @@ def evaluate_via_replay(
     (the durable cache built from `validation`, and Redis's current
     contents), not the exact point-in-time state a truly live system
     would have had at each impression's real historical moment. That gap
-    is real and disclosed here, not hidden -- Step 9.4 records it as a
-    named limitation, not a surprise sprung there for the first time.
+    is real and disclosed here, not hidden -- docs/limitations.md records
+    it as a named limitation, not a surprise sprung there for the first
+    time.
 
     Sampled to `num_impressions`, not the full ~73k-impression split,
     since each one is a real, full pipeline call -- the same accepted

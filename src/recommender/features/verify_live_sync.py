@@ -22,8 +22,10 @@ def verify_live_sync(
     """Publishes real events to a real Kafka topic, consumes them with a
     SyncingStreamConsumer, and confirms the resulting record actually
     landed in the real running Redis -- the full path a live event takes
-    from Step 6's stream through Step 7.1's feature contract into Step
-    7.2's store, exercised end to end against real infrastructure.
+    from the streaming consumer (`docs/streaming-consumer.md`) through
+    the online feature contract (`docs/online-features.md`) into the
+    state store (`docs/state-store.md`), exercised end to end against
+    real infrastructure.
     """
     topic = f"live-sync-check-{time.time()}".replace(".", "-")
     ensure_topic(topic, bootstrap_servers=bootstrap_servers)

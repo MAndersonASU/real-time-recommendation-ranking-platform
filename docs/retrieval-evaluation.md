@@ -33,10 +33,11 @@ real signal above guessing, not evidence of a working retriever.
 ## Why, traced through evidence already on record
 
 This result is not a mystery — it follows directly from a limitation
-already found and documented in `docs/faiss-index.md`: the item tower
-(Step 3.2's design) encodes every catalog item purely from category and
-subcategory, collapsing 51,282 items into only 284 distinct embedding
-vectors. In practice, that means the model's retrieval decision is
+already found and documented in `docs/faiss-index.md`: the item tower's
+own design (`docs/retrieval-model.md`) encodes every catalog item purely
+from category and subcategory, collapsing 51,282 items into only 284
+distinct embedding vectors. In practice, that means the model's
+retrieval decision is
 functionally a *category-level* guess, not an item-level one — at best it
 can identify which of 283 category/subcategory clusters a user's next
 click probably falls into, but has zero signal to distinguish between the
@@ -52,9 +53,11 @@ across all recommendations, even though any single recommendation is
 usually wrong).
 
 This chains three separate, independently-verified findings into one
-coherent explanation rather than three unrelated observations: Step 2.4
-found SVD's item factors only existed for 29.2% of validation candidates
-(a data-sparsity limitation); Step 3.4 found the item tower's features
+coherent explanation rather than three unrelated observations: the
+baseline evaluation (`docs/baselines.md`) found SVD's item factors only
+existed for 29.2% of validation candidates
+(a data-sparsity limitation); the index investigation
+(`docs/faiss-index.md`) found the item tower's features
 collapse the catalog into 284 distinct vectors (an architecture
 limitation); this step shows that architecture limitation is severe
 enough to suppress real item-level retrieval almost entirely. The fix is

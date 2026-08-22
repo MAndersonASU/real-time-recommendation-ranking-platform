@@ -1,7 +1,8 @@
 # Latency By Stage
 
 Measures where a real request's time actually goes, stage by stage, not
-just the one end-to-end number Step 8.2 already produced. Implementation:
+just the one end-to-end number the inference path already produced
+(`docs/inference-path.md`). Implementation:
 `recommend()`'s optional `stage_timings` parameter in
 `src/recommender/serving/pipeline.py`; measurement script
 `src/recommender/serving/verify_latency.py`.
@@ -45,4 +46,4 @@ operations, simply don't have. Retrieving more candidates than needed
 cost — more candidates handed to reranking means more pairwise
 comparisons, a concrete, measured tradeoff between retrieval headroom
 and reranking latency that wasn't visible from the single end-to-end
-number Step 8.2 reported alone.
+number `docs/inference-path.md` reported alone.

@@ -20,9 +20,9 @@ def backfill() -> list[str]:
     collapsed, exactly the kind of mix-up a structured log is meant to
     prevent:
 
-    - retrieval_full_catalog_n100 (Step 3.5): the two-tower model alone,
-      searching the whole ~51k-item catalog.
-    - retrieval_score_as_sort_key_k10 (Step 4.5): the same model's raw
+    - retrieval_full_catalog_n100 (docs/retrieval-evaluation.md): the
+      two-tower model alone, searching the whole ~51k-item catalog.
+    - retrieval_score_as_sort_key_k10 (docs/ranking-evaluation.md): the same model's raw
       score, used only to sort MIND's own small frozen candidate pool --
       a much easier task, and a much higher number, for a real, disclosed
       reason (docs/inference-path.md).
@@ -45,7 +45,7 @@ def backfill() -> list[str]:
         "retrieval_full_catalog_n100",
         params={"n": retrieval["n"], "split": "validation"},
         metrics=_numeric(retrieval),
-        notes="Phase 3 Step 3.5 -- two-tower retrieval alone, full catalog, N=100",
+        notes="Phase 3 retrieval evaluation -- two-tower retrieval alone, full catalog, N=100",
     )
     logged.append("retrieval_full_catalog_n100")
 
@@ -54,13 +54,13 @@ def backfill() -> list[str]:
         "retrieval_score_as_sort_key_k10",
         params={"k": ranking["retrieval_score_only"]["k"], "split": "validation"},
         metrics=_numeric(ranking["retrieval_score_only"]),
-        notes="Phase 4 Step 4.5 -- retrieval_score as sort key over the frozen candidate pool, not the full catalog",
+        notes="Phase 4 ranking evaluation -- retrieval_score as sort key over the frozen candidate pool, not the full catalog",
     )
     log_run(
         "ranking_model_k10",
         params={"k": ranking["ranked"]["k"], "split": "validation"},
         metrics=_numeric(ranking["ranked"]),
-        notes="Phase 4 Step 4.5 -- trained logistic regression ranking model",
+        notes="Phase 4 ranking evaluation -- trained logistic regression ranking model",
     )
     logged.extend(["retrieval_score_as_sort_key_k10", "ranking_model_k10"])
 
@@ -69,13 +69,13 @@ def backfill() -> list[str]:
         "reranking_ranked_only_k10",
         params={"k": reranking["k"], "split": "validation"},
         metrics=_numeric(reranking["ranked_only"]),
-        notes="Phase 5 Step 5.4 -- ranking model's own output, before reranking",
+        notes="Phase 5 reranking evaluation -- ranking model's own output, before reranking",
     )
     log_run(
         "reranking_diverse_fresh_k10",
         params={"k": reranking["k"], "split": "validation"},
         metrics=_numeric(reranking["reranked"]),
-        notes="Phase 5 Step 5.4 -- diversity + freshness reranking applied",
+        notes="Phase 5 reranking evaluation -- diversity + freshness reranking applied",
     )
     logged.extend(["reranking_ranked_only_k10", "reranking_diverse_fresh_k10"])
 

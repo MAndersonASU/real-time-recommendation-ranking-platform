@@ -1,7 +1,8 @@
 # Profiling Hotspots
 
 Measures where the serving path actually spends memory, disk, and CPU
-— not just wall-clock time per stage, which Step 8.5 already covered.
+— not just wall-clock time per stage, which the per-stage latency
+breakdown (`docs/serving-latency.md`) already covered.
 Implementation: `src/recommender/monitoring/profile_hotspots.py`.
 
 ## Three real measurements
@@ -13,7 +14,7 @@ Implementation: `src/recommender/monitoring/profile_hotspots.py`.
   `build_serving_context()`, not estimated from artifact sizes.
 - **CPU vs. wall time** — `time.process_time()` alongside
   `time.perf_counter()` over real requests. The two diverging reveals
-  something Step 8.5's wall-clock-only numbers couldn't: whether a
+  something `docs/serving-latency.md`'s wall-clock-only numbers couldn't: whether a
   stage is actually computing, or using more than one CPU core at once
   underneath a single request.
 
@@ -35,10 +36,11 @@ same ~4.6-million-row impression log a second and third time. The first
 explosion (measured separately) cost ~237 MB; the second, inside
 `compute_popularity`, cost another ~210 MB on top for data that already
 existed once. This is real, measured, wasted duplication, not a guess —
-and it's exactly the kind of evidence Step 10.4 is scoped to act on
-that this step is scoped only to surface, not fix.
+and it's exactly the kind of evidence the optimization work
+(`docs/optimization.md`) is scoped to act on, not this document, which is
+scoped only to surface it.
 
-## A second real finding, relevant to Step 10.3
+## A second real finding, relevant to load testing (`docs/load-test.md`)
 
 Over 30 real requests, total CPU time (2.45s) came out to **4.8×**
 total wall time (0.51s) — impossible for genuinely sequential,

@@ -42,7 +42,7 @@ def save_recent_features(
 def load_recent_features(client: redis.Redis, user_id: str) -> RecentUserFeatures | None:
     """Returns None for a user with no record -- either they've never sent
     an event, or their key has expired. Callers handle that None as a
-    cold-start case (Step 7.5), not an error.
+    cold-start case (`docs/cold-start.md`), not an error.
     """
     raw = client.get(_key(user_id))
     if raw is None:

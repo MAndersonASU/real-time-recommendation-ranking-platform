@@ -33,14 +33,15 @@ RECENT_CACHE_COUNT = Counter(
 )
 
 # Feature-lookup latency specifically, not just total request time --
-# reuses the same stage name Step 8.5's per-request instrumentation
-# already produces.
+# reuses the same stage name the per-stage latency breakdown's
+# per-request instrumentation already produces (docs/serving-latency.md).
 FEATURE_LOOKUP_LATENCY_SECONDS = Histogram(
     "recommend_feature_lookup_latency_seconds", "Online feature lookup stage latency"
 )
 
 # Kafka lag has a real, honest scope note: the live API never consumes
-# from Kafka (Step 11.5 confirmed and removed that coupling entirely) --
+# from Kafka (docs/restart-and-failure-testing.md confirmed and removed
+# that coupling entirely) --
 # only the offline streaming consumer processes from Phase 6 do. This
 # gauge exists as the metric *contract* a running consumer process would
 # report into (docs/operational-metrics.md); it has no value here

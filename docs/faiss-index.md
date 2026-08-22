@@ -50,12 +50,13 @@ isn't a uniquely defined answer to begin with — exact and approximate
 search can legitimately return different subsets of a large tied group
 without either being wrong. This isn't an index bug; it's a direct,
 structural consequence of a real limitation in the item tower's current
-feature set. The model, as built in Step 3.2's scope, cannot yet
+feature set. The model, as built in the item tower's current design
+(`docs/retrieval-model.md`), cannot yet
 distinguish between two different articles in the same category — a
 concrete, quantified argument for enriching the item tower with
 per-article features (e.g., title-derived text signal) in future work,
 left as a documented limitation rather than reopened here, since
-revisiting Step 3.2's architecture is a materially larger change than
+revisiting that architecture is a materially larger change than
 this step's scope.
 
 ## Regression coverage

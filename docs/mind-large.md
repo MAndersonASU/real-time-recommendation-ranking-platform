@@ -9,7 +9,8 @@ any metric. Implementation: `src/recommender/data/verify_mind_large.py`.
 `MINDlarge_train.zip` (531,360,717 bytes) and `MINDlarge_dev.zip`
 (103,592,887 bytes) come from the same Hugging Face mirror as
 MIND-small (`docs/dataset-source.md`), verified with the same
-`zipfile.testzip()` integrity check used since Step 1.2. The real proof
+`zipfile.testzip()` integrity check used for every earlier ingestion run.
+The real proof
 this step asks for isn't a new script — it's that `ingest_split`, the
 exact function this project has used unmodified since Phase 1, runs
 against these larger files and produces valid output with zero code
@@ -46,5 +47,5 @@ corpus is out of scope here. This step's job, stated plainly by its own
 name, is validating that the pipeline *can process* the larger dataset
 — not re-running every phase's evaluation at the new scale, which would
 risk quietly redefining what each metric measures along the way. Real
-hotspot profiling on top of this larger data is Step 10.2's job
-specifically, not folded in here.
+hotspot profiling on top of this larger data belongs to
+`docs/profile-hotspots.md` specifically, not folded in here.

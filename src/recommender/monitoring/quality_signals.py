@@ -10,10 +10,10 @@ TOP_N_FOR_CONCENTRATION = 10
 
 class QualitySignalTracker:
     """Real ML quality signals, computed over a bounded rolling window of
-    actual recent responses -- distinct from Step 12.1's per-request
-    operational counters, since a score distribution, a diversity
-    figure, or a concentration measure only means something in
-    aggregate, never from a single response alone.
+    actual recent responses -- distinct from the per-request operational
+    counters in `docs/operational-metrics.md`, since a score
+    distribution, a diversity figure, or a concentration measure only
+    means something in aggregate, never from a single response alone.
     """
 
     def __init__(self, catalog_size: int, window_size: int = DEFAULT_WINDOW_SIZE) -> None:

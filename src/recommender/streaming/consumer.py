@@ -91,7 +91,8 @@ class StreamConsumer:
         the user id and their state exactly as it stands right after that
         update. No-op here -- a plain StreamConsumer's only job is
         in-process state. A subclass that also needs to push each update
-        through to an external low-latency store (Step 7.2's Redis) can
+        through to an external low-latency store (the Redis-backed state
+        store, `docs/state-store.md`) can
         override this without touching the parsing, dedup, or counting
         logic above it at all.
         """

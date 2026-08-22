@@ -26,7 +26,8 @@ expiry — a user who stops sending events should eventually fall out of
 the store rather than being served forever from a stale snapshot.
 `load_recent_features` returns `None` for a user with no key, whether
 because they've never sent an event or their key expired; callers treat
-that `None` as the cold-start case handled in Step 7.5, not an error.
+that `None` as the cold-start case handled by `docs/cold-start.md`, not
+an error.
 
 ## Verified against a real container
 
