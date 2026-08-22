@@ -31,14 +31,20 @@ def load_ranking_frame(path: Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
-def train_ranking_model(train: pd.DataFrame) -> Pipeline:
+def train_ranking_model(train: pd.DataFrame, feature_columns: list[str] = MODEL_FEATURE_COLUMNS) -> Pipeline:
     """Plain (unweighted) logistic regression over the scaled model
     features. Deliberately not class_weight="balanced" -- that would
     improve class separation but distort predicted probabilities away
     from the real ~4% base rate, which the calibration check relies on
     being honest.
+
+    `feature_columns` defaults to the real production feature set but can
+    be overridden to a subset -- used by the retrieval-feature ablation
+    (recommender.evaluation.ablations) so an ablation run trains through
+    this exact same fit/scale path rather than a second, divergent copy
+    of it.
     """
-    x = train[MODEL_FEATURE_COLUMNS].to_numpy()
+    x = train[feature_columns].to_numpy()
     y = train["clicked"].to_numpy()
     pipeline = Pipeline(
         [
