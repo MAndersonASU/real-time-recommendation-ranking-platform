@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from recommender.monitoring.dashboard import render_dashboard_html
 from recommender.monitoring.metrics import (
     MODEL_VERSION,
     record_error,
@@ -152,6 +153,16 @@ def metrics() -> Response:
     produced below, never a second, separately-tracked copy.
     """
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/dashboard", response_class=Response)
+def dashboard() -> Response:
+    """A compact, human-readable view of the few numbers that actually
+    reveal whether this system is healthy and whether recommendation
+    behavior is drifting (docs/dashboard.md) -- read live from the same
+    in-process metric objects `/metrics` exposes, not a second store.
+    """
+    return Response(content=render_dashboard_html(), media_type="text/html")
 
 
 @app.post("/recommend", response_model=RecommendationResponse)
