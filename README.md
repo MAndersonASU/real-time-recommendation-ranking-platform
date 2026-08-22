@@ -76,15 +76,24 @@ documented, but run locally rather than in a public CI runner.
 
 ## Getting started
 
+Requires **Python 3.11** specifically (PyTorch, Faiss, and Transformers
+here lag behind the newest CPython release) — check with `python
+--version` first, or use a version manager / launcher (`py -3.11` on
+Windows) if your default `python` resolves to something newer.
+
 ```bash
 git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platform.git
 cd real-time-recommendation-ranking-platform
-python -m venv .venv && source .venv/Scripts/activate  # Windows; use .venv/bin/activate elsewhere
+py -3.11 -m venv .venv && source .venv/Scripts/activate  # Windows; use .venv/bin/activate elsewhere
 pip install -e ".[dev]"
-pytest -q            # 210 tests, no licensed data required
+pytest -q            # 215 tests, no licensed data required
 ruff check .
 docker compose up    # starts Kafka, Redis, and the API (needs the real dataset mounted at ./data)
 ```
+
+Verified end to end from a genuinely fresh clone, including a real
+reproducibility bug this exact check found and fixed:
+`docs/reproducibility.md`.
 
 ## Documentation index
 
@@ -107,6 +116,8 @@ docker compose up    # starts Kafka, Redis, and the API (needs the real dataset 
   `docs/explanation-evaluation.md`
 - **Architecture** — `docs/architecture.md` (system design, module
   ownership, and every real design decision with its reasoning)
+- **Demonstration & reproducibility** — `docs/professional-demonstration.md`,
+  `docs/reproducibility.md`
 
 ## License
 
