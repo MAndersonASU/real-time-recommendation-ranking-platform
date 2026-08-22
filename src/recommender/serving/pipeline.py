@@ -29,6 +29,7 @@ from recommender.retrieval.train import EMBEDDING_DIM
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.cache import DurableFeatureCache, build_durable_feature_cache
 from recommender.serving.contract import (
+    MatchedSignals,
     RecommendationRequest,
     RecommendationResponse,
     RecommendedItem,
@@ -144,6 +145,7 @@ def recommend(
     context: ServingContext,
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
+    include_matched_signals: bool = False,
 ) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
     -> reranking -> a Top-K response, exactly the phase's named path.
@@ -169,6 +171,12 @@ def recommend(
     Redis entirely (recommender.features.cold_start.get_online_features)
     -- the recent-streaming-features ablation (docs/ablations.md), not a
     normal request path.
+
+    `include_matched_signals`, when True, captures each recommended
+    item's real ranking-model input features into the response
+    (`MatchedSignals`, recommender.serving.contract) at the exact point
+    they already exist in `slate` -- opt-in, since only the explanation
+    layer (recommender.explanation) needs this, not an ordinary request.
     """
     def _stage_start() -> float:
         return time.perf_counter() if stage_timings is not None else 0.0
@@ -262,10 +270,23 @@ def recommend(
         for i, row in enumerate(slate.itertuples())
     ]
 
+    matched_signals = None
+    if include_matched_signals:
+        matched_signals = {
+            row.news_id: MatchedSignals(
+                category_match=bool(row.category_match),
+                content_similarity=float(row.content_similarity),
+                retrieval_score=float(row.retrieval_score),
+                user_history_length=int(lookup.durable.lifetime_click_count),
+            )
+            for row in slate.itertuples()
+        }
+
     return RecommendationResponse(
         user_id=request.user_id,
         recommendations=recommendations,
         durable_features_used=not lookup.durable_is_fallback,
         recent_features_used=not lookup.recent_is_fallback,
         generated_at=datetime.now(),  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        matched_signals=matched_signals,
     )

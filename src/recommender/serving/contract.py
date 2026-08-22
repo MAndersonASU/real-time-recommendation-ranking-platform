@@ -35,6 +35,20 @@ class RecommendedItem(BaseModel):
     category: str | None = None
 
 
+class MatchedSignals(BaseModel):
+    """The real ranking-model input features that produced one item's
+    score, captured directly from the same feature row `recommend()`
+    already builds -- never recomputed or re-derived. The only
+    legitimate source of "why" the explanation layer
+    (recommender.explanation) can draw from.
+    """
+
+    category_match: bool
+    content_similarity: float
+    retrieval_score: float
+    user_history_length: int = Field(ge=0)
+
+
 class RecommendationResponse(BaseModel):
     """The full response for one request. `durable_features_used` and
     `recent_features_used` surface Phase 7's cold-start fallback signal
@@ -43,6 +57,11 @@ class RecommendationResponse(BaseModel):
     happened, not whether a fallback fired) directly to the caller,
     rather than letting a degraded, fallback-heavy recommendation look
     identical to a fully personalized one.
+
+    `matched_signals`, keyed by `news_id`, is only populated when the
+    caller opts in (`recommend(..., include_matched_signals=True)`) --
+    left `None` by default so an ordinary request pays no extra cost for
+    data only the optional explanation layer ever needs.
     """
 
     user_id: str
@@ -50,3 +69,4 @@ class RecommendationResponse(BaseModel):
     durable_features_used: bool
     recent_features_used: bool
     generated_at: datetime
+    matched_signals: dict[str, MatchedSignals] | None = None

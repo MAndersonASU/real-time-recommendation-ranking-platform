@@ -100,11 +100,13 @@ part of the original eight.
 
 ## Complexity boundary
 
-Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, a formal
-feature store, and an LLM are explicitly out of scope unless a measured
-requirement in a later phase justifies adding one. The optional Phase 14
-explanation layer, if built, explains an already-selected recommendation
-and never participates in retrieval, ranking, or reranking decisions.
+Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, and a
+formal feature store remain explicitly out of scope unless a measured
+requirement justifies adding one. A small, local, instruction-tuned
+model was added for the optional explanation layer
+(`docs/explanation-boundary.md`) — it explains an already-selected
+recommendation and never participates in retrieval, ranking, or
+reranking decisions.
 
 ## Design decisions log
 
@@ -154,3 +156,10 @@ and never participates in retrieval, ranking, or reranking decisions.
   it would downgrade the pinned pandas version and add roughly 60
   transitive packages for a solo project with about a dozen real
   experiments, more machinery than the actual need justifies.
+- **2026-08-22** — Added `recommender.explanation`, an eleventh
+  subpackage, for the optional generative explanation layer
+  (`docs/explanation-boundary.md`). Kept separate from
+  `recommender.serving` deliberately: the explanation layer only ever
+  consumes an already-finished `RecommendationResponse`, and a shared
+  package could make it easy to accidentally give it access to
+  in-progress ranking state it should never see.

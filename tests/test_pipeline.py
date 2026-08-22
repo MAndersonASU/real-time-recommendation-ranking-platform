@@ -157,3 +157,27 @@ def test_recommend_recommendations_are_real_catalog_items():
 
     catalog_ids = set(NEWS["news_id"])
     assert all(item.news_id in catalog_ids for item in response.recommendations)
+
+
+def test_recommend_leaves_matched_signals_none_by_default():
+    context = _build_context()
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context)
+
+    assert response.matched_signals is None
+
+
+def test_recommend_populates_matched_signals_when_opted_in():
+    context = _build_context()
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context, include_matched_signals=True)
+
+    assert response.matched_signals is not None
+    assert set(response.matched_signals.keys()) == {item.news_id for item in response.recommendations}
+    for signals in response.matched_signals.values():
+        assert isinstance(signals.category_match, bool)
+        assert isinstance(signals.content_similarity, float)
+        assert isinstance(signals.retrieval_score, float)
+        assert signals.user_history_length >= 0
