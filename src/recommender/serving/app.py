@@ -6,10 +6,14 @@ from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from recommender.monitoring.metrics import (
+    MODEL_VERSION,
     record_error,
     record_feature_lookup_latency,
     record_response,
+    update_quality_gauges,
 )
+from recommender.monitoring.quality_signals import QualitySignalTracker, compute_model_version
+from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
 from recommender.serving.fallback import safe_recommend
@@ -36,7 +40,7 @@ async def lifespan(app: FastAPI):
     """
     settings = load_settings()
     try:
-        _state["context"] = build_serving_context(redis_url=settings.redis_url_with_auth())
+        context = build_serving_context(redis_url=settings.redis_url_with_auth())
     except OSError as exc:
         logger.error(
             "Serving context failed to build -- a required model/index/ranking-pipeline "
@@ -45,6 +49,9 @@ async def lifespan(app: FastAPI):
             exc,
         )
         raise
+    _state["context"] = context
+    _state["quality_tracker"] = QualitySignalTracker(catalog_size=len(context.news_ids))
+    MODEL_VERSION.info({"sha256_prefix": compute_model_version(RETRIEVAL_MODEL_PATH)})
     yield
     _state.clear()
 
@@ -130,4 +137,9 @@ def recommend_endpoint(request: RecommendationRequest) -> RecommendationResponse
     record_response(response, is_fallback=fell_back["value"], latency_seconds=time.perf_counter() - start)
     if "feature_lookup_ms" in stage_timings:
         record_feature_lookup_latency(stage_timings["feature_lookup_ms"] / 1000)
+
+    tracker: QualitySignalTracker = _state["quality_tracker"]
+    tracker.record(response)
+    update_quality_gauges(tracker.snapshot())
+
     return response

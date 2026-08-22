@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
+from recommender.monitoring.quality_signals import QualitySignalTracker
 from recommender.serving import app as app_module
 from tests.test_pipeline import _build_context
 
@@ -11,7 +12,9 @@ def _client() -> TestClient:
     # Injects a synthetic ServingContext directly, bypassing the real
     # lifespan startup (which loads real trained artifacts from disk) --
     # the same synthetic fixture every other pipeline test already uses.
-    app_module._state["context"] = _build_context()
+    context = _build_context()
+    app_module._state["context"] = context
+    app_module._state["quality_tracker"] = QualitySignalTracker(catalog_size=len(context.news_ids))
     return TestClient(app_module.app)
 
 

@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import Counter, Gauge, Histogram, Info
 
 from recommender.serving.contract import RecommendationResponse
 
@@ -73,3 +73,45 @@ def record_error() -> None:
 
 def record_feature_lookup_latency(seconds: float) -> None:
     FEATURE_LOOKUP_LATENCY_SECONDS.observe(seconds)
+
+
+# ML quality signals (docs/ml-quality-signals.md): distinct from the
+# operational metrics above because a score distribution, diversity
+# figure, coverage fraction, or concentration measure only means
+# anything computed over many recent responses, never from one request
+# in isolation -- see `QualitySignalTracker`, which produces the
+# snapshot these gauges are set from.
+SCORE_MEAN = Gauge("recommend_score_mean", "Mean recommended-item score over the recent window")
+SCORE_P50 = Gauge("recommend_score_p50", "Median recommended-item score over the recent window")
+SCORE_P90 = Gauge("recommend_score_p90", "90th-percentile recommended-item score over the recent window")
+MEAN_DIVERSITY = Gauge(
+    "recommend_mean_diversity", "Mean distinct categories per response over the recent window"
+)
+CATALOG_COVERAGE = Gauge(
+    "recommend_catalog_coverage", "Fraction of the catalog recommended at least once, cumulative"
+)
+TOP_N_CONCENTRATION = Gauge(
+    "recommend_top_n_concentration",
+    "Share of all recommendation slots taken by the 10 most-recommended items, cumulative",
+)
+MODEL_VERSION = Info("recommend_model", "Fingerprint of the currently loaded two-tower model file")
+
+
+def update_quality_gauges(snapshot: dict) -> None:
+    """Sets every quality gauge from one real snapshot. A signal with no
+    data yet (`None`) is left at the gauge's last real value rather than
+    forced to zero, which would misreport "no signal yet" as "the worst
+    possible signal."
+    """
+    gauge_by_key = {
+        "score_mean": SCORE_MEAN,
+        "score_p50": SCORE_P50,
+        "score_p90": SCORE_P90,
+        "mean_diversity": MEAN_DIVERSITY,
+        "catalog_coverage": CATALOG_COVERAGE,
+        "top_n_concentration": TOP_N_CONCENTRATION,
+    }
+    for key, gauge in gauge_by_key.items():
+        value = snapshot.get(key)
+        if value is not None:
+            gauge.set(value)
