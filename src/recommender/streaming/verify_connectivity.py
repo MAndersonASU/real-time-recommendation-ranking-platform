@@ -10,7 +10,6 @@ from recommender.streaming.kafka_client import (
 )
 
 REPORT_PATH = Path("data/processed/mind_small/kafka_connectivity_report.json")
-TOPIC = "connectivity-check"
 
 
 def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> dict:
@@ -18,8 +17,19 @@ def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> d
     confirming the value matches exactly. Not a mock -- if no broker is
     reachable at `bootstrap_servers`, this raises rather than reporting a
     false pass.
+
+    Uses a fresh topic and a fresh consumer group per call (the same
+    pattern `verify_recovery.py` already uses), rather than one fixed
+    topic/group reused across every run. A real bug, found by actually
+    running this repeatedly against a long-lived broker rather than
+    once and assumed durable: this consumer never commits its offset,
+    so a fixed group id has no committed position to resume from and
+    re-reads the topic's very first message every time -- stale, from
+    whichever run produced it -- instead of the one this call just
+    produced.
     """
-    ensure_topic(TOPIC, bootstrap_servers=bootstrap_servers)
+    topic = f"connectivity-check-{time.time()}".replace(".", "-")
+    ensure_topic(topic, bootstrap_servers=bootstrap_servers)
 
     producer = build_producer(bootstrap_servers)
     delivery: dict = {}
@@ -30,13 +40,13 @@ def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> d
             delivery["offset"] = msg.offset()
 
     test_value = f"connectivity-check-{time.time()}".encode()
-    producer.produce(TOPIC, value=test_value, callback=on_delivery)
+    producer.produce(topic, value=test_value, callback=on_delivery)
     producer.flush(10)
     if "offset" not in delivery:
         raise RuntimeError("producer never received a delivery confirmation")
 
-    consumer = build_consumer("connectivity-check-group", bootstrap_servers)
-    consumer.subscribe([TOPIC])
+    consumer = build_consumer(f"connectivity-check-group-{time.time()}", bootstrap_servers)
+    consumer.subscribe([topic])
     received = None
     try:
         for _ in range(20):
@@ -53,7 +63,7 @@ def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> d
         raise RuntimeError("consumed value did not match what was produced")
 
     return {
-        "topic": TOPIC,
+        "topic": topic,
         "bootstrap_servers": bootstrap_servers,
         "produced_partition": delivery["partition"],
         "produced_offset": delivery["offset"],
@@ -63,6 +73,7 @@ def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> d
 
 def main() -> None:
     report = verify_connectivity()
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

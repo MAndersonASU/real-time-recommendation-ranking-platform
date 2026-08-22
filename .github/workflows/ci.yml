@@ -20,3 +20,43 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest -q
+
+  integration-smoke-test:
+    runs-on: ubuntu-latest
+    # Kafka and Redis are open-source images with no licensed data
+    # involved, so this runs for real in CI. The trained model, the
+    # Faiss index, and the ranking pipeline all depend on the licensed
+    # MIND dataset (docs/dataset-source.md), which this project has
+    # never redistributed and never will -- so the full API container
+    # is verified locally, against the real data, not here. This job's
+    # scope is exactly what's genuinely feasible in CI: a bounded,
+    # real round-trip against the two services that don't need it.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
+      - name: Start Kafka and Redis
+        run: docker compose up -d kafka redis
+      - name: Wait for Kafka and Redis to report healthy
+        run: |
+          for i in $(seq 1 30); do
+            kafka_status=$(docker inspect --format='{{.State.Health.Status}}' recommender-kafka)
+            redis_status=$(docker inspect --format='{{.State.Health.Status}}' recommender-redis)
+            if [ "$kafka_status" = "healthy" ] && [ "$redis_status" = "healthy" ]; then
+              echo "both services healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services never became healthy" >&2
+          exit 1
+      - name: Real Kafka produce/consume round trip
+        run: python -m recommender.streaming.verify_connectivity
+      - name: Real Redis round trip and latency
+        run: python -m recommender.features.verify_state_store
+      - name: Tear down
+        if: always()
+        run: docker compose down

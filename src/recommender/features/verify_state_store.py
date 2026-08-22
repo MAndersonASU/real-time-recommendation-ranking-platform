@@ -60,6 +60,7 @@ def verify_state_store(redis_url: str = "redis://localhost:6379/0") -> dict:
 
 def main() -> None:
     report = verify_state_store()
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 
