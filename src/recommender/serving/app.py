@@ -1,11 +1,14 @@
-import os
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext, build_serving_context
+
+logger = logging.getLogger("recommender.serving.app")
 
 _state: dict = {}
 
@@ -16,9 +19,25 @@ async def lifespan(app: FastAPI):
     cache exactly once at process start -- the same `ServingContext`
     every other real caller (tests, verify_*.py scripts) has already
     used since Phase 8, not a second, app-specific load path.
+
+    A missing model/index/ranking-pipeline file is a real, validated
+    startup dependency: there's no per-request fallback for "the whole
+    context couldn't even be built" (unlike a single unreachable Redis
+    call, which `safe_recommend` already handles gracefully), so this
+    fails loudly and immediately with a diagnosable message instead of
+    an unexplained crash the first time a request arrives.
     """
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-    _state["context"] = build_serving_context(redis_url=redis_url)
+    settings = load_settings()
+    try:
+        _state["context"] = build_serving_context(redis_url=settings.redis_url_with_auth())
+    except OSError as exc:
+        logger.error(
+            "Serving context failed to build -- a required model/index/ranking-pipeline "
+            "file was not found. Confirm the data volume is mounted and the offline "
+            "pipeline has produced its artifacts before starting this service. (%s)",
+            exc,
+        )
+        raise
     yield
     _state.clear()
 
