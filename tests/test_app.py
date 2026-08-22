@@ -33,6 +33,17 @@ def test_recommend_endpoint_returns_a_valid_response():
     assert len(body["recommendations"]) == 3
 
 
+def test_metrics_endpoint_reflects_a_real_request():
+    client = _client()
+    client.post("/recommend", json={"user_id": "u1", "num_candidates": 2})
+
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "recommend_requests_total" in response.text
+    assert "recommend_candidate_count" in response.text
+
+
 def test_recommend_endpoint_rejects_an_invalid_request():
     response = _client().post(
         "/recommend", json={"user_id": "u1", "num_candidates": 0}

@@ -1,8 +1,15 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from recommender.monitoring.metrics import (
+    record_error,
+    record_feature_lookup_latency,
+    record_response,
+)
 from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
 from recommender.serving.fallback import safe_recommend
@@ -93,6 +100,34 @@ def ready() -> dict:
     }
 
 
+@app.get("/metrics")
+def metrics() -> Response:
+    """Real operational metrics for this process, in Prometheus's own
+    text format (docs/operational-metrics.md) -- request rate, errors,
+    latency, candidate counts, fallback rate, and durable/recent cache
+    hit rates, all recorded from the one place a response is actually
+    produced below, never a second, separately-tracked copy.
+    """
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/recommend", response_model=RecommendationResponse)
 def recommend_endpoint(request: RecommendationRequest) -> RecommendationResponse:
-    return safe_recommend(request, _context())
+    fell_back = {"value": False}
+
+    def _mark_fallback() -> None:
+        fell_back["value"] = True
+
+    stage_timings: dict[str, float] = {}
+    start = time.perf_counter()
+    try:
+        response = safe_recommend(
+            request, _context(), on_fallback=_mark_fallback, stage_timings=stage_timings
+        )
+    except Exception:
+        record_error()
+        raise
+    record_response(response, is_fallback=fell_back["value"], latency_seconds=time.perf_counter() - start)
+    if "feature_lookup_ms" in stage_timings:
+        record_feature_lookup_latency(stage_timings["feature_lookup_ms"] / 1000)
+    return response

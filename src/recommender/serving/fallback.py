@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime
 
 import numpy as np
@@ -63,15 +64,31 @@ def build_fallback_response(request: RecommendationRequest, context: ServingCont
     )
 
 
-def safe_recommend(request: RecommendationRequest, context: ServingContext) -> RecommendationResponse:
+def safe_recommend(
+    request: RecommendationRequest,
+    context: ServingContext,
+    on_fallback: Callable[[], None] | None = None,
+    stage_timings: dict[str, float] | None = None,
+) -> RecommendationResponse:
     """The real path, with a safe popularity fallback if a real
     dependency it needs turns out to be unavailable. Deliberately
     separate from Phase 7's cold-start handling inside `recommend`
     itself: cold start answers "we don't know anything about this
     user," which the real path already handles without falling back at
     all; this answers "the real path itself cannot run right now."
+
+    `on_fallback`, when given a callable, is invoked right before a
+    fallback response is returned -- opt-in instrumentation of this
+    exact branch, rather than a caller inferring "was this a fallback"
+    from the response's feature flags, which a genuine cold-start
+    response can also legitimately have both set to False.
+    `stage_timings` passes straight through to `recommend()` on the
+    real path (there is no per-stage breakdown for a fallback response,
+    since it never runs those stages at all).
     """
     try:
-        return recommend(request, context)
+        return recommend(request, context, stage_timings=stage_timings)
     except DEPENDENCY_FAILURE_EXCEPTIONS:
+        if on_fallback is not None:
+            on_fallback()
         return build_fallback_response(request, context)
