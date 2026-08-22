@@ -69,6 +69,7 @@ def safe_recommend(
     context: ServingContext,
     on_fallback: Callable[[], None] | None = None,
     stage_timings: dict[str, float] | None = None,
+    use_recent_features: bool = True,
 ) -> RecommendationResponse:
     """The real path, with a safe popularity fallback if a real
     dependency it needs turns out to be unavailable. Deliberately
@@ -82,12 +83,15 @@ def safe_recommend(
     exact branch, rather than a caller inferring "was this a fallback"
     from the response's feature flags, which a genuine cold-start
     response can also legitimately have both set to False.
-    `stage_timings` passes straight through to `recommend()` on the
-    real path (there is no per-stage breakdown for a fallback response,
-    since it never runs those stages at all).
+    `stage_timings` and `use_recent_features` pass straight through to
+    `recommend()` on the real path (there is no per-stage breakdown or
+    recent-features toggle for a fallback response, since it never runs
+    those stages at all).
     """
     try:
-        return recommend(request, context, stage_timings=stage_timings)
+        return recommend(
+            request, context, stage_timings=stage_timings, use_recent_features=use_recent_features
+        )
     except DEPENDENCY_FAILURE_EXCEPTIONS:
         if on_fallback is not None:
             on_fallback()

@@ -12,9 +12,10 @@ from recommender.tracking.experiment_log import log_run
 REPORT_PATH = Path("data/processed/mind_small/ablation_report.json")
 
 # `popularity` is already excluded from every trained ranking model
-# (recommender.ranking.train, Step 4.3's own finding). Dropping
-# `retrieval_score` on top of that isolates the retrieval-feature ablation
-# specifically, leaving the four remaining handcrafted features untouched.
+# (recommender.ranking.train -- it scores worse than random on validation,
+# docs/ranking-model.md). Dropping `retrieval_score` on top of that
+# isolates the retrieval-feature ablation specifically, leaving the four
+# remaining handcrafted features untouched.
 NO_RETRIEVAL_SCORE_FEATURES = [c for c in FEATURE_COLUMNS if c not in ("popularity", "retrieval_score")]
 
 
@@ -59,7 +60,7 @@ ABLATION_MATRIX = [
         description=(
             "Serving the ranking model's own top-10 slate unchanged, with no "
             "diversity/freshness reranking pass -- already measured as the "
-            "ranked-only row of the Phase 5 tradeoff table."
+            "ranked-only row of the reranking tradeoff table."
         ),
         status="reuses_existing_tracked_run",
         source="ranking_model_k10 vs reranking_diverse_fresh_k10 (docs/reranking-evaluation.md)",
@@ -70,22 +71,22 @@ ABLATION_MATRIX = [
         description=(
             "Online serving with RecentUserFeatures forced empty -- durable "
             "features only, as if no live Kafka/Redis feed existed -- measured "
-            "against the same replay harness Step 9.2 built, with one added "
-            "toggle. Run alongside every other ablation's numbers next step."
+            "against the existing replay harness (recommender.tracking."
+            "replay_evaluation) with one added use_recent_features toggle."
         ),
         status="new_this_step",
-        source="src/recommender/tracking/replay_evaluation.py (toggle added; run deferred to Step 13.2)",
+        source="ablation_no_recent_features_replay vs ablation_with_recent_features_replay (docs/ablations.md)",
     ),
     AblationSpec(
         name="approximate_index",
         component="cache/index settings",
         description=(
             "Approximate (IVF, nprobe swept 1/8/32/256) Faiss search in place "
-            "of the exact index -- already measured as the Step 3.4 "
-            "recall-vs-latency sweep."
+            "of the exact index -- already measured as the recall-vs-latency "
+            "sweep over the candidate index."
         ),
         status="reuses_existing_tracked_run",
-        source="docs/candidate-index.md (nprobe sweep)",
+        source="docs/faiss-index.md (nprobe sweep)",
     ),
 ]
 

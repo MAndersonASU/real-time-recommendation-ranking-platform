@@ -33,6 +33,7 @@ def get_online_features(
     user_id: str,
     durable_features_by_user: dict[str, DurableUserFeatures],
     redis_client: redis.Redis,
+    use_recent_features: bool = True,
 ) -> OnlineFeatureLookup:
     """Looks up both halves of a user's online features independently,
     since they can be missing for different, unrelated reasons: a user
@@ -43,9 +44,14 @@ def get_online_features(
     long-time user whose session just started, or a brand new user who
     is already actively clicking. Neither case raises; both fall back to
     an explicit, neutral default instead.
+
+    `use_recent_features=False` skips the Redis lookup entirely and
+    always falls back to the same neutral default -- the recent-
+    streaming-features ablation (docs/ablations.md), simulating a system
+    with no live Kafka/Redis feed at all rather than merely an empty one.
     """
     durable = durable_features_by_user.get(user_id)
-    recent = load_recent_features(redis_client, user_id)
+    recent = load_recent_features(redis_client, user_id) if use_recent_features else None
 
     return OnlineFeatureLookup(
         durable=durable if durable is not None else DEFAULT_DURABLE_FEATURES,

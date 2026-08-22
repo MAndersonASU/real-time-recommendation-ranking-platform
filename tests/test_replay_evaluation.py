@@ -59,3 +59,17 @@ def test_evaluate_via_replay_respects_the_num_impressions_sample_size():
     report = evaluate_via_replay(context, num_impressions=1, k=3, replay=REPLAY_BEHAVIORS)
 
     assert report["impressions_sampled"] == 1
+
+
+def test_evaluate_via_replay_records_the_recent_features_toggle_and_a_real_latency_sample():
+    context = _build_context()
+
+    with_recent = evaluate_via_replay(context, num_impressions=2, k=3, replay=REPLAY_BEHAVIORS)
+    without_recent = evaluate_via_replay(
+        context, num_impressions=2, k=3, replay=REPLAY_BEHAVIORS, use_recent_features=False
+    )
+
+    assert with_recent["use_recent_features"] is True
+    assert without_recent["use_recent_features"] is False
+    assert with_recent["mean_feature_lookup_ms"] is not None
+    assert without_recent["mean_feature_lookup_ms"] is not None

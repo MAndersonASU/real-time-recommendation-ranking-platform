@@ -56,6 +56,24 @@ def test_brand_new_user_who_is_already_actively_clicking():
     assert result.recent_is_fallback is False
 
 
+def test_use_recent_features_false_ignores_a_real_redis_record():
+    client = _FakeRedis()
+    save_recent_features(
+        client,
+        RecentUserFeatures(
+            user_id="u1", recent_clicked_items=["n5"], impressions_seen=3,
+            clicks_seen=1, last_event_time="2019-11-15T09:00:00",
+        ),
+    )
+
+    result = get_online_features(
+        "u1", durable_features_by_user={}, redis_client=client, use_recent_features=False
+    )
+
+    assert result.recent == DEFAULT_RECENT_FEATURES
+    assert result.recent_is_fallback is True
+
+
 def test_fully_known_user_needs_no_fallback_at_all():
     durable = {"u1": DurableUserFeatures(user_id="u1", dominant_category="sports", lifetime_click_count=10)}
     client = _FakeRedis()

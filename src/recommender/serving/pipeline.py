@@ -143,6 +143,7 @@ def recommend(
     request: RecommendationRequest,
     context: ServingContext,
     stage_timings: dict[str, float] | None = None,
+    use_recent_features: bool = True,
 ) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
     -> reranking -> a Top-K response, exactly the phase's named path.
@@ -163,6 +164,11 @@ def recommend(
     separate copy kept in sync by hand. Left None by default so a normal
     request pays only the cost of a few `perf_counter()` calls, not any
     bookkeeping overhead.
+
+    `use_recent_features`, when False, forces the online lookup to skip
+    Redis entirely (recommender.features.cold_start.get_online_features)
+    -- the recent-streaming-features ablation (docs/ablations.md), not a
+    normal request path.
     """
     def _stage_start() -> float:
         return time.perf_counter() if stage_timings is not None else 0.0
@@ -173,7 +179,10 @@ def recommend(
 
     t = _stage_start()
     lookup = get_online_features(
-        request.user_id, context.durable_cache.features_by_user, context.redis_client
+        request.user_id,
+        context.durable_cache.features_by_user,
+        context.redis_client,
+        use_recent_features=use_recent_features,
     )
     history_ids = lookup.recent.recent_clicked_items
     _stage_end("feature_lookup_ms", t)
