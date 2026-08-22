@@ -11,8 +11,6 @@ dist/
 
 # Generated model/experiment artifacts
 models/
-mlruns/
-mlflow.db
 
 # Test/tooling caches
 .pytest_cache/

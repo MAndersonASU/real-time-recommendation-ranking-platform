@@ -24,6 +24,7 @@ owned by exactly one package under `src/recommender/`.
 | Online | Event streaming | `recommender.streaming` | Historical replay, Kafka producer/consumer, recent user state |
 | Online | Serving | `recommender.serving` | Typed recommendation API integrating retrieval, ranking, reranking |
 | Both | Observability | `recommender.monitoring` | Structured logging, operational and quality metrics |
+| Offline | Experiment tracking | `recommender.tracking` | Structured, queryable log of evaluation runs across phases (`docs/experiment-tracking.md`) |
 
 ## Data flow
 
@@ -146,3 +147,10 @@ and never participates in retrieval, ranking, or reranking decisions.
   candidates — so they share a module rather than each baseline earning
   its own top-level package, which would multiply the module count faster
   than the actual complexity justifies.
+- **2026-08-21** — Added `recommender.tracking`, a tenth subpackage, for
+  a plain JSONL experiment log (`docs/experiment-tracking.md`). MLflow —
+  named in this project's original stack outline as a conditional
+  addition — was evaluated with a real dependency dry run and rejected:
+  it would downgrade the pinned pandas version and add roughly 60
+  transitive packages for a solo project with about a dozen real
+  experiments, more machinery than the actual need justifies.
