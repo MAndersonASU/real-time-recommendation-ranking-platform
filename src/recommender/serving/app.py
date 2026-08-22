@@ -22,6 +22,7 @@ from recommender.monitoring.structured_logging import (
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.config import load_settings
 from recommender.serving.contract import RecommendationRequest, RecommendationResponse
+from recommender.serving.demo import DEFAULT_NUM_CANDIDATES, render_demo_html
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext, build_serving_context
 
@@ -163,6 +164,18 @@ def dashboard() -> Response:
     in-process metric objects `/metrics` exposes, not a second store.
     """
     return Response(content=render_dashboard_html(), media_type="text/html")
+
+
+@app.get("/demo/{user_id}", response_class=Response)
+def demo(user_id: str, num_candidates: int = DEFAULT_NUM_CANDIDATES) -> Response:
+    """A real, human-readable trace of one real request through the full
+    pipeline (docs/professional-demonstration.md) -- per-stage latency,
+    the real ranked slate, real personalization status, and a real
+    grounded explanation per item where the evidence supports one.
+    Calls the real `recommend()` exactly once; nothing on this page is
+    computed a second time for display.
+    """
+    return Response(content=render_demo_html(user_id, _context(), num_candidates), media_type="text/html")
 
 
 @app.post("/recommend", response_model=RecommendationResponse)
