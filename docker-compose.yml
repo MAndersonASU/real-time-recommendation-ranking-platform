@@ -50,5 +50,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      # Not kafka: the live API never consumes from or produces to Kafka
+      # at request time (only the offline replay/consumer scripts from
+      # Phase 6 do), so blocking API startup on Kafka's health would be
+      # a real, unnecessary coupling -- found and removed while testing
+      # what a Kafka interruption should and shouldn't affect.
