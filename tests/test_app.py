@@ -189,3 +189,20 @@ def test_demo_endpoint_logs_a_hashed_not_raw_user_id():
     assert logged_paths, "expected the access-log middleware to log at least one request"
     assert all("a-very-identifiable-raw-user-id" not in path for path in logged_paths)
     assert any(hash_user_id("a-very-identifiable-raw-user-id") in path for path in logged_paths)
+
+
+def test_loggable_path_redacts_a_demo_path_with_a_trailing_slash_too():
+    """Regression test for a real gap found while verifying the fix
+    above against the live container: a `/demo/{user_id}/` request
+    (trailing slash -- what FastAPI's own redirect-to-canonical-path
+    logic still logs once on its own, before the redirect) didn't match
+    the first version of `_DEMO_PATH_PATTERN` at all, since it required
+    the path to end immediately after the user id with no trailing
+    character. Fails on that version (the raw id passes through
+    untouched) and passes once the pattern also accepts an optional
+    trailing slash.
+    """
+    redacted = app_module._loggable_path("/demo/a-very-identifiable-raw-user-id/")
+
+    assert "a-very-identifiable-raw-user-id" not in redacted
+    assert redacted == f"/demo/{hash_user_id('a-very-identifiable-raw-user-id')}/"

@@ -31,7 +31,7 @@ from recommender.serving.demo import DEFAULT_NUM_CANDIDATES, render_demo_html
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext, build_serving_context
 
-_DEMO_PATH_PATTERN = re.compile(r"^(?P<prefix>/demo/)(?P<user_id>[^/]+)$")
+_DEMO_PATH_PATTERN = re.compile(r"^(?P<prefix>/demo/)(?P<user_id>[^/]+?)(?P<suffix>/?)$")
 
 
 def _loggable_path(path: str) -> str:
@@ -40,14 +40,17 @@ def _loggable_path(path: str) -> str:
     `request.url.path` verbatim for every route, so the raw, unhashed
     user id was written to the access log for every `/demo` request --
     inconsistent with `/recommend`'s own explicit log line, which only
-    ever logs `hash_user_id(payload.user_id)`. Every other route's path
-    has no user identifier embedded in it at all, so this only needs to
+    ever logs `hash_user_id(payload.user_id)`. A trailing slash (`/demo/
+    U1000/`, which FastAPI redirects but still logs on its own request)
+    is matched too, not just the exact no-slash form -- an earlier
+    version of this pattern missed it. Every other route's path has no
+    user identifier embedded in it at all, so this only needs to
     special-case `/demo`.
     """
     match = _DEMO_PATH_PATTERN.match(path)
     if match is None:
         return path
-    return f"{match.group('prefix')}{hash_user_id(match.group('user_id'))}"
+    return f"{match.group('prefix')}{hash_user_id(match.group('user_id'))}{match.group('suffix')}"
 
 configure_structured_logging()
 logger = logging.getLogger("recommender.serving.app")
