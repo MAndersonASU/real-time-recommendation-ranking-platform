@@ -1,3 +1,5 @@
+import sys
+import threading
 from datetime import datetime
 
 from recommender.monitoring.quality_signals import QualitySignalTracker, compute_model_version
@@ -73,6 +75,59 @@ def test_compute_model_version_is_a_real_deterministic_fingerprint(tmp_path):
 
     assert version_a == version_b
     assert len(version_a) == 12
+
+
+def test_tracker_survives_real_concurrent_record_and_snapshot_calls():
+    """Regression test for a real, reproduced concurrency bug: `record()`
+    inserting a never-seen-before news_id into the internal Counter
+    changes its size, and if that happens while `snapshot()` is
+    mid-iteration over the same Counter (via most_common()), Python
+    raises `RuntimeError: dictionary changed size during iteration`.
+    Reproduced with 100% failure under real thread contention before the
+    fix (a lock around every mutation and every read). A short switch
+    interval forces frequent real GIL handoffs so the race window is
+    actually exercised within a fast, deterministic test, not left to
+    chance timing.
+    """
+    original_interval = sys.getswitchinterval()
+    sys.setswitchinterval(0.00001)
+    try:
+        tracker = QualitySignalTracker(catalog_size=100_000)
+        errors: list[Exception] = []
+        stop = threading.Event()
+
+        def hammer_record(thread_id: int) -> None:
+            n = 0
+            while not stop.is_set():
+                response = _response(
+                    [RecommendedItem(news_id=f"t{thread_id}_{n}", score=0.5, rank=1)]
+                )
+                try:
+                    tracker.record(response)
+                except Exception as exc:  # noqa: BLE001 -- capturing for the assertion below
+                    errors.append(exc)
+                    break
+                n += 1
+
+        def hammer_snapshot() -> None:
+            for _ in range(3000):
+                try:
+                    tracker.snapshot()
+                except Exception as exc:  # noqa: BLE001 -- capturing for the assertion below
+                    errors.append(exc)
+                    break
+
+        writers = [threading.Thread(target=hammer_record, args=(i,)) for i in range(8)]
+        for writer in writers:
+            writer.start()
+        hammer_snapshot()
+        stop.set()
+        for writer in writers:
+            writer.join()
+    finally:
+        sys.setswitchinterval(original_interval)
+
+    assert errors == []
 
 
 def test_compute_model_version_changes_with_the_real_file_contents(tmp_path):

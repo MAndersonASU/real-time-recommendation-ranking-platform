@@ -198,26 +198,40 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
     if "feature_lookup_ms" in stage_timings:
         record_feature_lookup_latency(stage_timings["feature_lookup_ms"] / 1000)
 
-    tracker: QualitySignalTracker = _state["quality_tracker"]
-    tracker.record(response)
-    update_quality_gauges(tracker.snapshot())
+    # Quality tracking and structured logging are observability, not
+    # correctness: `response` is already a real, valid, fully-computed
+    # result, and `record_response` above has already counted it as a
+    # success. A bug in this block (a real one existed: a concurrency
+    # race in QualitySignalTracker, fixed separately) must never turn
+    # that already-successful response into a client-facing 500 --
+    # this previously ran with no exception boundary at all, so it
+    # could.
+    try:
+        tracker: QualitySignalTracker = _state["quality_tracker"]
+        tracker.record(response)
+        update_quality_gauges(tracker.snapshot())
 
-    # The user id is hashed, not logged raw (docs/structured-logging.md):
-    # enough for an operator to correlate every log line for one user
-    # while debugging, without the real identifier ever sitting in a
-    # log file.
-    logger.info(
-        "recommend_served",
-        extra={
-            "event": "recommend_served",
-            "request_id": getattr(http_request.state, "request_id", None),
-            "user_id_hash": hash_user_id(payload.user_id),
-            "num_candidates_requested": payload.num_candidates,
-            "num_candidates_returned": len(response.recommendations),
-            "is_fallback": fell_back["value"],
-            "durable_features_used": response.durable_features_used,
-            "recent_features_used": response.recent_features_used,
-        },
-    )
+        # The user id is hashed, not logged raw (docs/structured-logging.md):
+        # enough for an operator to correlate every log line for one user
+        # while debugging, without the real identifier ever sitting in a
+        # log file.
+        logger.info(
+            "recommend_served",
+            extra={
+                "event": "recommend_served",
+                "request_id": getattr(http_request.state, "request_id", None),
+                "user_id_hash": hash_user_id(payload.user_id),
+                "num_candidates_requested": payload.num_candidates,
+                "num_candidates_returned": len(response.recommendations),
+                "is_fallback": fell_back["value"],
+                "durable_features_used": response.durable_features_used,
+                "recent_features_used": response.recent_features_used,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Quality tracking or structured logging failed for an otherwise "
+            "successful recommendation -- the response is still returned."
+        )
 
     return response

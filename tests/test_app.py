@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import redis
 from fastapi.testclient import TestClient
 from redis.backoff import NoBackoff
@@ -87,3 +89,26 @@ def test_ready_returns_503_when_the_serving_context_never_loaded():
     response = TestClient(app_module.app).get("/ready")
 
     assert response.status_code == 503
+
+
+def test_recommend_endpoint_still_returns_the_real_response_when_quality_tracking_crashes():
+    """Regression test for a real bug: quality tracking and structured
+    logging ran with no exception boundary at all, after record_response()
+    had already counted the recommendation as a success -- so a crash in
+    that block (a real one existed: a concurrency race in
+    QualitySignalTracker) turned an already-successful, already-computed
+    response into a client-facing 500. Fails on the pre-fix code (the
+    request raises before returning) and passes once that block is
+    wrapped so a failure there can't override a real, valid response.
+    """
+    client = _client()
+
+    with patch.object(
+        app_module.QualitySignalTracker, "record", side_effect=RuntimeError("simulated tracker crash")
+    ):
+        response = client.post("/recommend", json={"user_id": "u1", "num_candidates": 3})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user_id"] == "u1"
+    assert len(body["recommendations"]) == 3

@@ -1,4 +1,5 @@
 import hashlib
+import threading
 from collections import Counter, deque
 from pathlib import Path
 
@@ -14,6 +15,18 @@ class QualitySignalTracker:
     counters in `docs/operational-metrics.md`, since a score
     distribution, a diversity figure, or a concentration measure only
     means something in aggregate, never from a single response alone.
+
+    A single instance is shared across every request FastAPI serves,
+    and a plain synchronous `def` route runs in a worker thread pool
+    (docs/operational-metrics.md), so `record()` and `snapshot()` are
+    genuinely called concurrently from multiple real threads, not just
+    hypothetically. A real, reproducible race existed here: `record()`
+    inserting a never-seen-before `news_id` into `_recommended_counts`
+    changes the dict's size, and if that happens while `snapshot()` is
+    mid-iteration over the same Counter (via `most_common()`), Python
+    raises `RuntimeError: dictionary changed size during iteration` --
+    reproduced under real concurrent load, not a theoretical concern.
+    `_lock` serializes every mutation and every read against each other.
     """
 
     def __init__(self, catalog_size: int, window_size: int = DEFAULT_WINDOW_SIZE) -> None:
@@ -21,32 +34,41 @@ class QualitySignalTracker:
         self._scores: deque[float] = deque(maxlen=window_size * 10)
         self._diversity: deque[int] = deque(maxlen=window_size)
         self._recommended_counts: Counter[str] = Counter()
+        self._lock = threading.Lock()
 
     def record(self, response: RecommendationResponse) -> None:
-        for item in response.recommendations:
-            self._scores.append(item.score)
-            self._recommended_counts[item.news_id] += 1
-        distinct_categories = len({item.category for item in response.recommendations if item.category})
-        self._diversity.append(distinct_categories)
+        with self._lock:
+            for item in response.recommendations:
+                self._scores.append(item.score)
+                self._recommended_counts[item.news_id] += 1
+            distinct_categories = len(
+                {item.category for item in response.recommendations if item.category}
+            )
+            self._diversity.append(distinct_categories)
 
     def snapshot(self) -> dict:
         """A point-in-time read of every tracked signal. Empty until the
         first real response is recorded -- returns None for anything
         that has no data yet, rather than a misleading zero.
         """
-        scores = sorted(self._scores)
-        n = len(scores)
+        with self._lock:
+            scores = sorted(self._scores)
+            n = len(scores)
 
-        total_recommendations = sum(self._recommended_counts.values())
-        top_n_total = sum(count for _, count in self._recommended_counts.most_common(TOP_N_FOR_CONCENTRATION))
+            total_recommendations = sum(self._recommended_counts.values())
+            top_n_total = sum(
+                count for _, count in self._recommended_counts.most_common(TOP_N_FOR_CONCENTRATION)
+            )
+            distinct_recommended = len(self._recommended_counts)
+            mean_diversity = (sum(self._diversity) / len(self._diversity)) if self._diversity else None
 
         return {
             "score_mean": (sum(scores) / n) if n else None,
             "score_p50": scores[n // 2] if n else None,
             "score_p90": scores[int(n * 0.9)] if n else None,
-            "mean_diversity": (sum(self._diversity) / len(self._diversity)) if self._diversity else None,
+            "mean_diversity": mean_diversity,
             "catalog_coverage": (
-                len(self._recommended_counts) / self.catalog_size
+                distinct_recommended / self.catalog_size
                 if self.catalog_size and total_recommendations
                 else None
             ),
