@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
+import skops.io as sio
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import Pipeline
@@ -98,7 +98,7 @@ def verify_diversity_cap() -> dict:
     news = load_catalog()
     category_by_id = news.set_index("news_id")["category"]
 
-    ranking_model = joblib.load(RANKING_MODEL_PATH)
+    ranking_model = sio.load(RANKING_MODEL_PATH)
     tune_rows = tune_rows.assign(
         ranked_score=ranking_model.predict_proba(tune_rows[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
     )

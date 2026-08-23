@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-import joblib
 import pandas as pd
+import skops.io as sio
 
 from recommender.evaluation.contract import TOP_K, load_catalog, load_split
 from recommender.ranking.baselines import build_content_vectors
@@ -49,7 +49,7 @@ def analyze_failures(k: int = TOP_K) -> dict:
     first_seen = compute_first_seen(train)
     impression_time = validation_behaviors.set_index("impression_id")["time"]
 
-    model = joblib.load(MODEL_PATH)
+    model = sio.load(MODEL_PATH)
     validation = validation.assign(
         ranked_score=model.predict_proba(validation[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
     )

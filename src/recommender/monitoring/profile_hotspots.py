@@ -9,7 +9,7 @@ from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import build_serving_context, recommend
 
-RANKING_MODEL_PATH = Path("data/processed/mind_small/ranking_model.joblib")
+RANKING_MODEL_PATH = Path("data/processed/mind_small/ranking_model.skops")
 FAISS_EXACT_INDEX_PATH = Path("data/processed/mind_small/faiss_exact.index")
 NUM_REQUESTS = 30
 

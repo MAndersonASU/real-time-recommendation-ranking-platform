@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import faiss
-import joblib
 import numpy as np
 import pandas as pd
+import skops.io as sio
 import torch
 
 from recommender.data.mind import explode_impressions
@@ -100,7 +100,18 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     faiss_index.add(catalog_embeddings)
 
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
-    ranking_model = joblib.load(RANKING_MODEL_PATH)
+    # sio.load (skops), not joblib.load -- a real bug, found by audit:
+    # joblib is a thin wrapper over pickle, so loading a ranking
+    # artifact meant executing arbitrary code embedded in the file. No
+    # `trusted=` list is passed: this project's own real trained model
+    # is a plain Pipeline of StandardScaler + LogisticRegression, already
+    # confirmed to load with zero untrusted types, so the safe default
+    # (raise on anything not already known-safe) is exactly the
+    # behavior wanted here -- a future artifact containing an
+    # unrecognized type should fail loudly at startup, the same
+    # "fails loudly" discipline this function already applies to a
+    # missing model file.
+    ranking_model = sio.load(RANKING_MODEL_PATH)
 
     # Exploded once and shared, rather than each function re-deriving its
     # own copy of the same multi-million-row frame -- found to cost

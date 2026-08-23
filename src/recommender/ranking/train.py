@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-import joblib
 import pandas as pd
+import skops.io as sio
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.pipeline import Pipeline
@@ -11,7 +11,17 @@ from sklearn.preprocessing import StandardScaler
 from recommender.ranking.build_dataset import TRAIN_PATH, VALIDATION_PATH
 from recommender.ranking.features import FEATURE_COLUMNS
 
-MODEL_PATH = Path("data/processed/mind_small/ranking_model.joblib")
+# A real bug, found by audit: this artifact used to be saved with
+# joblib, which is a thin wrapper over pickle -- loading it means
+# executing arbitrary code embedded in the file, not just reading data.
+# A trained sklearn Pipeline has no legitimate reason to need that.
+# skops (`sio` here) serializes and loads the same kind of object
+# without ever executing code from the file: `sio.load` only
+# reconstructs types it recognizes as safe (a plain Pipeline of
+# StandardScaler + LogisticRegression, confirmed against this project's
+# own real trained model -- zero untrusted types reported), raising
+# instead of silently proceeding on anything else.
+MODEL_PATH = Path("data/processed/mind_small/ranking_model.skops")
 TRAIN_REPORT_PATH = Path("data/processed/mind_small/ranking_train_report.json")
 
 # `popularity` is deliberately excluded from the trained model, not just
@@ -91,7 +101,7 @@ def main() -> None:
     }
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, MODEL_PATH)
+    sio.dump(model, MODEL_PATH)
     TRAIN_REPORT_PATH.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

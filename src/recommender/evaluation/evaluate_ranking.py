@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
+import skops.io as sio
 
 from recommender.evaluation.contract import TOP_K, load_catalog
 from recommender.evaluation.metrics import (
@@ -53,7 +53,7 @@ def evaluate_ranking(k: int = TOP_K) -> dict:
     validation = pd.read_parquet(VALIDATION_PATH)
     catalog_size = len(load_catalog())
 
-    model = joblib.load(MODEL_PATH)
+    model = sio.load(MODEL_PATH)
     ranked_score = model.predict_proba(validation[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
     validation = validation.assign(ranked_score=ranked_score)
 

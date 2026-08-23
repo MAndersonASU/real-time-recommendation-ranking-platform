@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-import joblib
 import pandas as pd
+import skops.io as sio
 
 from recommender.ranking.build_dataset import VALIDATION_PATH
 from recommender.ranking.calibration import calibration_bins, expected_calibration_error
@@ -12,7 +12,7 @@ INSPECTION_REPORT_PATH = Path("data/processed/mind_small/ranking_calibration_rep
 
 
 def inspect_scores() -> dict:
-    model = joblib.load(MODEL_PATH)
+    model = sio.load(MODEL_PATH)
     validation = pd.read_parquet(VALIDATION_PATH)
 
     pred = model.predict_proba(validation[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
