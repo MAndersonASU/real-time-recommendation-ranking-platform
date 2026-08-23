@@ -1,6 +1,8 @@
 from collections import deque
 from dataclasses import dataclass, field
 
+from confluent_kafka import KafkaException
+
 from recommender.streaming.kafka_client import DEFAULT_BOOTSTRAP_SERVERS, build_consumer
 from recommender.streaming.replay_producer import TOPIC
 from recommender.streaming.schema import SCHEMA_VERSION, EventType, InteractionEvent
@@ -138,6 +140,7 @@ def run_consumer(
     consumer.subscribe([topic])
     polled = 0
     processed = 0
+    commit_failures = 0
     received_any = False
     empty_polls_before_first_message = 0
     try:
@@ -156,7 +159,24 @@ def run_consumer(
             polled += 1
             if stream_consumer.process(msg.value()):
                 processed += 1
-            consumer.commit(msg)
+            # `asynchronous=False` makes this call block and actually
+            # raise on failure -- the previous default (`asynchronous=True`)
+            # fires and forgets, so a real commit failure (the broker
+            # briefly unreachable, a rebalance in progress) was silently
+            # invisible, contradicting this function's own documented
+            # redelivery guarantee. Counted, not re-raised: one failed
+            # commit must not be able to kill the whole consumer loop --
+            # the message will simply be redelivered on the next poll or
+            # after a restart, the same safety net a real crash already
+            # relies on.
+            try:
+                consumer.commit(msg, asynchronous=False)
+            except KafkaException:
+                commit_failures += 1
     finally:
         consumer.close()
-    return {"messages_polled": polled, "messages_processed": processed}
+    return {
+        "messages_polled": polled,
+        "messages_processed": processed,
+        "commit_failures": commit_failures,
+    }

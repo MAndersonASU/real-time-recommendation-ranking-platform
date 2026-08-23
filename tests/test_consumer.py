@@ -1,6 +1,9 @@
 import json
+from unittest.mock import patch
 
-from recommender.streaming.consumer import MAX_RECENT_ITEMS, StreamConsumer
+from confluent_kafka import KafkaError, KafkaException
+
+from recommender.streaming.consumer import MAX_RECENT_ITEMS, StreamConsumer, run_consumer
 from recommender.streaming.schema import EventType, make_event
 
 
@@ -94,3 +97,60 @@ def test_monitoring_counters_track_events_by_type():
 
     assert consumer.counters.events_by_type == {"impression": 1, "click": 1, "skip": 1}
     assert consumer.counters.total_processed == 3
+
+
+class _FakeMessage:
+    def __init__(self, value: bytes):
+        self._value = value
+
+    def error(self):
+        return None
+
+    def value(self):
+        return self._value
+
+
+class _FailingCommitConsumer:
+    """Mimics confluent_kafka.Consumer just enough for run_consumer:
+    yields one real message, then raises KafkaException on every
+    commit -- the real failure mode a broker hiccup or an in-flight
+    rebalance can cause, which the previous asynchronous=True default
+    silently swallowed instead of surfacing.
+    """
+
+    def __init__(self, messages):
+        self._messages = list(messages)
+        self.commit_attempts = 0
+
+    def subscribe(self, topics):
+        pass
+
+    def poll(self, timeout):
+        return self._messages.pop(0) if self._messages else None
+
+    def commit(self, msg, asynchronous=False):
+        self.commit_attempts += 1
+        raise KafkaException(KafkaError(KafkaError._TIMED_OUT))
+
+    def close(self):
+        pass
+
+
+def test_run_consumer_counts_commit_failures_without_crashing_the_loop():
+    """Regression test for a real bug: run_consumer used to call
+    consumer.commit(msg) with the library's asynchronous=True default
+    and no error handling at all, so a real commit failure was silently
+    invisible -- contradicting the function's own documented redelivery
+    guarantee. This fails on the pre-fix code (KafkaException propagates
+    up uncaught, run_consumer never returns) and passes once the commit
+    is synchronous and its failure is counted, not swallowed or raised.
+    """
+    event = make_event(EventType.CLICK, "U1", "N1", 1, "t")
+    fake_consumer = _FailingCommitConsumer([_FakeMessage(event.to_json().encode())])
+
+    with patch("recommender.streaming.consumer.build_consumer", return_value=fake_consumer):
+        result = run_consumer(StreamConsumer(), group_id="g", max_messages=1, idle_timeout=0.1)
+
+    assert result["messages_processed"] == 1
+    assert result["commit_failures"] == 1
+    assert fake_consumer.commit_attempts == 1

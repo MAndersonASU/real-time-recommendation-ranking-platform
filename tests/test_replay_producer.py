@@ -1,8 +1,11 @@
+from unittest.mock import patch
+
 import pandas as pd
 
 from recommender.streaming.replay_producer import (
     events_for_row,
     order_and_limit,
+    replay,
     sleep_seconds_for_gap,
 )
 from recommender.streaming.schema import EventType
@@ -90,3 +93,53 @@ def test_events_for_row_produces_impression_plus_derived_skip_for_a_non_click():
     _impression_event, outcome_event = events_for_row(row)
 
     assert outcome_event.event_type is EventType.SKIP
+
+
+class _StalledProducer:
+    """Mimics confluent_kafka.Producer under real backpressure or a
+    broker outage partway through a run: produce() enqueues silently
+    (real delivery confirmation always arrives later, via poll()/
+    flush(), never synchronously inside produce()), and flush(timeout)
+    times out with messages still queued and no delivery callback ever
+    fired for them.
+    """
+
+    def __init__(self):
+        self.produced = 0
+
+    def produce(self, topic, key=None, value=None, callback=None):
+        self.produced += 1
+
+    def poll(self, timeout=0):
+        return 0
+
+    def flush(self, timeout=30):
+        return 2  # 2 messages still queued, undelivered, when flush gives up
+
+
+def test_replay_reports_undelivered_messages_instead_of_claiming_full_success():
+    """Regression test for a real bug: replay() discarded flush()'s
+    return value (the real count of messages still undelivered when it
+    gives up) and reported every enqueued event as sent regardless. This
+    fails on the pre-fix code (events_undelivered_after_flush is absent
+    and all_events_confirmed_delivered doesn't exist / can't be False)
+    and passes once flush's return value is captured and surfaced.
+    """
+    exploded = _exploded(
+        [
+            ("N1", 1, 1, "U1", "2019-11-15 08:00:00"),
+            ("N2", 0, 2, "U2", "2019-11-15 08:00:01"),
+        ]
+    )
+
+    with (
+        patch("recommender.streaming.replay_producer.ensure_topic"),
+        patch("recommender.streaming.replay_producer.build_producer", return_value=_StalledProducer()),
+    ):
+        report = replay(exploded, speed=999999.0)
+
+    assert report["events_sent"] == 4  # 2 rows x (impression + click/skip) enqueued
+    assert report["events_confirmed_delivered"] == 0  # callback never fired -- none confirmed
+    assert report["events_undelivered_after_flush"] == 2
+    assert report["all_events_confirmed_delivered"] is False
+    assert report["delivery_errors"] == []  # no explicit errors either -- just silence, the real risk

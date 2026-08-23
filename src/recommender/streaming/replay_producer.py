@@ -86,10 +86,18 @@ def replay(
 
     counts = {"impressions": 0, "clicks": 0, "skips": 0}
     delivery_errors: list = []
+    confirmed_delivered = {"n": 0}
 
     def on_delivery(err, _msg) -> None:
+        # Real confluent_kafka never calls this synchronously inside
+        # produce() -- it fires later, from poll()/flush(), only once a
+        # message's delivery outcome (success or failure) is actually
+        # known. `confirmed_delivered` therefore only ever counts real,
+        # broker-acknowledged deliveries, never messages merely enqueued.
         if err is not None:
             delivery_errors.append(str(err))
+        else:
+            confirmed_delivered["n"] += 1
 
     previous_time = None
     for row in events.itertuples():
@@ -119,17 +127,32 @@ def replay(
 
         producer.poll(0)
 
-    producer.flush(30)
+    # flush(timeout) returns the number of messages still in the local
+    # queue when it gives up -- real, undelivered-and-unconfirmed
+    # messages, not merely a "did we wait" signal. Discarding this
+    # return value (the original bug) meant a real broker stall or
+    # outage partway through a run produced a report claiming every
+    # event was sent with zero delivery errors, when some were neither
+    # confirmed delivered nor reported as failed.
+    still_queued_after_flush = producer.flush(30)
+    events_produced = sum(counts.values())
 
     return {
         "topic": topic,
         "speed": speed,
         "rows_replayed": len(events),
-        "events_sent": sum(counts.values()),
+        "events_sent": events_produced,
+        "events_confirmed_delivered": confirmed_delivered["n"],
+        "events_undelivered_after_flush": still_queued_after_flush,
         "impressions_sent": counts["impressions"],
         "clicks_sent": counts["clicks"],
         "skips_sent": counts["skips"],
         "delivery_errors": delivery_errors,
+        "all_events_confirmed_delivered": (
+            still_queued_after_flush == 0
+            and not delivery_errors
+            and confirmed_delivered["n"] == events_produced
+        ),
     }
 
 
