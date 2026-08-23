@@ -56,7 +56,19 @@ def evaluate_via_replay(
         impressions_with_clicks += 1
 
         user_id = group["user_id"].iloc[0]
-        request = RecommendationRequest(user_id=user_id, num_candidates=k)
+        # A real bug, found by audit: this request previously never set
+        # `request_time`, so `recommend()` fell back to the real wall
+        # clock -- meaning every 2019 replay impression was scored as
+        # ~2,470+ days old during freshness reranking, regardless of its
+        # real age, while only never-before-seen items (defaulted to
+        # age 0) looked "fresh". `apply_freshness_quota` can swap items
+        # into the slate based on that age, so this silently distorted
+        # which items replay actually recommended, not just a cosmetic
+        # number. Passing the impression's own real historical timestamp
+        # makes freshness reranking during replay behave the way it
+        # would have at the real historical moment being replayed.
+        request_time = group["time"].iloc[0]
+        request = RecommendationRequest(user_id=user_id, num_candidates=k, request_time=request_time)
         stage_timings: dict[str, float] = {}
         response = safe_recommend(
             request, context, stage_timings=stage_timings, use_recent_features=use_recent_features

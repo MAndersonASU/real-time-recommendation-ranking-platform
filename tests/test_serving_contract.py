@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pandas as pd
 import pytest
 from pydantic import ValidationError
 
@@ -31,6 +32,41 @@ def test_request_rejects_a_non_positive_candidate_count():
 def test_request_rejects_a_candidate_count_above_the_maximum():
     with pytest.raises(ValidationError):
         RecommendationRequest(user_id="u1", num_candidates=MAX_NUM_CANDIDATES + 1)
+
+
+def test_request_time_normalizes_a_z_suffixed_timestamp_to_naive_utc():
+    """Regression test for a real bug: a tz-aware request_time (any
+    ISO 8601 string with a Z or +00:00 offset -- ordinary client input)
+    used to pass this field with no normalization at all, then crash
+    recommendation generation downstream with a tz-naive/aware
+    subtraction TypeError. Fails on the pre-fix contract (request_time
+    keeps tzinfo=utc) and passes once the validator strips it.
+    """
+    request = RecommendationRequest(user_id="u1", request_time="2019-11-15T08:00:00Z")
+
+    assert request.request_time == datetime(2019, 11, 15, 8, 0, 0)  # noqa: DTZ001 -- asserting naive
+    assert request.request_time.tzinfo is None
+
+
+def test_request_time_converts_a_non_utc_offset_to_naive_utc():
+    request = RecommendationRequest(user_id="u1", request_time="2019-11-15T10:00:00+02:00")
+
+    assert request.request_time == datetime(2019, 11, 15, 8, 0, 0)  # noqa: DTZ001 -- 10:00+02:00 == 08:00 UTC
+    assert request.request_time.tzinfo is None
+
+
+def test_request_time_leaves_an_already_naive_datetime_unchanged():
+    naive = datetime(2019, 11, 15, 8, 0, 0)  # noqa: DTZ001 -- deliberately naive input
+    request = RecommendationRequest(user_id="u1", request_time=naive)
+
+    assert request.request_time == naive
+    assert request.request_time.tzinfo is None
+
+
+def test_request_time_accepts_a_pandas_timestamp_like_replay_evaluation_passes():
+    request = RecommendationRequest(user_id="u1", request_time=pd.Timestamp("2019-11-15 08:00:00"))
+
+    assert request.request_time == datetime(2019, 11, 15, 8, 0, 0)  # noqa: DTZ001 -- naive, matches source
 
 
 def test_recommended_item_rejects_a_score_outside_zero_to_one():

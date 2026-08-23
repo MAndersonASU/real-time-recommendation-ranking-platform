@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pandas as pd
 
 from recommender.tracking.replay_evaluation import evaluate_via_replay
@@ -59,6 +61,36 @@ def test_evaluate_via_replay_respects_the_num_impressions_sample_size():
     report = evaluate_via_replay(context, num_impressions=1, k=3, replay=REPLAY_BEHAVIORS)
 
     assert report["impressions_sampled"] == 1
+
+
+def test_evaluate_via_replay_passes_the_real_impression_time_not_the_wall_clock():
+    """Regression test for a real bug: evaluate_via_replay used to build
+    every request with no request_time at all, so recommend() fell back
+    to datetime.now() -- meaning a 2019 replay impression was scored
+    against 2026+ wall-clock time during freshness reranking (~2,470+
+    days old for every real item), not its own real historical moment.
+    Fails on the pre-fix code (request_time stays None, wall clock used)
+    and passes once the impression's own `time` column is passed through.
+    """
+    import recommender.tracking.replay_evaluation as replay_evaluation_module
+
+    context = _build_context()
+    captured_request_times = []
+    real_safe_recommend = replay_evaluation_module.safe_recommend
+
+    def _capturing_safe_recommend(request, *args, **kwargs):
+        captured_request_times.append(request.request_time)
+        return real_safe_recommend(request, *args, **kwargs)
+
+    with patch.object(replay_evaluation_module, "safe_recommend", side_effect=_capturing_safe_recommend):
+        evaluate_via_replay(context, num_impressions=2, k=3, replay=REPLAY_BEHAVIORS)
+
+    assert len(captured_request_times) == 2
+    for request_time, expected in zip(
+        captured_request_times, pd.to_datetime(["2019-11-15T08:00:00", "2019-11-15T09:00:00"]), strict=True
+    ):
+        assert request_time is not None, "request_time was never set -- recommend() fell back to the wall clock"
+        assert request_time == expected
 
 
 def test_evaluate_via_replay_records_the_recent_features_toggle_and_a_real_latency_sample():

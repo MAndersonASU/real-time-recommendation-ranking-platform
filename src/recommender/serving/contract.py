@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from recommender.evaluation.contract import TOP_K
 
@@ -17,6 +17,27 @@ class RecommendationRequest(BaseModel):
     user_id: str = Field(min_length=1)
     num_candidates: int = Field(default=TOP_K, gt=0, le=MAX_NUM_CANDIDATES)
     request_time: datetime | None = None
+
+    @field_validator("request_time")
+    @classmethod
+    def _normalize_to_naive_utc(cls, value: datetime | None) -> datetime | None:
+        """A real, reproducible bug: a tz-aware `request_time` (any
+        ISO 8601 string with a `Z` or `+00:00` offset -- ordinary,
+        correct client input) passed this field's original bare
+        `datetime | None` type with no error, then crashed recommendation
+        generation downstream with `TypeError: Cannot subtract tz-naive
+        and tz-aware datetime-like objects` when compared against the
+        naive `first_seen` timestamps every other part of this project
+        uses (docs/dataset-source.md: MIND's own timestamps carry no
+        timezone). Normalizing here, at the one boundary where untrusted
+        input enters the system, means every downstream consumer keeps
+        working with the naive datetimes it already assumes -- instead
+        of every caller of `request_time` needing to guess how to handle
+        a tz-aware value.
+        """
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
 
 
 class RecommendedItem(BaseModel):
