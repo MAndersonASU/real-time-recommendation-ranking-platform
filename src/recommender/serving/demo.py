@@ -7,7 +7,8 @@ from recommender.explanation.contract import build_explanation_requests
 from recommender.explanation.generation import generate_explanation
 from recommender.explanation.retrieval import retrieve_support_context
 from recommender.serving.contract import RecommendationRequest
-from recommender.serving.pipeline import ServingContext, recommend
+from recommender.serving.fallback import safe_recommend
+from recommender.serving.pipeline import ServingContext
 
 STAGE_ORDER = [
     "feature_lookup_ms",
@@ -48,21 +49,31 @@ def build_demo_data(
     the demo page shows from that single response -- never a second,
     separately-computed number for display purposes.
 
+    Goes through `safe_recommend`, not `recommend` directly (a real bug,
+    found by audit: this previously called `recommend()` directly, so a
+    real dependency failure -- an unreachable Redis, a corrupted model
+    file -- crashed this page with an unhandled 500 instead of degrading
+    to the same popularity fallback `/recommend` already falls back to).
+    A fallback response never has matched signals, so no explanation
+    renders for that item -- an honest reflection of not having run the
+    real personalized path, not a bug in the explanation layer.
+
     `news_by_id` defaults to the real, cached catalog load; tests pass
     a small synthetic frame instead, the same dependency-injection
     pattern already used for the explanation layer's own generator.
     """
     stage_timings: dict[str, float] = {}
     request = RecommendationRequest(user_id=user_id, num_candidates=num_candidates)
-    response = recommend(
+    response = safe_recommend(
         request, context, stage_timings=stage_timings, include_matched_signals=True
     )
 
     news_by_id = news_by_id if news_by_id is not None else _news_by_id()
     explanations = {}
-    for explanation_request in build_explanation_requests(response):
-        support = retrieve_support_context(explanation_request, news_by_id)
-        explanations[support.news_id] = generate_explanation(support)
+    if response.matched_signals is not None:
+        for explanation_request in build_explanation_requests(response):
+            support = retrieve_support_context(explanation_request, news_by_id)
+            explanations[support.news_id] = generate_explanation(support)
 
     items = []
     for item in response.recommendations:

@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import patch
 
 import redis
@@ -6,8 +7,19 @@ from redis.backoff import NoBackoff
 from redis.retry import Retry
 
 from recommender.monitoring.quality_signals import QualitySignalTracker
+from recommender.monitoring.structured_logging import hash_user_id
 from recommender.serving import app as app_module
-from tests.test_pipeline import _build_context
+from recommender.serving import demo as demo_module
+from tests.test_pipeline import NEWS, _build_context
+
+NEWS_BY_ID = NEWS.set_index("news_id")
+
+
+def _dead_redis_client() -> redis.Redis:
+    return redis.Redis(
+        host="localhost", port=6390, socket_connect_timeout=0.2, socket_timeout=0.2,
+        decode_responses=True, retry=Retry(NoBackoff(), 0), retry_on_error=[],
+    )
 
 
 def _client() -> TestClient:
@@ -112,3 +124,68 @@ def test_recommend_endpoint_still_returns_the_real_response_when_quality_trackin
     body = response.json()
     assert body["user_id"] == "u1"
     assert len(body["recommendations"]) == 3
+
+
+def test_demo_endpoint_rejects_an_out_of_range_num_candidates_with_422_not_500():
+    """Regression test for a real bug, found by audit: `num_candidates`
+    had no query-level constraint, so an out-of-range value reached
+    `RecommendationRequest` deep inside `build_demo_data` and raised a
+    raw, uncaught pydantic ValidationError -- an unhandled 500. Fails on
+    the pre-fix code (500) and passes once the query parameter itself
+    enforces the same bounds `/recommend`'s body already does.
+    """
+    client = _client()
+
+    response = client.get("/demo/u1", params={"num_candidates": 0})
+
+    assert response.status_code == 422
+
+
+def test_demo_endpoint_falls_back_instead_of_crashing_on_a_real_redis_failure():
+    """Regression test for a real bug, found by audit: `/demo` called
+    `recommend()` directly, bypassing the same `safe_recommend` fallback
+    `/recommend` already uses -- so a real dependency failure (here, an
+    unreachable Redis) crashed this page with an unhandled 500 instead of
+    degrading to the popularity fallback. Fails on the pre-fix code (500)
+    and passes once `/demo` goes through `safe_recommend` too.
+    """
+    context = _build_context(redis_client=_dead_redis_client())
+    app_module._state["context"] = context
+    demo_module._news_by_id.cache_clear()
+
+    with patch.object(demo_module, "load_catalog", return_value=NEWS):
+        response = TestClient(app_module.app).get("/demo/u1", params={"num_candidates": 3})
+
+    assert response.status_code == 200
+    assert "u1" in response.text
+
+
+def test_demo_endpoint_logs_a_hashed_not_raw_user_id():
+    """Regression test for a real bug, found by audit: the access-log
+    middleware logs `request.url.path` verbatim for every route, so the
+    raw user id was written to the log for every `/demo/{user_id}`
+    request -- inconsistent with `/recommend`'s own log line, which only
+    ever logs a hash. Fails on the pre-fix code (the raw id appears in
+    the logged path) and passes once that path is redacted before
+    logging.
+    """
+    client = _client()
+    demo_module._news_by_id.cache_clear()
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture()
+    app_module.logger.addHandler(handler)
+    try:
+        with patch.object(demo_module, "load_catalog", return_value=NEWS):
+            client.get("/demo/a-very-identifiable-raw-user-id", params={"num_candidates": 1})
+    finally:
+        app_module.logger.removeHandler(handler)
+
+    logged_paths = [r.__dict__["path"] for r in records if "path" in r.__dict__]
+    assert logged_paths, "expected the access-log middleware to log at least one request"
+    assert all("a-very-identifiable-raw-user-id" not in path for path in logged_paths)
+    assert any(hash_user_id("a-very-identifiable-raw-user-id") in path for path in logged_paths)

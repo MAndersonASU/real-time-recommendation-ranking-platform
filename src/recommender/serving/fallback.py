@@ -70,6 +70,7 @@ def safe_recommend(
     on_fallback: Callable[[], None] | None = None,
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
+    include_matched_signals: bool = False,
 ) -> RecommendationResponse:
     """The real path, with a safe popularity fallback if a real
     dependency it needs turns out to be unavailable. Deliberately
@@ -83,14 +84,20 @@ def safe_recommend(
     exact branch, rather than a caller inferring "was this a fallback"
     from the response's feature flags, which a genuine cold-start
     response can also legitimately have both set to False.
-    `stage_timings` and `use_recent_features` pass straight through to
-    `recommend()` on the real path (there is no per-stage breakdown or
-    recent-features toggle for a fallback response, since it never runs
-    those stages at all).
+    `stage_timings`, `use_recent_features`, and `include_matched_signals`
+    pass straight through to `recommend()` on the real path (there is no
+    per-stage breakdown, recent-features toggle, or matched-signals
+    detail for a fallback response, since it never runs those stages at
+    all -- `build_fallback_response` always leaves `matched_signals`
+    unset).
     """
     try:
         return recommend(
-            request, context, stage_timings=stage_timings, use_recent_features=use_recent_features
+            request,
+            context,
+            stage_timings=stage_timings,
+            use_recent_features=use_recent_features,
+            include_matched_signals=include_matched_signals,
         )
     except DEPENDENCY_FAILURE_EXCEPTIONS:
         if on_fallback is not None:

@@ -1,8 +1,9 @@
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from recommender.monitoring.dashboard import render_dashboard_html
@@ -21,10 +22,32 @@ from recommender.monitoring.structured_logging import (
 )
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.config import load_settings
-from recommender.serving.contract import RecommendationRequest, RecommendationResponse
+from recommender.serving.contract import (
+    MAX_NUM_CANDIDATES,
+    RecommendationRequest,
+    RecommendationResponse,
+)
 from recommender.serving.demo import DEFAULT_NUM_CANDIDATES, render_demo_html
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext, build_serving_context
+
+_DEMO_PATH_PATTERN = re.compile(r"^(?P<prefix>/demo/)(?P<user_id>[^/]+)$")
+
+
+def _loggable_path(path: str) -> str:
+    """Redacts the raw user id out of a `/demo/{user_id}` path before it
+    reaches a log line. A real bug, found by audit: this middleware logs
+    `request.url.path` verbatim for every route, so the raw, unhashed
+    user id was written to the access log for every `/demo` request --
+    inconsistent with `/recommend`'s own explicit log line, which only
+    ever logs `hash_user_id(payload.user_id)`. Every other route's path
+    has no user identifier embedded in it at all, so this only needs to
+    special-case `/demo`.
+    """
+    match = _DEMO_PATH_PATTERN.match(path)
+    if match is None:
+        return path
+    return f"{match.group('prefix')}{hash_user_id(match.group('user_id'))}"
 
 configure_structured_logging()
 logger = logging.getLogger("recommender.serving.app")
@@ -89,7 +112,7 @@ async def request_id_and_access_log(request: Request, call_next):
             "event": "request_completed",
             "request_id": request.state.request_id,
             "method": request.method,
-            "path": request.url.path,
+            "path": _loggable_path(request.url.path),
             "status_code": response.status_code,
             "duration_ms": round(duration_ms, 2),
         },
@@ -167,13 +190,25 @@ def dashboard() -> Response:
 
 
 @app.get("/demo/{user_id}", response_class=Response)
-def demo(user_id: str, num_candidates: int = DEFAULT_NUM_CANDIDATES) -> Response:
+def demo(
+    user_id: str,
+    num_candidates: int = Query(DEFAULT_NUM_CANDIDATES, gt=0, le=MAX_NUM_CANDIDATES),
+) -> Response:
     """A real, human-readable trace of one real request through the full
     pipeline (docs/professional-demonstration.md) -- per-stage latency,
     the real ranked slate, real personalization status, and a real
     grounded explanation per item where the evidence supports one.
-    Calls the real `recommend()` exactly once; nothing on this page is
-    computed a second time for display.
+    Calls the real recommendation path exactly once; nothing on this
+    page is computed a second time for display.
+
+    `num_candidates`'s bounds are enforced here at the query-parameter
+    level, matching `RecommendationRequest`'s own `gt=0, le=MAX_NUM_
+    CANDIDATES` constraint. A real bug, found by audit: before this,
+    `num_candidates=0` (or any other out-of-range value) passed FastAPI's
+    unconstrained `int` parsing untouched, reached `RecommendationRequest`
+    deep inside `build_demo_data`, and raised a raw, uncaught pydantic
+    `ValidationError` there -- an unhandled 500, not the same 422 a
+    request with an equally invalid `/recommend` body already gets.
     """
     return Response(content=render_demo_html(user_id, _context(), num_candidates), media_type="text/html")
 
