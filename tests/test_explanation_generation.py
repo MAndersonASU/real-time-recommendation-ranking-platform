@@ -115,3 +115,51 @@ def test_build_template_explanation_combines_both_clauses_when_both_apply():
 
     assert "autos" in template
     assert "read before" in template
+
+
+def test_generate_explanation_rejects_a_fabricated_claim_on_content_only_evidence():
+    """Regression test for a real, reproduced bug: the faithfulness gate
+    only ever checked the category-match branch, so a recommendation
+    grounded purely in content similarity (no category to check) had no
+    real check at all -- any fabricated text passed unchanged. This is
+    the exact fabrication real testing produced: a claim about a named
+    real-world figure with zero connection to any real matched signal.
+    Fails on the pre-fix gate (the fabrication is returned as-is) and
+    passes once the gate also rejects an invented capitalized term.
+    """
+    context = _context(category_match=False, content_similarity=0.4)
+    generator = _FakeGenerator("The President personally selected this story for you.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == build_template_explanation(context)
+    assert "President" not in response.explanation
+
+
+def test_generate_explanation_rejects_an_invented_entity_even_when_the_category_word_is_kept():
+    """The category-word check alone isn't enough: a rewrite could keep
+    the required category word and still invent an unrelated claim
+    alongside it. The capitalized-term check catches this even when the
+    category-specific check alone would have passed it.
+    """
+    context = _context(category_match=True, content_similarity=0.0, category="sports")
+    generator = _FakeGenerator("NASA recommends this because you like sports.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == build_template_explanation(context)
+    assert "NASA" not in response.explanation
+
+
+def test_generate_explanation_accepts_a_genuine_rewrite_with_no_invented_terms():
+    """Confirms the new check doesn't overreach: an honest rewrite that
+    only rewords the template, introducing no new capitalized term,
+    must still be accepted -- the fix should reject fabrication, not
+    reject every rewrite.
+    """
+    context = _context(category_match=False, content_similarity=0.4)
+    generator = _FakeGenerator("this was picked because its content closely matches what you read.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == "this was picked because its content closely matches what you read."

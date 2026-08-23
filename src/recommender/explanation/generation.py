@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
@@ -98,14 +99,63 @@ def build_template_explanation(context: SupportContext) -> str:
     return "Recommended because " + " and ".join(clauses) + "."
 
 
-def _preserves_required_facts(text: str, context: SupportContext) -> bool:
-    """A real, checkable faithfulness gate applied before a model's
-    rewrite is ever used: does it still contain the one real fact it
-    was given, or did the paraphrase drop it. Not a guarantee against
-    every possible failure mode -- a cheap, honest check against the
-    specific failure this step's own real testing actually found.
+# Ordinary sentence openers a real, faithful rewrite routinely starts
+# with -- allowed regardless of case or position, since flagging every
+# sentence-initial capital would reject harmless rewrites, not just
+# fabricated ones. Deliberately small and specific to this project's
+# own template vocabulary, not a general stopword list.
+_COMMON_SENTENCE_STARTERS = {
+    "the", "this", "it", "a", "an", "that", "these", "recommended", "its", "you", "your",
+}
+
+
+def _introduces_an_unfounded_capitalized_word(text: str, template: str) -> bool:
+    """True if `text` contains a capitalized word that isn't just a
+    re-casing of a word the template already had (e.g. "sports" ->
+    "SPORTS" is fine) and isn't an ordinary sentence opener -- what a
+    real invented proper noun or claim looks like ("The President...",
+    "NASA recommends..."). Compared case-insensitively against every
+    word in the template, not only the template's own capitalized
+    words, and checked by word regardless of position, so a genuine
+    proper noun that happens to start the sentence ("NASA...") is still
+    caught, not excluded just for being first.
+
+    Not a guarantee against every possible failure mode -- a cheap,
+    honest check against the specific failures this project's own real
+    testing actually found, not a general hallucination detector.
     """
-    return not (context.category_match and context.category.lower() not in text.lower())
+    template_words = {w.lower() for w in re.findall(r"\b[A-Za-z]+\b", template)}
+    for word in re.findall(r"\b[A-Za-z]+\b", text):
+        if not word[0].isupper():
+            continue
+        lowered = word.lower()
+        if lowered in _COMMON_SENTENCE_STARTERS or lowered in template_words:
+            continue
+        return True
+    return False
+
+
+def _preserves_required_facts(text: str, context: SupportContext, template: str) -> bool:
+    """A real, checkable faithfulness gate applied before a model's
+    rewrite is ever used, covering both real grounding signals, not
+    only one of them:
+
+    1. When the evidence is a category match, the real category word
+       must still be present -- catches the rewrite dropping the one
+       fact it was given.
+    2. Regardless of which evidence applies, the rewrite must not
+       introduce an unfounded capitalized word absent from the
+       deterministic template -- catches the rewrite inventing a claim
+       it was never given at all. A real, reproduced example of
+       exactly this: given only a content-similarity signal (no
+       category to check), the model produced "The President
+       personally selected this story for you" and the original
+       version of this gate accepted it unchanged, since it only ever
+       checked the category-match branch.
+    """
+    if context.category_match and context.category.lower() not in text.lower():
+        return False
+    return not _introduces_an_unfounded_capitalized_word(text, template)
 
 
 def generate_explanation(
@@ -131,7 +181,7 @@ def generate_explanation(
         f"facts or names. Sentence: {template}"
     )
     rewritten = active_generator.generate(prompt)
-    explanation = rewritten if _preserves_required_facts(rewritten, context) else template
+    explanation = rewritten if _preserves_required_facts(rewritten, context, template) else template
 
     return ExplanationResponse(
         news_id=context.news_id,
