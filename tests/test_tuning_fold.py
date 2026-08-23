@@ -1,6 +1,10 @@
 import pandas as pd
 
-from recommender.evaluation.tuning_fold import split_train_for_tuning
+from recommender.evaluation.tuning_fold import (
+    chronological_tuning_split_impression_ids,
+    split_rows_by_impression_ids,
+    split_train_for_tuning,
+)
 
 
 def _synthetic_rows(n_impressions: int = 200, candidates_per_impression: int = 3) -> pd.DataFrame:
@@ -73,3 +77,47 @@ def test_split_never_leaks_a_specific_impressions_rows_across_the_boundary():
         in_fit = (fit_rows["impression_id"] == impression_id).sum()
         in_tune = (tune_rows["impression_id"] == impression_id).sum()
         assert in_fit == 0 or in_tune == 0  # never split across both
+
+
+def _synthetic_behaviors(n_impressions: int = 100) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "impression_id": range(n_impressions),
+            "user_id": [f"u{i}" for i in range(n_impressions)],
+            "time": pd.date_range("2019-11-09", periods=n_impressions, freq="h"),
+        }
+    )
+
+
+def test_chronological_split_puts_only_the_earliest_impressions_in_fit():
+    behaviors = _synthetic_behaviors(n_impressions=100)
+
+    fit_ids, tune_ids = chronological_tuning_split_impression_ids(behaviors, fraction=0.2)
+
+    assert fit_ids.isdisjoint(tune_ids)
+    assert len(fit_ids) + len(tune_ids) == 100
+    # The fold boundary is a real point in time, not a random draw: every
+    # fit id's impression_id (== its chronological rank here, by
+    # construction) must be less than every tune id's.
+    assert max(fit_ids) < min(tune_ids)
+
+
+def test_chronological_split_respects_the_requested_fraction():
+    behaviors = _synthetic_behaviors(n_impressions=1000)
+
+    fit_ids, tune_ids = chronological_tuning_split_impression_ids(behaviors, fraction=0.2)
+
+    assert len(tune_ids) == 200
+    assert len(fit_ids) == 800
+
+
+def test_split_rows_by_impression_ids_applies_the_given_partition():
+    rows = _synthetic_rows(n_impressions=10, candidates_per_impression=2)
+    fit_ids = {0, 1, 2, 3, 4}
+    tune_ids = {5, 6, 7, 8, 9}
+
+    fit_rows, tune_rows = split_rows_by_impression_ids(rows, fit_ids, tune_ids)
+
+    assert set(fit_rows["impression_id"]) == fit_ids
+    assert set(tune_rows["impression_id"]) == tune_ids
+    assert len(fit_rows) + len(tune_rows) == len(rows)

@@ -57,50 +57,66 @@ Both the diversity cap and the freshness threshold hold up under a
 genuinely disjoint, held-out re-check. The original decisions were not
 simply noise fit to validation.
 
-## Real, unresolved finding: the popularity check does not reconfirm cleanly
+## Real finding, now resolved: the popularity discrepancy was a recency-leakage artifact
 
-The single-feature popularity AUC check does **not** reproduce the
-original validation result. Measured with real, out-of-sample
-popularity (recomputed from only the fit half of the tuning fold, to
-avoid the exact in-sample leakage mechanism `docs/ranking-model.md`
-itself names as the reason popularity looked artificially predictive
-in the first place):
+An earlier version of this document reported the single-feature
+popularity AUC check as a real, unresolved discrepancy. Measured with
+real, out-of-sample popularity (recomputed from only the fit half of
+the tuning fold, to avoid the exact in-sample leakage mechanism
+`docs/ranking-model.md` itself names as the reason popularity looked
+artificially predictive in the first place):
 
-| | Original (validation) | Tune fold (out-of-sample popularity) |
+| | Original (validation) | Random-split tune fold |
 |---|---|---|
-| Popularity-alone AUC | 0.47 (worse than random) | **0.665** (clearly better than random) |
+| Popularity-alone AUC | 0.47 (worse than random) | 0.665 (clearly better than random) |
 
-This is a real, reproducible discrepancy, not a bug in the
-verification code — it held even after correcting an initial version
-of this check that used in-sample popularity by mistake (see the
-docstring in `verify_tuning_decisions.py` for that first, incorrect
-attempt and why it was wrong). A plausible explanation, not yet
-confirmed: `train` and the tune fold share the same 5-day window, where
-item popularity may be genuinely stable enough within that single week
-to predict clicks; `validation` is the very next day, where popularity
-computed from the prior week may transfer far less cleanly if news
-items are highly perishable. That would mean the original validation
-measurement and this tune-fold measurement are both real, but are
-measuring different things (next-day transfer vs. within-week
-correlation), not that one of them is simply wrong.
+This held even after correcting an initial version of this check that
+used in-sample popularity by mistake (see the docstring in
+`verify_tuning_decisions.py` for that first, incorrect attempt and why
+it was wrong). The remaining, plausible explanation: `split_train_for_
+tuning` splits `train`'s own rows *randomly* by impression_id, so a
+"fit" impression and a "tune" impression can sit right next to each
+other in real time — letting short-term popularity recency (an item
+hot this hour is usually still hot next hour) leak across the split in
+a way the real `validation` split (a separate, later day) never could.
 
-**This finding is not resolved.** It does not overturn the original
-decision to exclude `popularity` on its own — the original,
-next-day-transfer measurement (AUC 0.47 on the actual day the model
-would need to generalize to) is arguably the more relevant question for
-a production model anyway — but it means the original decision's
-justification ("popularity is uninformative") is not the full picture,
-and the real underlying question (does popularity transfer to the very
-next day, or does it only look useful within the same week it was
-computed from) has not been definitively answered by either
-measurement alone.
+**Directly tested, not left as a hypothesis.**
+`chronological_tuning_split_impression_ids`
+(`src/recommender/evaluation/tuning_fold.py`) carves the same kind of
+fold by real chronological order instead — the earliest 80% of train's
+impressions become `fit`, the most recent 20% become `tune` — giving
+`tune` the same kind of real temporal gap from `fit` that `validation`
+has from `train`. Re-running the identical out-of-sample popularity
+check against this chronological split
+(`verify_popularity_exclusion_with_temporal_split` in
+`verify_tuning_decisions.py`):
+
+| | Original (validation) | Random-split tune fold | Chronological-split tune fold |
+|---|---|---|---|
+| Popularity-alone AUC | 0.47 | 0.665 | **0.489** |
+
+The chronological split's AUC (0.489) lands almost exactly on the
+original validation result (0.47) — confirming the recency-leakage
+explanation directly, rather than leaving it a plausible-but-unproven
+story. The random split's inflated 0.665 was a real artifact of
+temporal proximity between its own fit and tune halves, not evidence
+that popularity is actually predictive of a real future click.
 
 ## What this means going forward
 
 - The diversity cap and freshness threshold: genuinely reconfirmed by
   held-out data, not just validation. No further action needed.
-- The popularity exclusion: the original decision may still be the
-  right one for production use (next-day transfer is what actually
-  matters), but the discrepancy above is a real, open question, not
-  swept into either "confirmed" or "overturned." Documented here rather
-  than resolved by picking whichever answer is more convenient.
+- The popularity exclusion: **fully reconfirmed**. The original
+  decision to exclude `popularity` (AUC 0.47, no better than random on
+  genuinely out-of-sample, temporally-realistic data) holds. The
+  earlier discrepancy is now understood, not just disclosed: it was an
+  artifact of `split_train_for_tuning`'s random split letting recency
+  leak across the fold boundary, confirmed directly by a chronological
+  re-check rather than assumed. No model change needed.
+- `split_train_for_tuning`'s random-by-impression_id split remains the
+  right default for the diversity and freshness checks above (both
+  reconfirmed cleanly under it, and neither has any reason to be
+  sensitive to short-term recency the way popularity is) —
+  `chronological_tuning_split_impression_ids` is a second, deliberately
+  different tool for exactly this kind of recency-sensitive question,
+  not a replacement.

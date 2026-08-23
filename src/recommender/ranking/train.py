@@ -41,10 +41,14 @@ TRAIN_REPORT_PATH = Path("data/processed/mind_small/ranking_train_report.json")
 # hyperparameter-selection leakage, corrected going forward by
 # `recommender.evaluation.tuning_fold` and
 # `recommender.evaluation.verify_tuning_decisions`. Re-checked against a
-# held-out fold carved from train instead: the result did not cleanly
-# reconfirm (out-of-sample popularity AUC 0.665 on the tune fold, not
-# comparable to the original 0.47), a real open question documented
-# honestly rather than resolved either way.
+# held-out fold carved from train instead: a random split initially
+# looked like it didn't reconfirm (out-of-sample popularity AUC 0.665,
+# not comparable to 0.47) -- traced to recency leakage across the
+# random split's own fit/tune boundary, then directly confirmed by
+# re-running the same check against a chronologically-split fold
+# instead (AUC 0.489, landing almost exactly on the original 0.47). The
+# exclusion decision is fully reconfirmed, not just disclosed as an open
+# question.
 MODEL_FEATURE_COLUMNS = [c for c in FEATURE_COLUMNS if c != "popularity"]
 
 

@@ -10,7 +10,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from recommender.evaluation.contract import load_catalog, load_split
-from recommender.evaluation.tuning_fold import split_train_for_tuning
+from recommender.evaluation.tuning_fold import (
+    chronological_tuning_split_impression_ids,
+    split_rows_by_impression_ids,
+    split_train_for_tuning,
+)
 from recommender.ranking.baselines import compute_popularity
 from recommender.ranking.build_dataset import TRAIN_PATH
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
@@ -79,6 +83,56 @@ def verify_popularity_exclusion() -> dict:
         "original_validation_auc": ORIGINAL_VALIDATION_POPULARITY_AUC,
         "tune_fold_auc_out_of_sample_popularity": auc,
         "decision_confirmed": auc <= 0.55,  # still no better than a coin flip
+        "fit_rows": len(fit_rows),
+        "tune_rows": len(tune_rows),
+    }
+
+
+def verify_popularity_exclusion_with_temporal_split() -> dict:
+    """Directly tests the one real, unresolved open question left by
+    `verify_popularity_exclusion` (`docs/evaluation-integrity.md`): does
+    a *random* split of train's own rows let short-term popularity
+    recency leak across the fit/tune boundary in a way the real
+    `validation` split (a separate, later day) never could?
+
+    Identical to `verify_popularity_exclusion` in every respect except
+    one: `fit`/`tune` are carved by real chronological order
+    (`chronological_tuning_split_impression_ids`) instead of randomly by
+    impression_id. If recency leakage explains the discrepancy (0.665 on
+    the random split vs. 0.47 on validation), this chronological split
+    -- which gives `tune` the same kind of real temporal gap from `fit`
+    that `validation` has from `train` -- should bring the AUC back down
+    toward the original 0.47. If it doesn't, that's real evidence the
+    discrepancy is not simply a recency-leakage artifact, and the
+    original exclusion decision would need real reconsideration (a
+    separate, larger decision requiring model retraining, not made
+    here).
+    """
+    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_behaviors = load_split("train")
+    fit_impression_ids, tune_impression_ids = chronological_tuning_split_impression_ids(train_behaviors)
+
+    fit_rows, tune_rows = split_rows_by_impression_ids(train_rows, fit_impression_ids, tune_impression_ids)
+    fit_behaviors, _tune_behaviors = split_rows_by_impression_ids(
+        train_behaviors, fit_impression_ids, tune_impression_ids
+    )
+    popularity_fit_only = compute_popularity(fit_behaviors)
+
+    def _out_of_sample_popularity(rows: pd.DataFrame) -> pd.Series:
+        return np.log1p(rows["news_id"].map(popularity_fit_only).fillna(0.0))
+
+    fit_popularity = _out_of_sample_popularity(fit_rows)
+    tune_popularity = _out_of_sample_popularity(tune_rows)
+
+    pipeline = Pipeline([("scale", StandardScaler()), ("logreg", LogisticRegression(max_iter=1000))])
+    pipeline.fit(fit_popularity.to_numpy().reshape(-1, 1), fit_rows["clicked"].to_numpy())
+    pred = pipeline.predict_proba(tune_popularity.to_numpy().reshape(-1, 1))[:, 1]
+    auc = float(roc_auc_score(tune_rows["clicked"], pred))
+
+    return {
+        "original_validation_auc": ORIGINAL_VALIDATION_POPULARITY_AUC,
+        "chronological_split_tune_fold_auc": auc,
+        "recency_leakage_explanation_supported": auc <= 0.55,
         "fit_rows": len(fit_rows),
         "tune_rows": len(tune_rows),
     }
@@ -170,6 +224,7 @@ def verify_freshness_threshold() -> dict:
 def main() -> None:
     report = {
         "popularity_exclusion": verify_popularity_exclusion(),
+        "popularity_exclusion_temporal_split_diagnostic": verify_popularity_exclusion_with_temporal_split(),
         "diversity_cap": verify_diversity_cap(),
         "freshness_threshold": verify_freshness_threshold(),
     }

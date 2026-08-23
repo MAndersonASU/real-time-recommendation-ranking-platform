@@ -40,3 +40,46 @@ def split_train_for_tuning(
     fit_rows = train_rows[~is_tune_row].reset_index(drop=True)
     tune_rows = train_rows[is_tune_row].reset_index(drop=True)
     return fit_rows, tune_rows
+
+
+def chronological_tuning_split_impression_ids(
+    behaviors: pd.DataFrame, fraction: float = TUNE_FOLD_FRACTION
+) -> tuple[set, set]:
+    """A second, deliberately different way to carve a tuning fold from
+    `train`: by real chronological order (earliest `1 - fraction` of
+    impressions become `fit`, the most recent `fraction` become `tune`)
+    instead of `split_train_for_tuning`'s random-by-impression_id split.
+
+    Built specifically to test one real, unresolved finding
+    (`docs/evaluation-integrity.md`): the random split's popularity
+    re-verification did not reconfirm the original validation-based
+    result (AUC 0.665 vs. 0.47), and a plausible but unconfirmed
+    explanation was that `train`'s own rows all sit within the same
+    5-day window, so a *random* split lets fit/tune impressions from the
+    very same hours sit next to each other -- letting short-term
+    popularity recency (an item hot this hour is usually still hot next
+    hour) leak across the split in a way the real `validation` split (a
+    separate, later day, `docs/evaluation-protocol.md`) never could. A
+    chronological split gives `tune` the same kind of real temporal gap
+    from `fit` that `validation` has from `train`, directly testing that
+    explanation rather than leaving it a hypothesis.
+    """
+    ordered = behaviors.sort_values("time")["impression_id"]
+    split_index = int(len(ordered) * (1 - fraction))
+    fit_impression_ids = set(ordered.iloc[:split_index])
+    tune_impression_ids = set(ordered.iloc[split_index:])
+    return fit_impression_ids, tune_impression_ids
+
+
+def split_rows_by_impression_ids(
+    rows: pd.DataFrame, fit_impression_ids: set, tune_impression_ids: set
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Applies an already-computed fit/tune impression-id partition (from
+    either split function above) to any row-level frame that shares the
+    same `impression_id` space -- the same partition can then be applied
+    consistently to both the built feature table and the raw behaviors
+    table, exactly as `verify_popularity_exclusion` already needs.
+    """
+    fit_rows = rows[rows["impression_id"].isin(fit_impression_ids)].reset_index(drop=True)
+    tune_rows = rows[rows["impression_id"].isin(tune_impression_ids)].reset_index(drop=True)
+    return fit_rows, tune_rows
