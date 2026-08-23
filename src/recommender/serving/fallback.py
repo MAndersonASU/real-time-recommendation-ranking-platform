@@ -1,9 +1,12 @@
+import logging
 from collections.abc import Callable
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import redis
+
+logger = logging.getLogger("recommender.serving.fallback")
 
 from recommender.ranking.baselines import rank_by_popularity
 from recommender.serving.contract import (
@@ -100,6 +103,23 @@ def safe_recommend(
             include_matched_signals=include_matched_signals,
         )
     except DEPENDENCY_FAILURE_EXCEPTIONS:
+        # A real, disclosed limitation, found by audit: RuntimeError is
+        # deliberately broad (the common base torch and Faiss both raise
+        # for an unusable model/index), which means a genuine programming
+        # bug that happens to raise RuntimeError -- not just a real
+        # dependency failure -- would also be swallowed into a "safe"
+        # popularity fallback with no visible trace at all. Narrowing the
+        # caught type risks the opposite failure (a real dependency
+        # outage no longer degrading gracefully), so this doesn't narrow
+        # it -- it logs the full exception here, at the one place that
+        # sees it, so a spike in fallbacks caused by an actual bug is at
+        # least investigable from the logs rather than fully invisible.
+        logger.exception(
+            "safe_recommend fell back to popularity ranking for user_id=%r -- see the "
+            "exception above; if this keeps recurring for reasons other than a genuinely "
+            "unavailable dependency, it may be a real bug rather than degraded infrastructure.",
+            request.user_id,
+        )
         if on_fallback is not None:
             on_fallback()
         return build_fallback_response(request, context)

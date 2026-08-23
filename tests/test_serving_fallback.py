@@ -1,3 +1,5 @@
+import logging
+
 import redis
 from redis.backoff import NoBackoff
 from redis.retry import Retry
@@ -67,3 +69,34 @@ def test_fallback_response_scores_are_bounded_and_never_claims_personalization()
     assert all(0.0 <= item.score <= 1.0 for item in response.recommendations)
     assert response.durable_features_used is False
     assert response.recent_features_used is False
+
+
+def test_safe_recommend_logs_the_real_exception_before_falling_back():
+    """Regression test for a real, disclosed limitation, found by audit:
+    DEPENDENCY_FAILURE_EXCEPTIONS includes RuntimeError, the common base
+    torch and Faiss both raise for an unusable model/index -- broad
+    enough that a genuine programming bug raising RuntimeError would
+    also be silently swallowed into a "safe" fallback with no trace at
+    all. Narrowing the catch would risk a real dependency outage no
+    longer degrading gracefully, so the fix instead logs the real
+    exception every time a fallback fires. Fails on the pre-fix code (no
+    log record at all) and passes once the except block logs it.
+    """
+    context = _build_context(redis_client=_dead_redis_client())
+    request = RecommendationRequest(user_id="u1", num_candidates=4)
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger("recommender.serving.fallback")
+    handler = _Capture()
+    logger.addHandler(handler)
+    try:
+        safe_recommend(request, context)
+    finally:
+        logger.removeHandler(handler)
+
+    assert len(records) == 1
+    assert records[0].exc_info is not None
