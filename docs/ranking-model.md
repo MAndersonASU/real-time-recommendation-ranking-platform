@@ -72,7 +72,10 @@ signal `content_similarity` and `retrieval_score` already capture more
 precisely; `hour_of_day` is small and slightly negative, appropriate for
 what was always expected to be a weak contextual feature.
 
-Model saved to `data/processed/mind_small/ranking_model.joblib` (gitignored,
-reproducible via `python -m recommender.ranking.train`). Elapsed: under 10
+Model saved to `data/processed/mind_small/ranking_model.skops` (gitignored,
+reproducible via `python -m recommender.ranking.train`) — skops, not joblib:
+joblib is a thin wrapper over pickle, so loading it means executing
+arbitrary code embedded in the file; skops serializes and reloads the same
+trained Pipeline without that risk. Elapsed: under 10
 seconds locally — logistic regression over 5 features and 4.6M rows is
 fast compared to the two-tower model's training run.
