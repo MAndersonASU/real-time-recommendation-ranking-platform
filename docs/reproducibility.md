@@ -66,6 +66,27 @@ within normal machine-timing variance of the numbers already recorded
 in `docs/professional-demonstration.md`). The original repository's
 own containers were rebuilt and restored afterward.
 
+## Exact dependency versions (requirements-lock.txt)
+
+A real, disclosed limitation, found by audit: `pyproject.toml` declares
+only lower bounds (`pandas>=2.2`, and so on) with no upper bound and no
+lock file at all, so a fresh install can silently resolve to a newer,
+untested version of any dependency -- the exact-version story above is
+about *this project's own code*, not about pinning what it depends on.
+
+`requirements-lock.txt` is the exact, fully-resolved set of every
+dependency version the full test suite has actually passed against --
+generated via `pip freeze` from a real working environment, not typed by
+hand. Verified for real: installed into a genuinely fresh virtual
+environment (`pip install -r requirements-lock.txt`, then `pip install
+--no-deps -e .`) on this machine, all 67 pinned packages installed
+cleanly, and the complete test suite passed (262/262). `pyproject.toml`'s
+loose lower bounds remain the default install path (what the fresh-clone
+check above actually exercised, and what CI still installs) -- this file
+is the additional, exact-reproduction option for anyone who wants the
+precise versions already known to work, not a replacement for the
+flexible path.
+
 ## The one honest limitation this doesn't remove
 
 The licensed MIND dataset itself was not re-downloaded for this

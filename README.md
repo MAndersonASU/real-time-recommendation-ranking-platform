@@ -86,14 +86,16 @@ git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platf
 cd real-time-recommendation-ranking-platform
 py -3.11 -m venv .venv && source .venv/Scripts/activate  # Windows; use .venv/bin/activate elsewhere
 pip install -e ".[dev]"
-pytest -q            # 215 tests, no licensed data required
+pytest -q            # no licensed data required
 ruff check .
 docker compose up    # starts Kafka, Redis, and the API (needs the real dataset mounted at ./data)
 ```
 
 Verified end to end from a genuinely fresh clone, including a real
 reproducibility bug this exact check found and fixed:
-`docs/reproducibility.md`.
+`docs/reproducibility.md`. For an exact, fully-pinned dependency
+install instead of `pyproject.toml`'s own lower-bound-only versions,
+see `requirements-lock.txt`.
 
 ## Documentation index
 
