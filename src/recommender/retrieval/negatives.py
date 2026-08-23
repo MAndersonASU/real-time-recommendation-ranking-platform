@@ -17,6 +17,24 @@ def sample_negative_rows(
     not harmless noise.
     """
     exclude = user_clicked_rows.get(user_id, set())
+
+    # A real bug, found by audit: with no check here, a user excluded
+    # from (or a catalog shrunk to) every single row leaves this loop
+    # with literally zero valid candidates -- every draw rejected,
+    # forever, since none can ever land outside `exclude | {positive_row}`.
+    # At least one valid row existing is enough for the loop below to
+    # terminate (it samples *with* replacement, so one safe row can fill
+    # every remaining slot); zero valid rows is the one case it can
+    # never recover from on its own.
+    excluded_or_positive = exclude | {positive_row}
+    available = catalog_size - len(excluded_or_positive)
+    if available <= 0:
+        raise ValueError(
+            f"cannot sample any negative for user {user_id!r}: every one of the "
+            f"{catalog_size} catalog rows is either the positive item or already "
+            f"clicked by this user"
+        )
+
     negatives = np.empty(num_negatives, dtype=np.int64)
     filled = 0
     while filled < num_negatives:

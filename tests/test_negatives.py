@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from recommender.retrieval.dataset import SampledNegativeDataset
 from recommender.retrieval.features import (
@@ -77,6 +78,33 @@ def test_sample_negative_rows_never_returns_excluded_or_positive_item():
 
     assert set(negatives) == {4}  # the only row that isn't excluded or the positive
     assert len(negatives) == 20  # still terminates and fills the full request
+
+
+def test_sample_negative_rows_raises_instead_of_looping_forever_with_zero_valid_candidates():
+    """Regression test for a real bug, found by audit: with every single
+    catalog row either the positive item or already clicked by this
+    user, the sampling loop had zero valid candidates to ever land on --
+    every draw rejected, forever, with no way out. One valid row is
+    enough for the loop to terminate (it samples with replacement, so a
+    single safe row can fill every remaining slot, as the test above
+    confirms); zero is the one case that can never self-resolve, so it
+    must raise instead of hang. Bounded with pytest-timeout's marker
+    equivalent (a hard iteration cap) would be needed to literally prove
+    the old code hangs forever without a real infinite wait in CI, so
+    this instead asserts the fast, clear failure the fix produces.
+    """
+    rng = np.random.default_rng(0)
+    user_clicked_rows = {"U1": {0, 1, 2, 4}}  # every row except the positive is excluded
+
+    with pytest.raises(ValueError, match="cannot sample any negative"):
+        sample_negative_rows(
+            user_id="U1",
+            positive_row=3,
+            user_clicked_rows=user_clicked_rows,
+            catalog_size=5,
+            num_negatives=1,
+            rng=rng,
+        )
 
 
 def test_sample_negatives_for_positives_shape():
