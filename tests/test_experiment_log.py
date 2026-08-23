@@ -1,4 +1,7 @@
-from recommender.tracking.experiment_log import load_runs, log_run
+import os
+import subprocess
+
+from recommender.tracking.experiment_log import _current_git_commit, load_runs, log_run
 
 
 def test_log_run_returns_a_record_with_a_real_git_commit(tmp_path):
@@ -43,3 +46,35 @@ def test_log_run_appends_rather_than_overwrites(tmp_path):
 
     assert len(df) == 2
     assert set(df["run_name"]) == {"first", "second"}
+
+
+def test_current_git_commit_resolves_this_projects_repo_even_from_a_different_cwd(tmp_path):
+    """Regression test for a real bug, found by audit: `git rev-parse
+    HEAD` with no explicit `cwd` resolves relative to the *process's*
+    current working directory, not this project's own location. Calling
+    it from inside a completely different git repository previously
+    returned that other repo's commit -- silently wrong reproducibility
+    identity -- rather than this project's own. Fails on the pre-fix
+    code (returns the other repo's commit) and passes once the git
+    command is anchored to this file's own location via `cwd=`.
+    """
+    real_commit = _current_git_commit()
+    assert real_commit is not None  # this repo is a real git checkout
+
+    other_repo = tmp_path / "unrelated_repo"
+    other_repo.mkdir()
+    subprocess.run(["git", "init"], cwd=other_repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=other_repo, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=other_repo, check=True)
+    (other_repo / "file.txt").write_text("content")
+    subprocess.run(["git", "add", "file.txt"], cwd=other_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "unrelated commit"], cwd=other_repo, check=True, capture_output=True)
+
+    original_cwd = os.getcwd()
+    os.chdir(other_repo)
+    try:
+        commit_from_elsewhere = _current_git_commit()
+    finally:
+        os.chdir(original_cwd)
+
+    assert commit_from_elsewhere == real_commit

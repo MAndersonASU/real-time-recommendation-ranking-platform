@@ -7,11 +7,22 @@ import pandas as pd
 
 DEFAULT_LOG_PATH = Path("data/processed/mind_small/experiment_log.jsonl")
 
+# This file's own location anchors the git command to this project's
+# repo, not wherever the calling process's current working directory
+# happens to be. A real bug, found by audit: `git rev-parse HEAD` with
+# no explicit `cwd` resolves relative to the *process's* cwd -- if a
+# caller (a script launched from a different directory, a notebook, a
+# different working directory inside a container) invokes `log_run`
+# from outside this repo, or from inside a *different* git repo
+# entirely, this would silently record that other repo's commit (or
+# None) as if it were this project's own reproducibility identity.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 
 def _current_git_commit() -> str | None:
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL, cwd=_PROJECT_ROOT
         ).strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
