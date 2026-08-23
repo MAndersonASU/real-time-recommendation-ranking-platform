@@ -9,8 +9,15 @@ questions themselves.
 ## What's frozen
 
 - **Evaluation split**: `validation` (`docs/splits.md`) — 30,270
-  impressions from 2019-11-14. Never used for training or tuning by any
-  model evaluated against it.
+  impressions from 2019-11-14. Never used for gradient-based training.
+  **Correction (docs/evaluation-integrity.md)**: three feature/
+  hyperparameter decisions (dropping `popularity` from the ranking
+  model, the diversity category cap, the freshness threshold) were, in
+  fact, originally chosen by looking at measurements on this same
+  split, then reported against it — real leakage, not previously
+  disclosed here. Fixed going forward: any future such decision uses
+  `recommender.evaluation.tuning_fold`, a held-out fold carved from
+  `train`, never validation.
 - **Held out, untouched by any evaluation to date**: `replay`
   (2019-11-15) — reserved for Phase 6 streaming replay and Phase 9
   evaluation.

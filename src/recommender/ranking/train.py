@@ -15,15 +15,26 @@ MODEL_PATH = Path("data/processed/mind_small/ranking_model.joblib")
 TRAIN_REPORT_PATH = Path("data/processed/mind_small/ranking_train_report.json")
 
 # `popularity` is deliberately excluded from the trained model, not just
-# left in and hoped to wash out. A direct check (before accepting the
-# first fit) found it scores *worse than random* alone on validation
-# (AUC 0.47), while every other feature generalizes normally. Cause: it's
-# an aggregate click count over items that repeat ~272 times on average
-# within train's own exploded rows, so it partly correlates with the very
-# labels it's fit on, and only 29.2% of validation candidates even have a
-# nonzero train count -- the same cold-start sparsity already found for
-# the collaborative baseline (docs/baselines.md). Kept in the persisted
-# feature table (FEATURE_COLUMNS) for transparency; excluded here.
+# left in and hoped to wash out. A direct check found it scores *worse
+# than random* alone on validation (AUC 0.47), while every other feature
+# generalizes normally. Cause: it's an aggregate click count over items
+# that repeat ~272 times on average within train's own exploded rows, so
+# it partly correlates with the very labels it's fit on, and only 29.2%
+# of validation candidates even have a nonzero train count -- the same
+# cold-start sparsity already found for the collaborative baseline
+# (docs/baselines.md). Kept in the persisted feature table
+# (FEATURE_COLUMNS) for transparency; excluded here.
+#
+# Real, disclosed methodological note (docs/evaluation-integrity.md):
+# this AUC check was originally made by looking at validation, which is
+# also the split every reported metric uses -- a real form of
+# hyperparameter-selection leakage, corrected going forward by
+# `recommender.evaluation.tuning_fold` and
+# `recommender.evaluation.verify_tuning_decisions`. Re-checked against a
+# held-out fold carved from train instead: the result did not cleanly
+# reconfirm (out-of-sample popularity AUC 0.665 on the tune fold, not
+# comparable to the original 0.47), a real open question documented
+# honestly rather than resolved either way.
 MODEL_FEATURE_COLUMNS = [c for c in FEATURE_COLUMNS if c != "popularity"]
 
 

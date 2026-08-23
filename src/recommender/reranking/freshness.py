@@ -7,6 +7,13 @@ from recommender.data.mind import explode_impressions
 # fresh and only 0.7% of impressions have zero fresh candidates available
 # at all -- common enough that a quota is almost always satisfiable,
 # scarce enough that it means something.
+#
+# This was originally a validation-based decision, later reported
+# against that same validation split -- a real form of leakage
+# (docs/evaluation-integrity.md). Independently reconfirmed against a
+# held-out fold carved from train instead (32.3% fresh-row rate, 3.4%
+# zero-fresh-impression rate) -- the same conclusion, not just noise fit
+# to validation.
 DEFAULT_FRESH_THRESHOLD_DAYS = 0.5
 DEFAULT_MIN_FRESH_IN_SLATE = 2
 

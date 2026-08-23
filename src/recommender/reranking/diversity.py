@@ -6,6 +6,13 @@ import pandas as pd
 # slates. Near-duplicate content similarity above 0.5 covers only ~0.25%
 # of within-slate pairs -- a real but much rarer safeguard, not the main
 # lever this policy relies on.
+#
+# This was originally a validation-based decision, later reported
+# against that same validation split -- a real form of leakage
+# (docs/evaluation-integrity.md). Independently reconfirmed against a
+# held-out fold carved from train instead (59.6% four-plus rate, 7.4%
+# single-category rate) -- the same conclusion, not just noise fit to
+# validation.
 DEFAULT_MAX_PER_CATEGORY = 3
 DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.5
 
