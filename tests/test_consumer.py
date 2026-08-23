@@ -78,6 +78,30 @@ def test_recent_clicked_items_is_bounded_to_max_recent_items():
     assert list(state.recent_clicked_items)[-1] == f"N{MAX_RECENT_ITEMS + 4}"  # most recent kept
 
 
+def test_seen_event_ids_and_distinct_counters_stay_bounded_under_sustained_traffic():
+    """Regression test for a real bug, found by audit: `_seen_event_ids`
+    and the monitoring counters' `distinct_users`/`distinct_items` were
+    plain, unbounded sets -- a long-running consumer process grows them
+    forever, one entry per never-before-seen event id, user, or item.
+    Fails on the pre-fix code (a plain `set` keeps every entry, growing
+    past the cap) and passes once each is bounded with FIFO eviction. A
+    small cap here (not the real 100,000-entry production default)
+    keeps this test fast while still exercising the real code path.
+    """
+    max_size = 5
+    consumer = StreamConsumer(max_seen_event_ids=max_size, max_distinct_tracked=max_size)
+
+    for i in range(max_size + 10):
+        event = make_event(EventType.CLICK, f"U{i}", f"N{i}", 1, "t")
+        consumer.process(event.to_json())
+
+    assert len(consumer._seen_event_ids) == max_size
+    assert len(consumer.counters.distinct_users) == max_size
+    assert len(consumer.counters.distinct_items) == max_size
+    # Still real, working dedup within the current window, not just bounded:
+    assert consumer.counters.total_processed == max_size + 10
+
+
 def test_different_users_are_tracked_independently():
     consumer = StreamConsumer()
     consumer.process(make_event(EventType.CLICK, "U1", "N1", 1, "t").to_json())

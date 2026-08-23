@@ -1,4 +1,4 @@
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from confluent_kafka import KafkaException
@@ -8,6 +8,57 @@ from recommender.streaming.replay_producer import TOPIC
 from recommender.streaming.schema import SCHEMA_VERSION, EventType, InteractionEvent
 
 MAX_RECENT_ITEMS = 20
+
+# A real bug, found by audit: `_seen_event_ids` and the monitoring
+# counters' `distinct_users`/`distinct_items` were plain, unbounded
+# `set`s -- a long-running consumer process grows them forever, one
+# entry per never-before-seen event id, user, or item, for as long as
+# the process runs. Bounded here to a fixed capacity instead, evicting
+# the oldest-inserted entry once full. A disclosed, intentional
+# tradeoff, not a full fix for the underlying problem: `distinct_users`/
+# `distinct_items` now mean "distinct among the most recently tracked
+# `MAX_DISTINCT_TRACKED` entries," not "distinct across this process's
+# entire lifetime" -- and duplicate detection only catches a redelivery
+# that arrives within the same window. A durable, cross-restart dedup
+# store is a materially larger change (the same tradeoff already named
+# for these counters resetting across restarts) and out of scope here;
+# this only fixes the unbounded in-process memory growth.
+MAX_SEEN_EVENT_IDS = 100_000
+MAX_DISTINCT_TRACKED = 100_000
+
+
+class BoundedSet:
+    """Set-like membership tracking bounded to `max_size` entries, FIFO
+    eviction (oldest insertion first) once full -- not LRU-on-read, so a
+    membership check never refreshes an entry's position.
+    """
+
+    def __init__(self, max_size: int) -> None:
+        self._max_size = max_size
+        self._data: OrderedDict[str, None] = OrderedDict()
+
+    def add(self, item: str) -> None:
+        if item in self._data:
+            return
+        if len(self._data) >= self._max_size:
+            self._data.popitem(last=False)
+        self._data[item] = None
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BoundedSet):
+            return set(self._data) == set(other._data)
+        if isinstance(other, (set, frozenset)):
+            return set(self._data) == other
+        return NotImplemented
 
 
 @dataclass
@@ -30,8 +81,8 @@ class MonitoringCounters:
     events_by_type: dict = field(default_factory=dict)
     malformed_rejected: int = 0
     duplicates_skipped: int = 0
-    distinct_users: set = field(default_factory=set)
-    distinct_items: set = field(default_factory=set)
+    distinct_users: BoundedSet = field(default_factory=lambda: BoundedSet(MAX_DISTINCT_TRACKED))
+    distinct_items: BoundedSet = field(default_factory=lambda: BoundedSet(MAX_DISTINCT_TRACKED))
     total_processed: int = 0
 
 
@@ -43,10 +94,17 @@ class StreamConsumer:
     must not be able to stop the stream.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_seen_event_ids: int = MAX_SEEN_EVENT_IDS,
+        max_distinct_tracked: int = MAX_DISTINCT_TRACKED,
+    ) -> None:
         self.user_states: dict[str, UserState] = {}
-        self.counters = MonitoringCounters()
-        self._seen_event_ids: set[str] = set()
+        self.counters = MonitoringCounters(
+            distinct_users=BoundedSet(max_distinct_tracked),
+            distinct_items=BoundedSet(max_distinct_tracked),
+        )
+        self._seen_event_ids = BoundedSet(max_seen_event_ids)
 
     def parse(self, raw) -> InteractionEvent | None:
         try:
