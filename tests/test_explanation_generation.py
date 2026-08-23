@@ -1,10 +1,41 @@
+from unittest.mock import MagicMock, patch
+
 from recommender.explanation.generation import (
     MIN_CONTENT_SIMILARITY_FOR_GROUNDING,
+    MODEL_NAME,
+    MODEL_REVISION,
     build_template_explanation,
     generate_explanation,
     has_sufficient_evidence,
+    load_generator,
 )
 from recommender.explanation.retrieval import SupportContext
+
+
+def test_load_generator_pins_the_model_revision():
+    """Regression test for a real bug, found by audit: from_pretrained
+    was called with no `revision` at all, so it resolved to whatever
+    "main" pointed to on the Hub at download time -- a later push to
+    that repo would silently change which weights get loaded, with no
+    way to detect it happened. Fails on the pre-fix code (no `revision`
+    kwarg reaches either call) and passes once both are pinned. Mocked,
+    not a real download, so this stays fast and doesn't need network
+    access.
+    """
+    load_generator.cache_clear()
+    fake_tokenizer_cls = MagicMock()
+    fake_model_cls = MagicMock()
+    fake_model_cls.from_pretrained.return_value.eval.return_value = fake_model_cls.from_pretrained.return_value
+
+    with patch.dict(
+        "sys.modules",
+        {"transformers": MagicMock(T5Tokenizer=fake_tokenizer_cls, T5ForConditionalGeneration=fake_model_cls)},
+    ):
+        load_generator()
+
+    fake_tokenizer_cls.from_pretrained.assert_called_once_with(MODEL_NAME, revision=MODEL_REVISION)
+    fake_model_cls.from_pretrained.assert_called_once_with(MODEL_NAME, revision=MODEL_REVISION)
+    load_generator.cache_clear()
 
 
 class _FakeGenerator:
