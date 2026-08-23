@@ -17,12 +17,14 @@ from recommender.retrieval.features import (
 )
 from recommender.retrieval.model import TwoTowerModel
 from recommender.retrieval.negatives import sample_negatives_for_positives
+from recommender.seed import set_seed
 
 MODEL_PATH = Path("data/processed/mind_small/two_tower_model.pt")
 TRAIN_REPORT_PATH = Path("data/processed/mind_small/two_tower_train_report.json")
 EMBEDDING_DIM = 32
 BATCH_SIZE = 2048
 NUM_SAMPLED_NEGATIVES = 4
+TRAIN_SEED = 42
 
 
 def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
@@ -62,10 +64,20 @@ def train_model(
     dataset=None,
     num_categories=None,
     num_subcategories=None,
+    seed: int = TRAIN_SEED,
 ):
+    """A real bug, found by audit: training was not reproducible --
+    `set_seed` was never called here at all, and the DataLoader's
+    `shuffle=True` and the model's own weight initialization both draw
+    from torch's global RNG, unseeded. Seeding here, immediately before
+    both are constructed, makes two runs given the same dataset and seed
+    produce bit-for-bit identical shuffling order and initial weights
+    (`tests/test_retrieval_train.py`).
+    """
     if dataset is None:
         dataset, num_categories, num_subcategories = build_train_dataset()
 
+    set_seed(seed)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     model = TwoTowerModel(num_categories, num_subcategories, embedding_dim)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -105,6 +117,7 @@ def main(max_steps: int = 6000) -> None:
     report = {
         "dataset_size": len(dataset),
         "num_sampled_negatives_per_positive": NUM_SAMPLED_NEGATIVES,
+        "seed": TRAIN_SEED,
         "steps": len(losses),
         "batch_size": BATCH_SIZE,
         "embedding_dim": EMBEDDING_DIM,
