@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,11 +26,21 @@ class Settings(BaseSettings):
         around as a plain string anywhere else in the app. `SecretStr`
         means the password itself never appears in a repr, a log line,
         or an accidental print -- str(settings) shows `**********`.
+
+        The password is percent-encoded (`quote(..., safe="")`) before
+        being woven in. A real bug, found by audit: an unencoded
+        password containing a URI-significant character (`/`, `#`, `?`,
+        an extra `@`) silently corrupts the resulting URL -- e.g. a `/`
+        in the password gets parsed as the start of the URL's path,
+        leaving both hostname and password as `None` to any URL parser,
+        redis-py's own `from_url` included -- rather than raising where
+        the mistake could actually be seen.
         """
         if self.redis_password is None:
             return self.redis_url
         scheme, _, rest = self.redis_url.partition("://")
-        return f"{scheme}://:{self.redis_password.get_secret_value()}@{rest}"
+        encoded_password = quote(self.redis_password.get_secret_value(), safe="")
+        return f"{scheme}://:{encoded_password}@{rest}"
 
 
 def load_settings() -> Settings:
