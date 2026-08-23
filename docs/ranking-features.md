@@ -24,6 +24,13 @@ independently testable. The two-tower model still contributes: its
 retrieval score is one input feature to the ranker below, not the
 candidate-generation mechanism.
 
+**Update (`docs/deployment-representative-evaluation.md`)**: this
+disclosed choice means the frozen-candidate-list numbers alone don't
+say what a real user of the deployed system actually receives. A
+separate, real end-to-end evaluation now exists that calls the actual
+`/recommend` pipeline (retrieval, ranking, and reranking together) and
+is reported alongside — not in place of — the numbers here.
+
 ## The six features
 
 Computed per (impression, candidate) pair, one row per candidate the
