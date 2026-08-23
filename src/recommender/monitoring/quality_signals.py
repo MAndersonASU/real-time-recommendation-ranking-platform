@@ -30,16 +30,31 @@ class QualitySignalTracker:
     """
 
     def __init__(self, catalog_size: int, window_size: int = DEFAULT_WINDOW_SIZE) -> None:
+        """A real bug, found by audit: `_scores` used to be a flat deque
+        of individual item scores, `maxlen=window_size * 10` -- a fixed
+        assumption of exactly 10 recommendations per response, even
+        though `RecommendationRequest.num_candidates` can legitimately
+        be anywhere up to `MAX_NUM_CANDIDATES` (50). A caller requesting
+        50 items per response filled that same capacity 5x faster than
+        one requesting 10, so "window_size" silently stopped meaning
+        "the last `window_size` responses" and started meaning "the
+        last `window_size // (actual items per response)` responses" --
+        wrong, and different depending on traffic, without any caller
+        being able to tell. Fixed the same way `_diversity` already
+        worked correctly: bounded by response count, not item count,
+        storing each response's own score list and flattening at
+        `snapshot()` time.
+        """
         self.catalog_size = catalog_size
-        self._scores: deque[float] = deque(maxlen=window_size * 10)
+        self._scores: deque[list[float]] = deque(maxlen=window_size)
         self._diversity: deque[int] = deque(maxlen=window_size)
         self._recommended_counts: Counter[str] = Counter()
         self._lock = threading.Lock()
 
     def record(self, response: RecommendationResponse) -> None:
         with self._lock:
+            self._scores.append([item.score for item in response.recommendations])
             for item in response.recommendations:
-                self._scores.append(item.score)
                 self._recommended_counts[item.news_id] += 1
             distinct_categories = len(
                 {item.category for item in response.recommendations if item.category}
@@ -52,7 +67,7 @@ class QualitySignalTracker:
         that has no data yet, rather than a misleading zero.
         """
         with self._lock:
-            scores = sorted(self._scores)
+            scores = sorted(score for response_scores in self._scores for score in response_scores)
             n = len(scores)
 
             total_recommendations = sum(self._recommended_counts.values())

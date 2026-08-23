@@ -66,6 +66,41 @@ def test_top_n_concentration_is_one_when_everything_is_the_same_item():
     assert tracker.snapshot()["top_n_concentration"] == 1.0
 
 
+def test_score_window_holds_the_same_number_of_responses_regardless_of_response_size():
+    """Regression test for a real bug, found by audit: the score window
+    used to be a flat deque of individual item scores capped at
+    `window_size * 10` -- a hardcoded assumption of exactly 10
+    recommendations per response, even though `num_candidates` can
+    legitimately be up to 50 (`MAX_NUM_CANDIDATES`). A caller requesting
+    50 items per response filled that capacity 5x faster than one
+    requesting 10, so "window_size" silently represented far fewer real
+    responses than intended, depending on traffic. Fails on the pre-fix
+    code (a 50-item-per-response window only remembers a fraction of
+    `window_size` responses) and passes once the window is bounded by
+    response count, matching how `_diversity` already worked correctly.
+    """
+    window_size = 5
+    tracker = QualitySignalTracker(catalog_size=1000, window_size=window_size)
+
+    # More responses than the window holds, each with 50 items (the real
+    # maximum, not the 10-per-response assumption the old code baked in).
+    for i in range(window_size + 3):
+        items = [
+            RecommendedItem(news_id=f"n{i}_{j}", score=0.5, rank=j + 1) for j in range(50)
+        ]
+        tracker.record(_response(items))
+
+    snapshot = tracker.snapshot()
+    total_scores_in_window = window_size * 50
+    assert snapshot["score_mean"] == 0.5  # sanity: every recorded score really is 0.5
+    # The internal window must remember exactly `window_size` responses'
+    # worth of scores, not fewer -- checked directly against the private
+    # state, since the public snapshot alone (all scores equal to 0.5
+    # here) can't distinguish "5 responses of 50" from "1 response of 50".
+    assert sum(len(response_scores) for response_scores in tracker._scores) == total_scores_in_window
+    assert len(tracker._scores) == window_size
+
+
 def test_compute_model_version_is_a_real_deterministic_fingerprint(tmp_path):
     model_file = tmp_path / "model.pt"
     model_file.write_bytes(b"some real model bytes")
