@@ -68,3 +68,19 @@ def recent_features_from_user_state(user_id: str, state: UserState) -> RecentUse
         clicks_seen=state.clicks_seen,
         last_event_time=state.last_event_time,
     )
+
+
+def user_state_from_recent_features(features: RecentUserFeatures) -> UserState:
+    """The reverse of `recent_features_from_user_state` -- restores a
+    real `UserState` from a durable `RecentUserFeatures` record, so a
+    restarted stream consumer can resume from real prior state instead
+    of silently starting empty and overwriting it on the next event
+    (the real restart-corruption bug this function exists to fix).
+    """
+    state = UserState(
+        impressions_seen=features.impressions_seen,
+        clicks_seen=features.clicks_seen,
+        last_event_time=features.last_event_time,
+    )
+    state.recent_clicked_items.extend(features.recent_clicked_items)
+    return state

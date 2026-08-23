@@ -69,7 +69,7 @@ class StreamConsumer:
             return False
         self._seen_event_ids.add(event.event_id)
 
-        state = self.user_states.setdefault(event.user_id, UserState())
+        state = self._get_or_create_state(event.user_id)
         state.last_event_time = event.timestamp
         if event.event_type is EventType.IMPRESSION:
             state.impressions_seen += 1
@@ -85,6 +85,17 @@ class StreamConsumer:
         self.counters.distinct_items.add(event.item_id)
         self.counters.total_processed += 1
         return True
+
+    def _get_or_create_state(self, user_id: str) -> UserState:
+        """Returns this user's current in-process state, creating a
+        fresh one only if this process has never touched the user
+        before. Overridable so a subclass backed by a durable store
+        (SyncingStreamConsumer) can restore real prior state instead of
+        starting empty after every restart -- an in-process-only default
+        here silently overwrote a durable record with a blank one on
+        the very first event after a restart (docs/recovery-testing.md).
+        """
+        return self.user_states.setdefault(user_id, UserState())
 
     def _on_state_updated(self, user_id: str, state: UserState) -> None:
         """Hook called every time an event updates a user's state, with
