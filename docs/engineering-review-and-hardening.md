@@ -142,12 +142,32 @@ section is a summary, not a duplicate.
   `requirements-lock.txt` plus `pip install --no-deps -e .`, running the
   full suite: passing.
 - A real, rebuilt container: non-root user confirmed
-  (`docker exec ... whoami`), exec-form entrypoint confirmed
-  (`docker compose ps`), health check confirmed
-  (`docker inspect --format='{{.State.Health.Status}}'`), and live
+  (`docker exec ... id` → `uid=1000(app)`), exec-form entrypoint
+  confirmed (`docker compose ps` → `sh -c 'exec uvicorn…'`), health
+  check confirmed (`docker inspect
+  --format='{{.State.Health.Status}}'` → `healthy`), and live
   `/health`, `/ready`, `/recommend`, `/demo`, and `/metrics` requests
   confirmed against it, including the full artifact manifest and
-  derived `serving_version` appearing in `/metrics`.
+  derived `serving_version` appearing in `/metrics`, and a
+  UTC-suffixed `generated_at` on a real response body.
+- Commit identity inside a container with no `.git` directory:
+  `GIT_COMMIT_SHA=$(git rev-parse HEAD) docker compose build api`,
+  then `docker exec recommender-api python -c "from
+  recommender.tracking.experiment_log import _current_git_commit;
+  print(_current_git_commit())"` resolved the real commit, confirming
+  the environment-variable path works where repository discovery
+  cannot.
+- Real Kafka produce/consume round trip
+  (`python -m recommender.streaming.verify_connectivity` →
+  `consumed_value_matches: true`) and real Redis round trip with
+  latency (`python -m recommender.features.verify_state_store` →
+  `round_trip_matches: true`, p50 0.51 ms, p99 1.61 ms) against the
+  live Compose stack.
+- Redis authentication and persistence, against the current Compose
+  file: unauthenticated `ping` rejected with `NOAUTH`, a wrong
+  password rejected with `WRONGPASS`, the correct password accepted,
+  and a written key still present after a real `docker restart` of the
+  Redis container.
 - `evaluate_end_to_end.py`, `verify_tuning_decisions.py`, and
   `evaluate_explanations.py` were each re-run against the real, local,
   licensed MIND data, and the documentation pages linked above report
