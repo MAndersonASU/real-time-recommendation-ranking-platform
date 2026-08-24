@@ -239,3 +239,57 @@ def test_recommend_skips_freshness_reranking_without_a_real_request_time():
         mock_quota.side_effect = lambda slate, *a, **k: slate  # pass through unchanged
         recommend(with_time_request, context)
         assert mock_quota.call_count == 1
+
+
+def test_recommend_does_not_query_faiss_with_a_zero_vector_for_a_history_less_user():
+    """Regression test for a real serving bug: `user_vector` averages the
+    item vectors of a user's click history, so a user with no usable
+    history yields an exactly zero-norm embedding. An inner-product index
+    scores every catalog item 0.0 against a zero query, so Faiss returned
+    an arbitrary tie order -- the identical slate for every history-less
+    user, with a constant retrieval_score giving every candidate the same
+    ranking probability. Fails on the pre-fix code (Faiss is queried, and
+    every returned score is identical) and passes once cold-start
+    retrieval uses popularity, which is real signal here.
+    """
+    from unittest.mock import patch
+
+    context = _build_context()
+    request = RecommendationRequest(user_id="never-seen-before", num_candidates=3)
+
+    with patch.object(context.faiss_index, "search", wraps=context.faiss_index.search) as spy:
+        response = recommend(request, context)
+
+    assert spy.call_count == 0, "a zero-norm query carries no signal; Faiss must not be asked"
+    assert len(response.recommendations) == 3
+    # The real symptom of the bug: every candidate scoring identically,
+    # because retrieval_score was constant across a zero-vector search.
+    scores = [item.score for item in response.recommendations]
+    assert len(set(scores)) > 1, f"expected candidates to be distinguishable, got {scores}"
+    # The most-clicked training item must be reachable through this path.
+    most_popular = context.popularity.sort_values(ascending=False).index[0]
+    assert most_popular in {item.news_id for item in response.recommendations}
+
+
+def test_recommend_still_uses_faiss_when_the_user_has_real_history():
+    """The cold-start popularity path above must not swallow the normal
+    case: a user with real recent clicks produces a non-zero embedding
+    and must still be served by real retrieval.
+    """
+    from unittest.mock import patch
+
+    redis_client = _FakeRedis()
+    save_recent_features(
+        redis_client,
+        RecentUserFeatures(
+            user_id="u1", recent_clicked_items=["n1", "n2"],
+            impressions_seen=2, clicks_seen=2, last_event_time=None,
+        ),
+    )
+    context = _build_context(redis_client=redis_client)
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    with patch.object(context.faiss_index, "search", wraps=context.faiss_index.search) as spy:
+        recommend(request, context)
+
+    assert spy.call_count == 1

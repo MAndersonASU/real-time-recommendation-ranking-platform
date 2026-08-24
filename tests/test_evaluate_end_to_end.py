@@ -266,3 +266,68 @@ def test_apply_impression_to_recent_state_and_isolated_redis_are_real_and_reusab
     isolated_a.set("k", "v")
 
     assert isolated_b.get("k") is None
+
+
+def test_evaluate_end_to_end_seeds_recent_state_from_each_impressions_own_history():
+    """Regression test for a real evaluation bug: the isolated state store
+    started empty for every user, so an impression whose user had no
+    *earlier in-window* event was scored with an empty click list. The
+    serving path builds its two-tower query from that list, and an empty
+    history yields an exactly zero-norm user vector -- against which an
+    inner-product index scores every catalog item identically, handing
+    every such user the same arbitrary slate.
+
+    MIND's own per-impression `history` field records the clicks that
+    happened strictly before that impression, so it is exactly what a
+    live store would already hold, and using it is point-in-time correct
+    rather than leakage. Fails on the pre-fix code (recent features are a
+    cold-start fallback on the very first impression despite real history
+    existing) and passes once that history seeds the store.
+    """
+    context = _build_context()
+    behaviors = pd.DataFrame(
+        {
+            "impression_id": [50],
+            "user_id": ["u1"],
+            "time": pd.to_datetime(["2019-11-14T08:00:00"]),
+            "history": ["n1 n2"],
+            "impressions": ["n3-1 n5-0"],
+        }
+    )
+
+    import recommender.evaluation.evaluate_end_to_end as module
+    real_safe_recommend = module.safe_recommend
+    responses = []
+
+    def _capturing(request, *args, **kwargs):
+        response = real_safe_recommend(request, *args, **kwargs)
+        responses.append(response)
+        return response
+
+    with patch.object(module, "safe_recommend", side_effect=_capturing):
+        report = evaluate_end_to_end(context, num_impressions=1, k=3, validation=behaviors, news=NEWS)
+
+    assert len(responses) == 1
+    assert responses[0].recent_features_used is True
+    assert report["recent_feature_coverage"] == 1.0
+
+
+def test_evaluate_end_to_end_seeding_does_not_replace_accumulated_in_window_state():
+    """The seed must apply only on a user's first impression. A later
+    impression has to see the seeded history *plus* the real clicks from
+    earlier in-window impressions, not a reset back to the raw history.
+    """
+    from recommender.evaluation.evaluate_end_to_end import (
+        _apply_impression_to_recent_state,
+        _seed_recent_state_from_history,
+    )
+    from recommender.features.state_store import load_recent_features
+
+    client = InMemoryRedis()
+    _seed_recent_state_from_history(client, "u1", "n1 n2")
+    _apply_impression_to_recent_state(client, "u1", {"n3"}, "2019-11-14T08:00:00")
+    # A second impression for the same user must not wipe the click above.
+    _seed_recent_state_from_history(client, "u1", "n1 n2")
+
+    recent = load_recent_features(client, "u1")
+    assert recent.recent_clicked_items == ["n1", "n2", "n3"]

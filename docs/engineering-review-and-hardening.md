@@ -187,9 +187,10 @@ section is a summary, not a duplicate.
   way: `SSLCertVerificationError: unable to get local issuer
   certificate`, consistent with this machine's network intercepting
   TLS in a way that isn't resolved by pointing at a standard CA bundle.
-  `pip-audit` is installed as a dev dependency and documented as a
-  verification step; it has not actually produced a result on this
-  project yet. This is a real gap, not a check that passed.
+  `pip-audit` therefore runs as a blocking step in the
+  `locked-install-test` CI job instead, against the exact locked
+  versions, where no such interception exists. Until that job has run,
+  no vulnerability result exists for this project.
 - **`requirements-lock.txt` is a plain `pip freeze` output, not a
   hash-verified lock.** The audit that prompted this review preferred a
   hash-verified lock produced with `uv` or `pip-compile
@@ -211,13 +212,23 @@ section is a summary, not a duplicate.
   also differ in which users and impressions land on each side of a
   chronological boundary versus a random one — a real confound this
   check does not separately isolate.
-- **The serving-path end-to-end evaluation's ranking-quality metrics
-  are genuinely 0.0 in the current sample window.** This reflects real,
-  current serving-path behavior under strict point-in-time
-  reconstruction (very low real recent-feature coverage in this
-  window, among other factors) — it is reported as-is, not adjusted or
-  hidden, and remains a real, open item for further investigation
-  rather than something this review calls resolved.
+- **The serving path effectively does not surface a user's next click.**
+  Follow-up investigation established the cause and it is not a
+  measurement artifact: the clicked item is among the 50 retrieved
+  candidates in only 0.2% of impressions, a hard ceiling no ranking
+  improvement can lift. Two contributing defects were found and fixed
+  along the way — the evaluation seeded no point-in-time history, and
+  the serving path queried the index with a zero-norm vector for
+  history-less users — and fixing them raised recent-feature coverage
+  from 8.2% to 97.8% and roughly quadrupled catalog coverage, but did
+  not materially move ranking quality. The underlying constraint is the
+  one `docs/retrieval-evaluation.md` already named: the item tower's
+  category/subcategory-only features collapse 51,282 items into 284
+  distinct vectors. Retrieval depth (50 of 51,282) is a second measured
+  factor, deliberately left unchanged because tuning it against
+  `validation` would repeat the leakage this review corrected. This
+  remains open, now with a specific diagnosis rather than an
+  unexplained zero.
 - **No dedicated DST-transition test exists** for the timezone fix.
   The fix itself is structural (every internal clock read is UTC,
   which has no daylight-saving transitions to be wrong about), so the

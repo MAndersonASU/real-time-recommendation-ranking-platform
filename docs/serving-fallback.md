@@ -48,3 +48,38 @@ points its Redis client at a port nothing is listening on: a genuine
 connection failure, not a simulated one. `safe_recommend` still returned
 a full 10-item, contract-valid response, correctly reporting no real
 personalization on either flag.
+
+## Cold-start retrieval: popularity, not a zero-vector search
+
+Distinct from the dependency fallback above, and handled inside
+`recommend()` rather than by `safe_recommend`: a user with no usable
+click history is not a failure, it is a normal request this system has
+to answer well.
+
+`TwoTowerModel.user_vector` averages the item vectors of whatever is in
+the user's history, so an empty (fully masked) history produces an
+exactly zero-norm user vector. Querying an inner-product Faiss index
+with a zero vector scores every catalog item at exactly 0.0, so the
+index returns an arbitrary tie order — the identical slate for every
+history-less user — and the ranking model then receives a constant
+`retrieval_score` and assigns every candidate the same probability.
+This was directly observable on the live service: a `/recommend` call
+for an unknown user returned three items with byte-identical scores,
+all from one category.
+
+Retrieval now checks whether the user vector carries any signal at all
+and, when it does not, draws candidates from training-set popularity
+instead, scaled into `[0, 1]` so `retrieval_score` keeps a meaning
+comparable to an inner-product score. Popularity is reindexed over the
+whole catalog rather than only the items that appear in the training
+split, since an item with no training clicks has a real popularity of
+zero rather than a missing value — without that, a catalog larger than
+the training split's item set would yield fewer candidates than
+requested.
+
+This is a genuine improvement in cold-start behaviour, not a fix for
+the retrieval-quality limitation described in
+`docs/serving-path-end-to-end-evaluation.md`: it replaces an arbitrary
+slate with a defensible one. Regression tests in `tests/test_pipeline.py`
+assert that a history-less user never reaches the index and that a user
+with real history still does.

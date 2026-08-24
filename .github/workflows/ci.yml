@@ -50,6 +50,31 @@ jobs:
         run: pip install --no-deps -e .
       - name: Test
         run: pytest -q
+      # Audits the exact pinned versions installed above -- the set that
+      # would actually ship -- rather than whatever a flexible resolve
+      # happened to pick. Deliberately blocking, not advisory: a
+      # dependency check that cannot fail the build reports nothing a
+      # reader can rely on. This does mean a newly disclosed CVE in a
+      # transitive dependency can break CI on a commit that changed
+      # nothing related; that is the intended signal, and the fix is to
+      # bump the dependency and re-freeze the lock file.
+      #
+      # This step exists because the check could not be run on the
+      # maintainer's own machine: pip-audit queries PyPI's JSON API
+      # directly rather than through pip, so pip's trusted-host settings
+      # do not apply to it, and TLS interception there fails it with
+      # SSLCertVerificationError even with certifi's CA bundle set
+      # explicitly. CI has no such interception, so this is where the
+      # check genuinely runs.
+      #
+      # Audits the environment installed above rather than passing
+      # --requirement: with a requirements file pip-audit builds a second
+      # throwaway virtualenv and re-resolves everything, while the steps
+      # above have already installed exactly the locked set. --skip-editable
+      # omits the project itself, which is installed from local source and
+      # has no release on PyPI to have advisories against.
+      - name: Audit locked dependencies for known vulnerabilities
+        run: pip-audit --strict --skip-editable
 
   integration-smoke-test:
     runs-on: ubuntu-latest

@@ -158,6 +158,7 @@ def recommend(
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
     include_matched_signals: bool = False,
+    capture_candidates: list | None = None,
 ) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
     -> reranking -> a Top-K response, exactly the phase's named path.
@@ -183,6 +184,15 @@ def recommend(
     Redis entirely (recommender.features.cold_start.get_online_features)
     -- the recent-streaming-features ablation (docs/ablations.md), not a
     normal request path.
+
+    `capture_candidates`, when given a list, is extended with the real
+    news_ids this call retrieved *before* ranking and reranking narrowed
+    them -- the same opt-in instrumentation idea as `stage_timings`, and
+    for the same reason: it reads the real code path rather than a
+    reimplementation kept in sync by hand. It lets an evaluation separate
+    a retrieval miss (the clicked item was never a candidate) from a
+    ranking miss (it was retrieved, then ranked out of the slate), which
+    a single end-to-end hit rate cannot distinguish.
 
     `include_matched_signals`, when True, captures each recommended
     item's real ranking-model input features into the response
@@ -231,14 +241,44 @@ def recommend(
         max(request.num_candidates * RETRIEVAL_MULTIPLIER, MIN_RETRIEVAL_CANDIDATES),
         context.faiss_index.ntotal,
     )
-    try:
-        retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
-    except RuntimeError as exc:
-        # Narrow to this one call, for the same reason as above -- a
-        # RuntimeError specifically from Faiss's own search call, not a
-        # stand-in for any RuntimeError anywhere in this function.
-        raise DependencyUnavailableError("faiss_search_failed") from exc
-    candidate_news_ids = context.news_ids[item_rows[0]]
+    # A user with no usable click history produces a genuinely zero-norm
+    # user vector: `user_vector` averages the item vectors of whatever is
+    # in the history, and an empty (fully masked) history sums to zero.
+    # Querying an inner-product index with a zero vector scores *every*
+    # catalog item exactly 0.0, so Faiss returns an arbitrary tie order --
+    # the same arbitrary slate for every history-less user, with the
+    # ranking model then seeing a constant retrieval_score and assigning
+    # every candidate an identical probability. Popularity is a real
+    # signal in exactly this situation, so cold-start retrieval uses it
+    # instead of a search that has no signal to rank by.
+    has_retrieval_signal = bool(np.linalg.norm(user_emb))
+    if has_retrieval_signal:
+        try:
+            retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
+        except RuntimeError as exc:
+            # Narrow to this one call, for the same reason as above -- a
+            # RuntimeError specifically from Faiss's own search call, not a
+            # stand-in for any RuntimeError anywhere in this function.
+            raise DependencyUnavailableError("faiss_search_failed") from exc
+        candidate_news_ids = context.news_ids[item_rows[0]]
+        candidate_retrieval_scores = retrieval_scores[0]
+    else:
+        # Reindexed over the *whole* catalog, not just the items that
+        # happen to appear in `popularity`: an item with no training
+        # clicks has a real popularity of zero, not a missing value, and
+        # dropping those would leave fewer than n_retrieve candidates
+        # whenever the training split covers only part of the catalog.
+        catalog_popularity = (
+            context.popularity.reindex(context.news_ids).fillna(0.0).sort_values(ascending=False)
+        )
+        top_popular = catalog_popularity.head(n_retrieve)
+        candidate_news_ids = top_popular.index.to_numpy()
+        # Scaled to [0, 1] so retrieval_score keeps a comparable meaning
+        # to an inner-product score rather than an unbounded click count.
+        max_clicks = float(top_popular.max()) or 1.0
+        candidate_retrieval_scores = (top_popular.to_numpy() / max_clicks).astype(np.float32)
+    if capture_candidates is not None:
+        capture_candidates.extend(candidate_news_ids.tolist())
     _stage_end("retrieval_ms", t)
 
     t = _stage_start()
@@ -271,7 +311,7 @@ def recommend(
     frame = pd.DataFrame(
         {
             "news_id": candidate_news_ids,
-            "retrieval_score": retrieval_scores[0],
+            "retrieval_score": candidate_retrieval_scores,
             "category_match": category_matches,
             "content_similarity": content_sims,
             "user_history_length": lookup.durable.lifetime_click_count,

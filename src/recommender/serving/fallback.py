@@ -66,6 +66,7 @@ def safe_recommend(
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
     include_matched_signals: bool = False,
+    capture_candidates: list | None = None,
 ) -> RecommendationResponse:
     """The real path, with a safe popularity fallback if a real
     dependency it needs turns out to be unavailable. Deliberately
@@ -87,12 +88,13 @@ def safe_recommend(
     opt-in instrumentation of this exact branch, rather than a caller
     inferring "was this a fallback" from the response's feature flags,
     which a genuine cold-start response can also legitimately have both
-    set to False. `stage_timings`, `use_recent_features`, and
-    `include_matched_signals` pass straight through to `recommend()` on
-    the real path (there is no per-stage breakdown, recent-features
-    toggle, or matched-signals detail for a fallback response, since it
-    never runs those stages at all -- `build_fallback_response` always
-    leaves `matched_signals` unset).
+    set to False. `stage_timings`, `use_recent_features`,
+    `include_matched_signals`, and `capture_candidates` pass straight
+    through to `recommend()` on the real path (there is no per-stage
+    breakdown, recent-features toggle, matched-signals detail, or
+    retrieved-candidate list for a fallback response, since it never runs
+    those stages at all -- `build_fallback_response` always leaves
+    `matched_signals` unset and never retrieves candidates).
     """
     try:
         return recommend(
@@ -101,6 +103,7 @@ def safe_recommend(
             stage_timings=stage_timings,
             use_recent_features=use_recent_features,
             include_matched_signals=include_matched_signals,
+            capture_candidates=capture_candidates,
         )
     except DependencyUnavailableError as exc:
         logger.exception(

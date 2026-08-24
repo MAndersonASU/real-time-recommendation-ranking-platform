@@ -12,9 +12,10 @@ ranking, and reranking together — against real, chronologically ordered
 validation-split impressions, with point-in-time-correct state: each
 impression's durable features come only from that impression's own
 `history` field (never a later impression's), and its recent features
-come only from an isolated, in-run state store that starts empty and is
-updated with an impression's own events only after that impression has
-already been scored. Implementation:
+come only from an isolated, in-run state store — seeded from that same
+point-in-time `history` field and updated with an impression's own
+events only after that impression has already been scored.
+Implementation:
 `src/recommender/evaluation/evaluate_end_to_end.py`. Tests:
 `tests/test_evaluate_end_to_end.py`.
 
@@ -45,23 +46,62 @@ list the original protocol scores).
 
 ## Real result
 
-500 chronologically-earliest validation impressions, K=10.
+Chronologically-earliest validation impressions, K=10.
 
-| Metric | Value |
-|---|---|
-| Impressions evaluated | 500 (0 skipped) |
-| Durable-feature coverage | 100% |
-| Recent-feature coverage | 8.2% |
-| Fallback count | 0 |
-| Catalog coverage | 0.6% |
-| Hit rate@10 | 0.0 |
-| Recall@10 | 0.0 |
-| NDCG@10 | 0.0 |
-| MRR | 0.0 |
+| Metric | 500 impressions | 2,000 impressions |
+|---|---|---|
+| Impressions evaluated | 500 (0 skipped) | 2,000 (0 skipped) |
+| Durable-feature coverage | 100% | 100% |
+| Recent-feature coverage | 97.8% | 97.8% |
+| Fallback count | 0 | 0 |
+| Catalog coverage | 2.3% | 3.9% |
+| **Retrieval contained a click** | **0.2%** | **0.2%** |
+| Hit rate@10 | 0.0 | 0.0005 |
+| Recall@10 | 0.0 | 0.00025 |
+| NDCG@10 | 0.0 | 0.00013 |
+| MRR | 0.0 | 0.000125 |
 
-Reported honestly, not smoothed over: every ranking-quality metric is
-zero. This is not new evidence being hidden behind a passing label —
-see the next section for what it does and does not mean.
+Ranking quality is effectively zero, and the row that explains it is
+`retrieval_contained_a_click`: the item the user actually clicked was
+among the 50 retrieved candidates in only 0.2% of impressions. That is
+a hard ceiling — the end-to-end hit rate cannot exceed it no matter how
+good ranking becomes. At 2,000 impressions the clicked item was
+retrieved 4 times and ranked into the top 10 once. The bottleneck is
+candidate generation, not ranking or reranking, and this run measures
+that directly rather than leaving it inferred.
+
+### A real evaluation bug found and fixed while producing these numbers
+
+An earlier version of this evaluation reported 8.2% recent-feature
+coverage and 0.6% catalog coverage. Both were artifacts of a real bug
+in the harness, not properties of the serving path.
+
+The isolated state store started empty for every user, so any
+impression whose user had no *earlier in-window* event was scored with
+an empty recent-click list. `recommend()` builds its two-tower query
+from that list, and `TwoTowerModel.user_vector` averages the item
+vectors of the history — an empty history sums to exactly zero. An
+inner-product Faiss index scores every catalog item identically against
+a zero vector, so retrieval returned an arbitrary tie order, the same
+one for every history-less user, and the ranking model then saw a
+constant `retrieval_score` and assigned every candidate the same
+probability. Measured directly: 60 impressions produced **1** distinct
+candidate set under the empty store versus **50** once real history was
+supplied.
+
+MIND records, per impression, the clicks that happened strictly before
+it, so seeding the store from that field is point-in-time correct
+rather than leakage — it is exactly what a live store would already
+hold for a returning user. With the fix, recent-feature coverage rises
+to 97.8% and catalog coverage roughly quadruples. **The ranking metrics
+did not materially improve**, because the retrieval ceiling above is
+the real constraint; the fix makes this evaluation measure the actual
+serving path instead of a degenerate one, which is its own reason to
+have made it.
+
+The same zero-vector condition was a real defect on the live serving
+path too, not only in evaluation — see `docs/serving-fallback.md` for
+the cold-start retrieval change it prompted.
 
 ## This is not a new defect — it is the already-diagnosed retrieval limitation, run end to end
 
@@ -79,17 +119,27 @@ recover a click that retrieval's candidate set never contained in the
 first place; this result is the same limitation propagating through the
 full pipeline, not a second, independent problem.
 
-Two numbers in this run are worth reading honestly rather than at face
-value. Durable-feature coverage is 100% by construction now (it is
-computed directly from each impression's own `history` field, which
-MIND provides for essentially every row) — a real change in what this
-number means compared to a cache-hit-rate interpretation, not a claim
-that personalization quality itself improved. Recent-feature coverage
-(8.2%) and catalog coverage (0.6%) are both realistically low for this
-specific run: recent state only exists once a user has already
-appeared earlier in this same 500-impression sample, and catalog
-coverage reflects the same collapsed-embedding-space limitation
-described above, not a separate bug.
+Durable- and recent-feature coverage are both high by construction now
+(each is computed from the impression's own `history` field, which MIND
+provides for essentially every row) — a real change in what those
+numbers mean compared to a cache-hit-rate interpretation, not a claim
+that personalization quality improved. Catalog coverage (2.3–3.9%)
+reflects the same collapsed-embedding-space limitation described above.
+
+One further measured factor, reported but deliberately not acted on:
+the serving path retrieves 50 candidates out of 51,282
+(`RETRIEVAL_MULTIPLIER` × K, floored at `MIN_RETRIEVAL_CANDIDATES`).
+Measuring the clicked item's rank under full-catalog retrieval gives a
+median rank of 11,779 — better than the ~25,600 random chance would
+predict, so the model has learned something real — with recall@50 of
+about 2% rising to about 16% at depth 1,000. Retrieving deeper would
+therefore put the clicked item in front of the ranker substantially
+more often. That is a hyperparameter choice, and
+`docs/evaluation-integrity.md` records why this project no longer makes
+such choices by looking at `validation` and then reporting against it.
+Changing retrieval depth on the strength of the numbers above would be
+exactly that mistake, so the finding is recorded here and left for a
+decision made against the tuning fold instead.
 
 ## Honest interpretation
 

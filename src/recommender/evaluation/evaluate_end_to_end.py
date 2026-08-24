@@ -18,6 +18,7 @@ from recommender.features.online_features import (
 )
 from recommender.features.state_store import load_recent_features, save_recent_features
 from recommender.ranking.features import dominant_category, history_ids_from_raw
+from recommender.retrieval.features import MAX_HISTORY
 from recommender.serving.cache import DurableFeatureCache
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.fallback import safe_recommend
@@ -44,6 +45,40 @@ def _point_in_time_durable_features(
         dominant_category=dominant_category(history_ids, category_by_id),
         lifetime_click_count=len(history_ids),
     )
+
+
+def _seed_recent_state_from_history(
+    redis_client: InMemoryRedis, user_id: str, history_raw: str | None
+) -> None:
+    """Seeds a user's isolated recent-feature state, once, from that
+    impression's own `history` field -- the clicks MIND records as
+    happening strictly *before* this impression, which is exactly what a
+    live Redis would already hold for a returning user at that moment.
+
+    Without this, the store starts empty for every user, and the serving
+    path's two-tower query is built from an empty click list. That
+    produces a genuinely zero-norm user embedding, and an inner-product
+    Faiss search against a zero vector scores every catalog item
+    identically -- so every user receives the same arbitrary tie-ordered
+    candidate list. Measured directly before this fix: 60 impressions
+    produced 1 distinct candidate set with the empty store, versus 50
+    once real history was supplied.
+
+    Seeded only on a user's first impression in the run; later
+    impressions accumulate on top via `_apply_impression_to_recent_state`,
+    so a user's second impression correctly sees their prior history
+    *plus* the first impression's real clicks.
+    """
+    if load_recent_features(redis_client, user_id) is not None:
+        return
+    history_ids = history_ids_from_raw(history_raw) if history_raw else []
+    if not history_ids:
+        return
+    state = UserState()
+    for news_id in history_ids[-MAX_HISTORY:]:
+        state.recent_clicked_items.append(news_id)
+    state.clicks_seen = len(history_ids)
+    save_recent_features(redis_client, recent_features_from_user_state(user_id, state))
 
 
 def _apply_impression_to_recent_state(
@@ -117,6 +152,7 @@ def evaluate_end_to_end(
     fallback_reasons: Counter = Counter()
     durable_hits = 0
     recent_hits = 0
+    retrieval_contained_a_click = 0
     all_recommended_ids: set = set()
 
     for impression_id, group in exploded.groupby("impression_id", sort=False):
@@ -129,9 +165,9 @@ def evaluate_end_to_end(
         user_id = group["user_id"].iloc[0]
         request_time = group["time"].iloc[0]
 
-        durable = _point_in_time_durable_features(
-            user_id, history_by_impression_id.get(impression_id), category_by_id
-        )
+        history_raw = history_by_impression_id.get(impression_id)
+        durable = _point_in_time_durable_features(user_id, history_raw, category_by_id)
+        _seed_recent_state_from_history(isolated_redis, user_id, history_raw)
         per_impression_context = replace(
             context,
             durable_cache=DurableFeatureCache(features_by_user={user_id: durable}, computed_at=request_time),
@@ -146,8 +182,14 @@ def evaluate_end_to_end(
             state["value"] = True
             state["reason"] = reason
 
-        response = safe_recommend(request, per_impression_context, on_fallback=_mark_fallback)
+        retrieved_ids: list = []
+        response = safe_recommend(
+            request, per_impression_context, on_fallback=_mark_fallback,
+            capture_candidates=retrieved_ids,
+        )
         impressions_evaluated += 1
+        if clicked_ids & set(retrieved_ids):
+            retrieval_contained_a_click += 1
         if fallback_state["value"]:
             fallback_reasons[fallback_state["reason"]] += 1
         if response.durable_features_used:
@@ -180,6 +222,14 @@ def evaluate_end_to_end(
         "fallback_count": sum(fallback_reasons.values()),
         "fallback_reasons": dict(fallback_reasons),
         "catalog_coverage": catalog_coverage(all_recommended_ids, len(context.news_ids)),
+        # Separates a retrieval miss from a ranking miss. If this is near
+        # zero, the clicked item was never a candidate at all, and no
+        # amount of ranking improvement could raise the metrics below --
+        # the end-to-end numbers alone cannot tell those two failures
+        # apart, which is why this is reported alongside them.
+        "retrieval_contained_a_click_rate": (
+            retrieval_contained_a_click / impressions_evaluated if impressions_evaluated else None
+        ),
         "hit_rate_at_k": float(np.mean(hit_rates)) if hit_rates else 0.0,
         "recall_at_k": float(np.mean(recalls)) if recalls else 0.0,
         "ndcg_at_k": float(np.mean(ndcgs)) if ndcgs else 0.0,
