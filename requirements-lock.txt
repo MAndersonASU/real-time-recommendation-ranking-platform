@@ -1,16 +1,9 @@
 # Exact, fully-resolved dependency versions for the complete runtime
 # *and* test/dev environment (pyproject.toml's own [project.optional-
-# dependencies].dev, including skops, pytest-cov, bandit, and pip-audit)
-# -- generated with `pip freeze` from a real environment where the
-# complete test suite passes, then verified again from scratch: a
-# genuinely fresh virtual environment, `pip install -r
-# requirements-lock.txt`, `pip install --no-deps -e .`, full suite
-# (284/284 passed). A previous version of this file omitted skops
-# entirely (added to pyproject.toml's runtime dependencies but never
-# re-frozen), which broke a from-scratch install with 17 test-collection
-# errors -- found by a follow-up audit, fixed by regenerating from a
-# real environment that actually has every declared dependency
-# installed, not by hand-editing this file.
+# dependencies].dev), generated with `pip freeze` from a real
+# environment where the complete test suite passes, then verified
+# again from a genuinely fresh virtual environment: `pip install -r
+# requirements-lock.txt`, `pip install --no-deps -e .`, full suite.
 #
 #   pip install -r requirements-lock.txt
 #   pip install --no-deps -e .
