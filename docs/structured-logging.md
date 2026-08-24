@@ -15,6 +15,14 @@ id. Given one id from a client bug report or an alert, every log line
 for that specific request can be found directly, not guessed at by
 timestamp.
 
+This holds for unhandled exceptions too, not just successful requests.
+The middleware wraps the downstream call in `try`/`except`: on an
+unhandled exception it still logs a `request_failed` line carrying the
+same request id, and still sets the `X-Request-ID` header on the 500
+response it returns — a caller reporting a failed request can always
+be traced to its server-side log line, and the response body never
+leaks the underlying exception's own text.
+
 ## Sanitization: hashed, not raw, user identifiers
 
 `recommend_served` logs `user_id_hash`, never the real `user_id`. MIND's
@@ -26,6 +34,14 @@ actually needs — "these log lines are the same user" — without ever
 writing the reversible, raw identifier to a log file. Deterministic on
 purpose (the same input always hashes the same way), so correlation
 across many log lines still works.
+
+The fallback path (`safe_recommend`, `src/recommender/serving/fallback.py`)
+uses the same `hash_user_id` helper when it logs the reason a request
+fell back to popularity ranking — it previously logged the raw
+`user_id` directly on that path, inconsistent with the primary
+`recommend_served` line above. `tests/test_serving_fallback.py::
+test_safe_recommend_never_logs_the_raw_user_id` asserts the raw value
+never appears in that log record.
 
 ## Real JSON, not a formatted string
 

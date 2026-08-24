@@ -208,6 +208,26 @@ def test_loggable_path_redacts_a_demo_path_with_a_trailing_slash_too():
     assert redacted == f"/demo/{hash_user_id('a-very-identifiable-raw-user-id')}/"
 
 
+def test_recommend_endpoint_preserves_the_x_request_id_header_on_a_real_dependency_failure():
+    """A real dependency failure (Redis unreachable) is a known,
+    expected condition -- `safe_recommend` degrades it to a 200
+    popularity-fallback response, not an error, so it takes the
+    middleware's normal success path rather than the except branch
+    covered by test_unhandled_exception_still_gets_an_x_request_id_
+    header_and_an_error_log above. Confirms that path also carries a
+    real X-Request-ID, not just the true-500 path.
+    """
+    context = _build_context(redis_client=_dead_redis_client())
+    app_module._state["context"] = context
+    app_module._state["quality_tracker"] = QualitySignalTracker(catalog_size=len(context.news_ids))
+    client = TestClient(app_module.app)
+
+    response = client.post("/recommend", json={"user_id": "u1", "num_candidates": 3})
+
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+
+
 def test_unhandled_exception_still_gets_an_x_request_id_header_and_an_error_log():
     """Regression test for a real bug, found by a follow-up audit: an
     unhandled exception raised inside a route bypasses this middleware's

@@ -118,9 +118,11 @@ see `requirements-lock.txt`.
 ## Documentation index
 
 - **Research** — `docs/research-scenario.md` (frozen questions/scope),
-  `docs/evaluation-protocol.md` (frozen metrics/split), `docs/conclusions.md`
-  (final answers), `docs/limitations.md`, `docs/ablations.md`,
-  `docs/failure-analysis.md`
+  `docs/evaluation-protocol.md` (frozen metrics/split),
+  `docs/evaluation-integrity.md` (held-out evaluation leakage found and
+  fixed), `docs/serving-path-end-to-end-evaluation.md`,
+  `docs/conclusions.md` (final answers), `docs/limitations.md`,
+  `docs/ablations.md`, `docs/failure-analysis.md`
 - **Data** — `docs/data-card.md`, `docs/dataset-source.md`,
   `docs/data-quality.md`, `docs/splits.md`
 - **Modeling** — `docs/retrieval-model.md`, `docs/ranking-model.md`,
@@ -137,7 +139,8 @@ see `requirements-lock.txt`.
 - **Architecture** — `docs/architecture.md` (system design, module
   ownership, and every real design decision with its reasoning)
 - **Demonstration & reproducibility** — `docs/professional-demonstration.md`,
-  `docs/reproducibility.md`
+  `docs/reproducibility.md`, `docs/engineering-review-and-hardening.md`
+  (review scope, methodology, and disclosed limitations), `CHANGELOG.md`
 
 ## License
 
