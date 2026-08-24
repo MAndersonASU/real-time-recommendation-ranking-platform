@@ -33,9 +33,9 @@ def test_verify_faithfulness_ignores_category_when_match_is_false():
 
 
 def test_verify_faithfulness_rejects_a_lowercase_fabricated_attribution():
-    """Regression test for one of the exact fabrications a follow-up
-    audit confirmed both the generation module's own gate *and* this
-    "independent" check accepted before this fix -- a fully lowercase
+    """Regression test for one of the exact fabrications confirmed to
+    have been accepted by both the generation module's own gate *and*
+    this "independent" check before this fix -- a fully lowercase
     fabrication, so a capitalization-based check (what both used to be)
     never had a chance to catch it.
     """
@@ -51,7 +51,7 @@ def test_verify_faithfulness_rejects_a_lowercase_fabricated_causation_claim():
 
 
 def test_verify_faithfulness_rejects_a_fabrication_that_keeps_the_real_category_word():
-    """The third exact audit example: mixed-case, and it *does* keep the
+    """The third exact example: mixed-case, and it *does* keep the
     real category word -- a check that only verified the category word
     was present would have wrongly accepted this.
     """

@@ -34,12 +34,11 @@ jobs:
     runs-on: ubuntu-latest
     # A second, separate install path from lint-and-test above:
     # requirements-lock.txt's exact, pinned versions, not
-    # pyproject.toml's own flexible lower bounds. A real gap found by a
-    # follow-up audit: the lock file had drifted (a dependency added to
-    # pyproject.toml was never re-frozen into it), which silently broke
-    # a from-scratch locked install without either install path in CI
-    # ever catching it -- lint-and-test's flexible install always
-    # resolved a working set on its own, so it couldn't have.
+    # pyproject.toml's own flexible lower bounds. A dependency added to
+    # pyproject.toml but never re-frozen into the lock file would
+    # silently break a from-scratch locked install without either
+    # install path in CI ever catching it -- lint-and-test's flexible
+    # install always resolves a working set on its own, so it can't.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

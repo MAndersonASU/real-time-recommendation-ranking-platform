@@ -142,8 +142,8 @@ def test_safe_recommend_falls_back_with_the_real_reason():
 
 def test_safe_recommend_lets_a_genuine_programming_bug_propagate_not_fall_back():
     """Regression test distinguishing a real dependency failure from a
-    real programming bug, per the follow-up audit's explicit ask: only
-    DependencyUnavailableError (raised at the specific boundaries where
+    real programming bug: only DependencyUnavailableError (raised at
+    the specific boundaries where
     a known dependency's own exception was caught and translated)
     triggers a fallback. A bug elsewhere in the pipeline -- here, a
     ValueError from the ranking model's own predict_proba, standing in

@@ -88,8 +88,8 @@ def test_syncing_consumer_restores_prior_state_after_a_restart():
 
 def test_syncing_consumer_can_double_count_state_after_a_crash_before_commit():
     """Documents a real, disclosed limitation rather than assuming it
-    away, per a follow-up audit: the Redis state mutation and the Kafka
-    offset commit are two separate operations, not one atomic one. A
+    away: the Redis state mutation and the Kafka offset commit are two
+    separate operations, not one atomic one. A
     crash after the mutation but before the commit means that message
     is redelivered on restart -- and the in-process dedup set
     (`_seen_event_ids`) that would normally catch a redelivery does not

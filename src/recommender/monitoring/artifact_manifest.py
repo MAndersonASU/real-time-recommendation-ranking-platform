@@ -14,13 +14,12 @@ def _file_fingerprint(path: Path) -> str:
 
 def build_serving_artifact_manifest() -> dict:
     """Every artifact and pinned configuration value that determines
-    what a live request actually gets served by. A prior version of
-    this project's model-version identifier fingerprinted only the
-    retrieval (two-tower) model file -- a real gap, found by a
-    follow-up audit: the ranking model, the embedding model's own
-    revision, the exact ranking feature schema, the catalog, and the
-    reranking configuration can all change what a request actually
-    receives without changing that one file at all.
+    what a live request actually gets served by: the ranking model, the
+    embedding model's own revision, the exact ranking feature schema,
+    the catalog, and the reranking configuration, alongside the
+    retrieval model -- each one can change what a request actually
+    receives, so a version identifier derived from the retrieval model
+    file alone would miss real changes to any of the others.
 
     The Faiss index has no separate entry here: `build_serving_context`
     (`src/recommender/serving/pipeline.py`) never loads a saved index

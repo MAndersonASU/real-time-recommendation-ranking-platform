@@ -28,14 +28,14 @@ into the connection string at the one point it's actually needed. This
 is the pattern in place *before* a real secret exists, not retrofitted
 after one leaks.
 
-**Update**: a real gap, found by audit, existed here until now --
-`redis_password` was carried all the way through `redis_url_with_auth()`
-with no corresponding `requirepass` on the Redis service in
-`docker-compose.yml` at all, so setting a real password would have done
-nothing. Fixed and verified end to end (real `NOAUTH` on an
+`redis_password` is carried all the way through `redis_url_with_auth()`
+into a corresponding `requirepass` on the Redis service in
+`docker-compose.yml`, so setting a real `REDIS_PASSWORD` actually takes
+effect end to end -- verified directly (real `NOAUTH` on an
 unauthenticated attempt, real success both via `redis-cli -a` and via
-this project's own `redis_url_with_auth()`, once a real `REDIS_PASSWORD`
-is set) -- see `docker-compose.yml`'s own comments for detail.
+this project's own `redis_url_with_auth()`, and the same key still
+present after a real container restart) -- see `docker-compose.yml`'s
+own comments for detail.
 
 ## Explicit ports
 

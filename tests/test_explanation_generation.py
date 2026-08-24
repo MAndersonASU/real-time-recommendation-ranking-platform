@@ -183,10 +183,10 @@ def test_generate_explanation_rejects_an_invented_entity_even_when_the_category_
 
 
 def test_generate_explanation_rejects_a_lowercase_fabricated_attribution():
-    """Regression test for a real gap, found by a follow-up audit: the
-    original gate only ever flagged an *unfamiliar capitalized* word, so
-    a fully lowercase fabrication passed unchanged. This is one of the
-    exact examples the audit confirmed was accepted before this fix.
+    """Regression test for a real gap: the original gate only ever
+    flagged an *unfamiliar capitalized* word, so a fully lowercase
+    fabrication passed unchanged. This is one of the exact examples
+    confirmed to have been accepted before this fix.
     """
     context = _context(category_match=False, content_similarity=0.4)
     generator = _FakeGenerator("the president personally selected this story for you.")
@@ -198,7 +198,7 @@ def test_generate_explanation_rejects_a_lowercase_fabricated_attribution():
 
 
 def test_generate_explanation_rejects_a_lowercase_fabricated_causation_claim():
-    """A second exact example the audit confirmed was accepted before
+    """A second exact example confirmed to have been accepted before
     this fix -- a fabricated causal claim with no capitalized word at
     all.
     """
@@ -212,7 +212,7 @@ def test_generate_explanation_rejects_a_lowercase_fabricated_causation_claim():
 
 
 def test_generate_explanation_rejects_a_fabrication_that_keeps_the_real_category_word():
-    """The third exact example the audit confirmed was accepted before
+    """The third exact example confirmed to have been accepted before
     this fix: the fabrication is mixed-case and *does* keep the real
     category word ("Sports"), so a check that only verified the category
     word was present (without also checking for unsupported content)

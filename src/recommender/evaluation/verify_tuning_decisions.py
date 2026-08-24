@@ -215,13 +215,11 @@ def verify_diversity_cap() -> dict:
     algorithm's own output across alternative cap values -- not only
     the currently-configured value's own behavior.
 
-    A real gap in an earlier version of this check, found by a
-    follow-up audit: it reused the already-trained production ranking
-    model, fit on *all* of train, including these same tuning rows --
-    scores from a model that had already seen the tune fold's own
-    labels are not the held-out check they were presented as. Fixed by
-    fitting a fresh model here, on the fit half only, so `tune_rows` are
-    genuinely unseen by the model that scores them.
+    Fits a fresh ranking model on the fit half only, rather than
+    reusing the already-trained production model (which was fit on
+    *all* of train, including these same tuning rows) -- scores from a
+    model that had already seen the tune fold's own labels would not be
+    a genuinely held-out check.
     """
     train_rows = pd.read_parquet(TRAIN_PATH)
     fit_rows, tune_rows = split_train_for_tuning(train_rows)
