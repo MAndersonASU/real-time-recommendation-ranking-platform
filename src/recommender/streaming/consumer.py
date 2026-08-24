@@ -9,13 +9,13 @@ from recommender.streaming.schema import SCHEMA_VERSION, EventType, InteractionE
 
 MAX_RECENT_ITEMS = 20
 
-# A real bug, found by audit: `_seen_event_ids` and the monitoring
-# counters' `distinct_users`/`distinct_items` were plain, unbounded
-# `set`s -- a long-running consumer process grows them forever, one
-# entry per never-before-seen event id, user, or item, for as long as
-# the process runs. Bounded here to a fixed capacity instead, evicting
-# the oldest-inserted entry once full. A disclosed, intentional
-# tradeoff, not a full fix for the underlying problem: `distinct_users`/
+# `_seen_event_ids` and the monitoring counters' `distinct_users`/
+# `distinct_items` are bounded to a fixed capacity, evicting the
+# oldest-inserted entry once full -- a plain, unbounded `set` would let
+# a long-running consumer process grow them forever, one entry per
+# never-before-seen event id, user, or item, for as long as the process
+# runs. A disclosed, intentional tradeoff, not a full fix for the
+# underlying problem: `distinct_users`/
 # `distinct_items` now mean "distinct among the most recently tracked
 # `MAX_DISTINCT_TRACKED` entries," not "distinct across this process's
 # entire lifetime" -- and duplicate detection only catches a redelivery

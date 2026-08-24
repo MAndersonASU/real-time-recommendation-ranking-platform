@@ -49,11 +49,10 @@ def build_demo_data(
     the demo page shows from that single response -- never a second,
     separately-computed number for display purposes.
 
-    Goes through `safe_recommend`, not `recommend` directly (a real bug,
-    found by audit: this previously called `recommend()` directly, so a
-    real dependency failure -- an unreachable Redis, a corrupted model
-    file -- crashed this page with an unhandled 500 instead of degrading
-    to the same popularity fallback `/recommend` already falls back to).
+    Goes through `safe_recommend`, not `recommend` directly, so a real
+    dependency failure -- an unreachable Redis, a corrupted model file
+    -- degrades to the same popularity fallback `/recommend` already
+    falls back to, instead of crashing this page with an unhandled 500.
     A fallback response never has matched signals, so no explanation
     renders for that item -- an honest reflection of not having run the
     real personalized path, not a bug in the explanation layer.

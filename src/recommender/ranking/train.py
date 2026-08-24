@@ -11,12 +11,9 @@ from sklearn.preprocessing import StandardScaler
 from recommender.ranking.build_dataset import TRAIN_PATH, VALIDATION_PATH
 from recommender.ranking.features import FEATURE_COLUMNS
 
-# A real bug, found by audit: this artifact used to be saved with
-# joblib, which is a thin wrapper over pickle -- loading it means
-# executing arbitrary code embedded in the file, not just reading data.
-# A trained sklearn Pipeline has no legitimate reason to need that.
-# skops (`sio` here) serializes and loads the same kind of object
-# without ever executing code from the file: `sio.load` only
+# Saved with skops (`sio` here), not joblib/pickle: a trained sklearn
+# Pipeline has no legitimate reason to need arbitrary code execution on
+# load, which is what a pickle-based loader gives it. `sio.load` only
 # reconstructs types it recognizes as safe (a plain Pipeline of
 # StandardScaler + LogisticRegression, confirmed against this project's
 # own real trained model -- zero untrusted types reported), raising

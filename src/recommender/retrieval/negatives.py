@@ -18,14 +18,14 @@ def sample_negative_rows(
     """
     exclude = user_clicked_rows.get(user_id, set())
 
-    # A real bug, found by audit: with no check here, a user excluded
-    # from (or a catalog shrunk to) every single row leaves this loop
-    # with literally zero valid candidates -- every draw rejected,
-    # forever, since none can ever land outside `exclude | {positive_row}`.
-    # At least one valid row existing is enough for the loop below to
-    # terminate (it samples *with* replacement, so one safe row can fill
-    # every remaining slot); zero valid rows is the one case it can
-    # never recover from on its own.
+    # A user excluded from (or a catalog shrunk to) every single row
+    # would leave the loop below with literally zero valid candidates --
+    # every draw rejected, forever, since none can ever land outside
+    # `exclude | {positive_row}`. At least one valid row existing is
+    # enough for that loop to terminate (it samples *with* replacement,
+    # so one safe row can fill every remaining slot); zero valid rows is
+    # the one case it can never recover from on its own, so it's
+    # rejected explicitly here instead.
     excluded_or_positive = exclude | {positive_row}
     available = catalog_size - len(excluded_or_positive)
     if available <= 0:

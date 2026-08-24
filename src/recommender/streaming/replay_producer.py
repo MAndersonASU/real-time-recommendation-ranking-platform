@@ -109,16 +109,15 @@ def replay(
         previous_time = row.time
 
         impression_event, outcome_event = events_for_row(row)
-        # Keyed by user_id, not news_id: a real bug, found by a
-        # follow-up audit. Kafka only guarantees ordering *within* one
-        # partition, and partition assignment is a deterministic
-        # function of the key -- keying by item meant two events for
-        # the *same user* but *different items* could land on different
-        # partitions and be processed out of order by a consumer with
-        # more than one partition to read from (the default topic has
-        # only one partition today, which is why this was latent rather
-        # than already visible, but `ensure_topic`'s `num_partitions` is
-        # a real, exposed parameter). `StreamConsumer.process()`
+        # Keyed by user_id, not news_id: Kafka only guarantees ordering
+        # *within* one partition, and partition assignment is a
+        # deterministic function of the key -- keying by item would let
+        # two events for the *same user* but *different items* land on
+        # different partitions and be processed out of order by a
+        # consumer with more than one partition to read from (the
+        # default topic has only one partition today, but
+        # `ensure_topic`'s `num_partitions` is a real, exposed
+        # parameter). `StreamConsumer.process()`
         # accumulates one user's state incrementally (impressions_seen,
         # recent_clicked_items) and depends on seeing that user's own
         # events in their real chronological order -- keying by user_id

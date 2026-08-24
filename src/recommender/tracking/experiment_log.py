@@ -22,15 +22,15 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def _current_git_commit() -> str | None:
     """Prefers the real, documented `GIT_COMMIT_SHA` environment
-    variable over discovering it from a local `.git` directory. A real
-    gap, found by a follow-up audit: repository discovery is a real
-    fallback for local development, but a container image built from a
-    source archive (no `.git` directory at all -- the Dockerfile only
-    copies `pyproject.toml` and `src/`) or a wheel install would always
-    resolve to `None`, silently losing this project's own
-    reproducibility identity in exactly the deployed environment where
-    it matters most. `docker-compose.yml`'s `api` build passes this
-    through from a real `git rev-parse HEAD` at build time.
+    variable over discovering it from a local `.git` directory.
+    Repository discovery is a real fallback for local development, but
+    a container image built from a source archive (no `.git` directory
+    at all -- the Dockerfile only copies `pyproject.toml` and `src/`) or
+    a wheel install would always resolve to `None` there, losing this
+    project's own reproducibility identity in exactly the deployed
+    environment where it matters most. `docker-compose.yml`'s `api`
+    build passes this through from a real `git rev-parse HEAD` at build
+    time.
     """
     env_commit = os.environ.get("GIT_COMMIT_SHA")
     if env_commit:

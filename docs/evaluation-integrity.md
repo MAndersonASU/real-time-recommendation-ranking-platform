@@ -103,24 +103,75 @@ land on each side of a chronological boundary versus a random one, a
 real confound this check does not separately rule out). It is real
 evidence in favor of that explanation, not proof of it.
 
-**A separate, larger gap this section does not close**: this check —
-and the diversity/freshness checks above — measure the *chosen*
-hyperparameter value's own behavior on held-out data. None of the
-three compare the chosen value against real alternatives (no diversity
-cap at all, other cap values; other freshness thresholds and minimum
-counts), and the diversity check's own "naive top-10" scores come from
-the ranking model as currently trained — on all of `train`, including
-these tuning rows, not refit without them. A held-out re-measurement of
-one already-chosen value is weaker evidence than an actual comparison
-across candidate values decided in advance. That comparison has not
-been done yet.
+## Comparing against real alternatives, not just the chosen value's own behavior
+
+The diversity check's own "naive top-10" scores now come from a
+ranking model refit on the fit half of the tuning fold only — never
+seeing these tuning rows at all, unlike an earlier version of this
+check, which reused the already-trained production model (fit on *all*
+of `train`, including these same rows).
+
+Both checks also now compare the currently-configured value against
+real alternatives, run through the actual production algorithm
+(`build_diverse_slate`, `apply_freshness_quota`), with a selection rule
+decided *before* looking at the resulting numbers
+(`verify_diversity_cap`, `verify_freshness_threshold` in
+`verify_tuning_decisions.py`).
+
+**Freshness: the predefined rule worked as intended, and reconfirms
+the configured threshold.** Rule: choose the smallest threshold whose
+zero-fresh-impression rate stays under 5%.
+
+| Threshold (days) | Fresh-row rate | Zero-fresh-impression rate |
+|---|---|---|
+| 0.25 | 12.2% | 23.5% |
+| **0.5 (configured)** | **32.3%** | **3.4%** |
+| 1.0 | 73.0% | 0.1% |
+| 2.0 | 88.5% | ~0.0% |
+| 7.0 | 100% | 0.0% |
+
+0.5 days is the smallest threshold clearing the 5% bar — the rule
+selects exactly the currently-configured value.
+
+**Diversity: the predefined rule does not work as intended, and that
+is reported honestly rather than papered over.** Rule as written:
+choose the smallest cap reaching at least 90% of the *uncapped* mean
+distinct-category count.
+
+| Cap | Mean slate relevance | Mean distinct categories |
+|---|---|---|
+| 1 | 0.438 | 7.59 |
+| 2 | 0.482 | 5.64 |
+| **3 (configured)** | **0.507** | **4.96** |
+| 5 | 0.530 | 4.42 |
+| No cap | 0.546 | 4.05 |
+
+Because a smaller cap can only ever *increase* diversity relative to no
+cap, every candidate value clears a bar set relative to the *worst*
+(uncapped) case — the rule trivially selects the smallest cap tried
+(1), regardless of the real tradeoff. That is a flaw in this specific
+rule's design, not evidence that cap=1 is actually better than cap=3:
+a meaningful rule would need to weigh relevance loss against diversity
+gain jointly (e.g. a fixed relevance budget), which this rule does not
+do. The real, useful output here is the tradeoff table itself — cap=3
+gives up about 7% mean relevance versus no cap in exchange for roughly
+22% more distinct categories per slate — not the rule's own selected
+value. Choosing among these values is a real product tradeoff this
+project has not made via a formal decision procedure; cap=3 remains a
+disclosed, reasonable choice within the measured tradeoff space, not
+something this comparison proves optimal or proves wrong.
 
 ## What this means going forward
 
-- The diversity cap and freshness threshold: the *chosen* values'
-  behavior held up on held-out data, not just validation — real
-  evidence, but not a comparison against alternative values, and not
-  yet a closed question (see the gap above).
+- The freshness threshold: reconfirmed twice now — once by held-out
+  coverage at the chosen value, once by a predefined rule comparing
+  real alternatives that independently selects the same value.
+- The diversity cap: the chosen value's own held-out behavior
+  reconfirmed cleanly, and a real relevance/diversity tradeoff curve
+  across alternatives now exists and is reported honestly — but no
+  rule tested here actually settles which cap value is "best," a real,
+  disclosed, still-open question distinct from whether cap=3's own
+  measured behavior is real (it is).
 - The popularity exclusion: the original decision to exclude
   `popularity` (AUC 0.47, no better than random on genuinely
   out-of-sample, temporally-realistic data) is supported, not proven,

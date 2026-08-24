@@ -28,11 +28,11 @@ class Settings(BaseSettings):
         or an accidental print -- str(settings) shows `**********`.
 
         The password is percent-encoded (`quote(..., safe="")`) before
-        being woven in. A real bug, found by audit: an unencoded
-        password containing a URI-significant character (`/`, `#`, `?`,
-        an extra `@`) silently corrupts the resulting URL -- e.g. a `/`
-        in the password gets parsed as the start of the URL's path,
-        leaving both hostname and password as `None` to any URL parser,
+        being woven in: an unencoded password containing a URI-
+        significant character (`/`, `#`, `?`, an extra `@`) would
+        silently corrupt the resulting URL -- e.g. a `/` in the
+        password gets parsed as the start of the URL's path, leaving
+        both hostname and password as `None` to any URL parser,
         redis-py's own `from_url` included -- rather than raising where
         the mistake could actually be seen.
         """

@@ -66,12 +66,11 @@ def train_model(
     num_subcategories=None,
     seed: int = TRAIN_SEED,
 ):
-    """A real bug, found by audit: training was not reproducible --
-    `set_seed` was never called here at all, and the DataLoader's
-    `shuffle=True` and the model's own weight initialization both draw
-    from torch's global RNG, unseeded. Seeding here, immediately before
-    both are constructed, makes two runs given the same dataset and seed
-    produce bit-for-bit identical shuffling order and initial weights
+    """Seeds immediately before both the DataLoader and the model are
+    constructed, since the DataLoader's `shuffle=True` and the model's
+    own weight initialization both draw from torch's global RNG. Two
+    runs given the same dataset and seed then produce bit-for-bit
+    identical shuffling order and initial weights
     (`tests/test_retrieval_train.py`).
     """
     if dataset is None:

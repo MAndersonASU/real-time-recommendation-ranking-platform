@@ -8,14 +8,14 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 KEY_PREFIX = "recent_features:"
 DEFAULT_TTL_SECONDS = 60 * 60 * 24  # a user with no new events in a day is stale, not "recent"
 
-# A real bug, found by audit: build_client had no connect or read
-# timeout at all, so a Redis that hangs (not one that refuses the
-# connection outright -- a network black hole, an overloaded instance
-# not responding) would block a request indefinitely instead of raising
-# the RedisError safe_recommend already catches to fall back to
-# popularity ranking. A slow, hanging dependency is a real failure mode
-# distinct from an immediate connection-refused error, and the fallback
-# path can only degrade gracefully from a failure it actually sees.
+# Real, finite connect/read timeouts: without them, a Redis that hangs
+# (not one that refuses the connection outright -- a network black
+# hole, an overloaded instance not responding) would block a request
+# indefinitely instead of raising the RedisError safe_recommend catches
+# to fall back to popularity ranking. A slow, hanging dependency is a
+# real failure mode distinct from an immediate connection-refused
+# error, and the fallback path can only degrade gracefully from a
+# failure it actually sees.
 DEFAULT_SOCKET_CONNECT_TIMEOUT_SECONDS = 2.0
 DEFAULT_SOCKET_TIMEOUT_SECONDS = 2.0
 

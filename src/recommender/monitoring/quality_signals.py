@@ -28,20 +28,18 @@ class QualitySignalTracker:
     """
 
     def __init__(self, catalog_size: int, window_size: int = DEFAULT_WINDOW_SIZE) -> None:
-        """A real bug, found by audit: `_scores` used to be a flat deque
-        of individual item scores, `maxlen=window_size * 10` -- a fixed
-        assumption of exactly 10 recommendations per response, even
-        though `RecommendationRequest.num_candidates` can legitimately
-        be anywhere up to `MAX_NUM_CANDIDATES` (50). A caller requesting
-        50 items per response filled that same capacity 5x faster than
-        one requesting 10, so "window_size" silently stopped meaning
-        "the last `window_size` responses" and started meaning "the
-        last `window_size // (actual items per response)` responses" --
-        wrong, and different depending on traffic, without any caller
-        being able to tell. Fixed the same way `_diversity` already
-        worked correctly: bounded by response count, not item count,
-        storing each response's own score list and flattening at
-        `snapshot()` time.
+        """`_scores` is bounded by response count, the same way
+        `_diversity` already is -- not by a fixed assumption of exactly
+        10 recommendations per response. `RecommendationRequest.
+        num_candidates` can legitimately be anywhere up to
+        `MAX_NUM_CANDIDATES` (50); a caller requesting 50 items per
+        response would otherwise fill a flat, per-item-capped window 5x
+        faster than one requesting 10, so "window_size" would silently
+        stop meaning "the last `window_size` responses" and start
+        meaning "the last `window_size // (actual items per response)`
+        responses" -- different depending on traffic, with no way for a
+        caller to tell. Each response's own score list is stored and
+        flattened at `snapshot()` time instead.
         """
         self.catalog_size = catalog_size
         self._scores: deque[list[float]] = deque(maxlen=window_size)

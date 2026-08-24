@@ -7,16 +7,16 @@ from recommender.explanation.contract import ExplanationResponse
 from recommender.explanation.retrieval import SupportContext
 
 MODEL_NAME = "google/flan-t5-small"
-# A real bug, found by audit: from_pretrained(MODEL_NAME) with no
-# revision resolves to whatever "main" currently points to on the Hub
-# at download time -- a later push to that repo (a genuine update, or a
-# compromised/hijacked one) would silently change which weights this
-# project loads, with no way to know it happened. Pinned to the exact
-# commit this project has always actually used and tested against
-# (confirmed via `huggingface_hub.scan_cache_dir()` against this
-# machine's real local cache). A future, deliberate model upgrade
-# updates this constant explicitly, rather than an update happening
-# invisibly.
+# Pinned to a specific commit rather than left to resolve "main":
+# from_pretrained(MODEL_NAME) with no revision would resolve to
+# whatever "main" currently points to on the Hub at download time -- a
+# later push to that repo (a genuine update, or a compromised/hijacked
+# one) would then silently change which weights this project loads,
+# with no way to know it happened. Pinned to the exact commit this
+# project actually tests against (confirmed via
+# `huggingface_hub.scan_cache_dir()` against this machine's real local
+# cache). A future, deliberate model upgrade updates this constant
+# explicitly, rather than an update happening invisibly.
 MODEL_REVISION = "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab"
 MAX_NEW_TOKENS = 60
 

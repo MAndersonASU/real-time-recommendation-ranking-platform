@@ -40,16 +40,14 @@ _DEMO_PATH_PATTERN = re.compile(r"^(?P<prefix>/demo/)(?P<user_id>[^/]+?)(?P<suff
 
 def _loggable_path(path: str) -> str:
     """Redacts the raw user id out of a `/demo/{user_id}` path before it
-    reaches a log line. A real bug, found by audit: this middleware logs
-    `request.url.path` verbatim for every route, so the raw, unhashed
-    user id was written to the access log for every `/demo` request --
-    inconsistent with `/recommend`'s own explicit log line, which only
+    reaches a log line -- the access-log middleware below logs
+    `request.url.path` verbatim for every route, so this keeps `/demo`
+    consistent with `/recommend`'s own explicit log line, which only
     ever logs `hash_user_id(payload.user_id)`. A trailing slash (`/demo/
     U1000/`, which FastAPI redirects but still logs on its own request)
-    is matched too, not just the exact no-slash form -- an earlier
-    version of this pattern missed it. Every other route's path has no
-    user identifier embedded in it at all, so this only needs to
-    special-case `/demo`.
+    is matched too, not just the exact no-slash form. Every other
+    route's path has no user identifier embedded in it at all, so this
+    only needs to special-case `/demo`.
     """
     match = _DEMO_PATH_PATTERN.match(path)
     if match is None:
@@ -263,12 +261,12 @@ def demo(
 
     `num_candidates`'s bounds are enforced here at the query-parameter
     level, matching `RecommendationRequest`'s own `gt=0, le=MAX_NUM_
-    CANDIDATES` constraint. A real bug, found by audit: before this,
-    `num_candidates=0` (or any other out-of-range value) passed FastAPI's
-    unconstrained `int` parsing untouched, reached `RecommendationRequest`
-    deep inside `build_demo_data`, and raised a raw, uncaught pydantic
-    `ValidationError` there -- an unhandled 500, not the same 422 a
-    request with an equally invalid `/recommend` body already gets.
+    CANDIDATES` constraint -- without it, an out-of-range value would
+    pass FastAPI's unconstrained `int` parsing untouched, reach
+    `RecommendationRequest` deep inside `build_demo_data`, and raise a
+    raw, uncaught pydantic `ValidationError` there: an unhandled 500,
+    not the same 422 a request with an equally invalid `/recommend`
+    body gets.
     """
     return Response(content=render_demo_html(user_id, _context(), num_candidates), media_type="text/html")
 

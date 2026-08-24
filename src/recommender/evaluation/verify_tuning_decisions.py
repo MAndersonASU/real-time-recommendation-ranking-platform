@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import skops.io as sio
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import Pipeline
@@ -15,15 +14,26 @@ from recommender.evaluation.tuning_fold import (
     split_rows_by_impression_ids,
     split_train_for_tuning,
 )
-from recommender.ranking.baselines import compute_popularity
+from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.build_dataset import TRAIN_PATH
-from recommender.ranking.train import MODEL_FEATURE_COLUMNS
-from recommender.ranking.train import MODEL_PATH as RANKING_MODEL_PATH
+from recommender.ranking.train import MODEL_FEATURE_COLUMNS, train_ranking_model
+from recommender.reranking.diversity import DEFAULT_MAX_PER_CATEGORY, build_diverse_slate
 from recommender.reranking.freshness import (
     DEFAULT_FRESH_THRESHOLD_DAYS,
+    DEFAULT_MIN_FRESH_IN_SLATE,
     compute_age_days,
     compute_first_seen,
 )
+
+# A real, bounded sample of tune-fold impressions for the alternative-
+# value comparisons below (diversity cap values, freshness thresholds):
+# `build_diverse_slate`'s near-duplicate check is real per-impression
+# work, and running it across every one of ~25,000 tune-fold impressions
+# for each of several candidate values would make this check too slow
+# to actually run as part of routine verification. A real, disclosed
+# sampling tradeoff, not a hidden one -- the sample size is reported in
+# every comparison's own output.
+COMPARISON_SAMPLE_IMPRESSIONS = 1500
 
 REPORT_PATH = Path("data/processed/mind_small/tuning_decisions_verification_report.json")
 
@@ -138,23 +148,89 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
     }
 
 
+def _compare_diversity_cap_values(
+    scored_rows: pd.DataFrame, category_by_id: pd.Series, sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS
+) -> dict:
+    """Runs the real diversity-reranking algorithm at several candidate
+    cap values -- not just the currently-configured one's own behavior
+    -- and reports each value's real relevance/diversity tradeoff.
+    Predefined selection rule, decided before looking at the numbers
+    this produces: choose the smallest cap value whose mean distinct
+    categories per slate reaches at least 90% of the uncapped value's
+    own mean -- below that bar, a smaller cap is giving up relevance for
+    a diversity gain judged not worth it; the smallest cap clearing the
+    bar is preferred to avoid giving up more relevance than needed.
+    """
+    news = load_catalog()
+    tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
+
+    sample_impression_ids = scored_rows["impression_id"].drop_duplicates().head(sample_impressions)
+    sample = scored_rows[scored_rows["impression_id"].isin(sample_impression_ids)]
+
+    candidate_caps = [1, 2, 3, 5, None]  # None stands in for "no cap at all"
+    by_cap: dict[str, dict] = {}
+    for cap in candidate_caps:
+        effective_cap = cap if cap is not None else len(news)  # effectively unconstrained
+        total_relevance = 0.0
+        total_distinct_categories = 0
+        n = 0
+        for _impression_id, group in sample.groupby("impression_id", sort=False):
+            slate = build_diverse_slate(
+                group, "ranked_score", 10, category_by_id, tfidf_vectors, tfidf_row_by_id,
+                max_per_category=effective_cap,
+            )
+            total_relevance += float(slate["ranked_score"].sum())
+            total_distinct_categories += int(slate["news_id"].map(category_by_id).nunique())
+            n += 1
+        by_cap[str(cap) if cap is not None else "no_cap"] = {
+            "mean_slate_relevance": total_relevance / n if n else None,
+            "mean_distinct_categories": total_distinct_categories / n if n else None,
+        }
+
+    no_cap_diversity = by_cap["no_cap"]["mean_distinct_categories"]
+    target = 0.9 * no_cap_diversity if no_cap_diversity else None
+    selected_cap = None
+    for cap in (1, 2, 3, 5):
+        candidate_diversity = by_cap[str(cap)]["mean_distinct_categories"]
+        if target is not None and candidate_diversity is not None and candidate_diversity >= target:
+            selected_cap = cap
+            break
+
+    return {
+        "sample_impressions": len(sample_impression_ids),
+        "by_cap_value": by_cap,
+        "selection_rule": (
+            "smallest cap value reaching >=90% of the uncapped mean distinct-category count"
+        ),
+        "cap_value_selected_by_rule": selected_cap,
+        "currently_configured_cap": DEFAULT_MAX_PER_CATEGORY,
+        "rule_supports_current_configuration": selected_cap == DEFAULT_MAX_PER_CATEGORY,
+    }
+
+
 def verify_diversity_cap() -> dict:
     """Redoes the naive-top-10 category-concentration measurement that
     originally justified a category cap of 3, against the tune fold
-    instead of validation. Uses the already-trained ranking model's own
-    real scores (a disclosed, smaller residual overlap: that model was
-    fit on all of train, including these rows, before this fold
-    existed) to reproduce the same "naive top-10" population the
-    original measurement scored.
+    instead of validation, and separately compares the real diversity
+    algorithm's own output across alternative cap values -- not only
+    the currently-configured value's own behavior.
+
+    A real gap in an earlier version of this check, found by a
+    follow-up audit: it reused the already-trained production ranking
+    model, fit on *all* of train, including these same tuning rows --
+    scores from a model that had already seen the tune fold's own
+    labels are not the held-out check they were presented as. Fixed by
+    fitting a fresh model here, on the fit half only, so `tune_rows` are
+    genuinely unseen by the model that scores them.
     """
     train_rows = pd.read_parquet(TRAIN_PATH)
-    _fit_rows, tune_rows = split_train_for_tuning(train_rows)
+    fit_rows, tune_rows = split_train_for_tuning(train_rows)
     news = load_catalog()
     category_by_id = news.set_index("news_id")["category"]
 
-    ranking_model = sio.load(RANKING_MODEL_PATH)
+    held_out_ranking_model = train_ranking_model(fit_rows)
     tune_rows = tune_rows.assign(
-        ranked_score=ranking_model.predict_proba(tune_rows[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
+        ranked_score=held_out_ranking_model.predict_proba(tune_rows[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
     )
 
     four_plus = 0
@@ -177,21 +253,14 @@ def verify_diversity_cap() -> dict:
         "tune_fold_single_category_rate": single_category / total if total else None,
         "decision_confirmed": four_plus_rate is not None and four_plus_rate >= 0.3,
         "impressions_checked": total,
+        "ranking_model_excludes_tuning_rows": True,
+        "cap_value_comparison": _compare_diversity_cap_values(tune_rows, category_by_id),
     }
 
 
-def verify_freshness_threshold() -> dict:
-    """Redoes the freshness-candidate-coverage measurement that
-    originally justified a 12-hour threshold and a minimum of 2 fresh
-    items per slate, against the tune fold instead of validation.
-    """
-    train_behaviors = load_split("train")
-    first_seen = compute_first_seen(train_behaviors)
-    impression_time = train_behaviors.set_index("impression_id")["time"]
-
-    train_rows = pd.read_parquet(TRAIN_PATH)
-    _fit_rows, tune_rows = split_train_for_tuning(train_rows)
-
+def _coverage_at_threshold(
+    tune_rows: pd.DataFrame, impression_time: pd.Series, first_seen: pd.Series, threshold_days: float
+) -> dict:
     fresh_count = 0
     total_rows = 0
     zero_fresh_impressions = 0
@@ -201,23 +270,87 @@ def verify_freshness_threshold() -> dict:
             continue
         time = impression_time.loc[impression_id]
         age = compute_age_days(group, time, first_seen)
-        fresh = age <= DEFAULT_FRESH_THRESHOLD_DAYS
+        fresh = age <= threshold_days
         fresh_count += int(fresh.sum())
         total_rows += len(group)
         total_impressions += 1
         if not fresh.any():
             zero_fresh_impressions += 1
+    return {
+        "fresh_row_rate": fresh_count / total_rows if total_rows else None,
+        "zero_fresh_impression_rate": (
+            zero_fresh_impressions / total_impressions if total_impressions else None
+        ),
+        "impressions_checked": total_impressions,
+    }
 
-    fresh_row_rate = fresh_count / total_rows if total_rows else None
+
+def _compare_freshness_threshold_values(
+    tune_rows: pd.DataFrame, impression_time: pd.Series, first_seen: pd.Series
+) -> dict:
+    """Compares real coverage at several candidate thresholds -- not
+    only the currently-configured 12-hour (0.5-day) value's own
+    behavior. Predefined selection rule, decided before looking at the
+    numbers this produces: the original threshold was chosen so a
+    freshness quota is "almost always satisfiable, scarce enough to
+    mean something" (docs/reranking-freshness.md) -- operationalized
+    here as choosing the smallest threshold whose zero-fresh-impression
+    rate stays under 5% (the quota fails outright for less than 1 in 20
+    impressions), preferring the smallest such threshold since a
+    smaller threshold means a stricter, more meaningful notion of
+    "fresh."
+    """
+    candidate_thresholds_days = [0.25, 0.5, 1.0, 2.0, 7.0]
+    by_threshold = {
+        str(threshold): _coverage_at_threshold(tune_rows, impression_time, first_seen, threshold)
+        for threshold in candidate_thresholds_days
+    }
+
+    selected_threshold = None
+    for threshold in candidate_thresholds_days:
+        zero_rate = by_threshold[str(threshold)]["zero_fresh_impression_rate"]
+        if zero_rate is not None and zero_rate < 0.05:
+            selected_threshold = threshold
+            break
+
+    return {
+        "by_threshold_days": by_threshold,
+        "selection_rule": "smallest threshold with a zero-fresh-impression rate under 5%",
+        "threshold_selected_by_rule": selected_threshold,
+        "currently_configured_threshold_days": DEFAULT_FRESH_THRESHOLD_DAYS,
+        "rule_supports_current_configuration": selected_threshold == DEFAULT_FRESH_THRESHOLD_DAYS,
+    }
+
+
+def verify_freshness_threshold() -> dict:
+    """Redoes the freshness-candidate-coverage measurement that
+    originally justified a 12-hour threshold and a minimum of 2 fresh
+    items per slate, against the tune fold instead of validation, and
+    separately compares real coverage across alternative threshold
+    values -- not only the currently-configured value's own behavior.
+    """
+    train_behaviors = load_split("train")
+    first_seen = compute_first_seen(train_behaviors)
+    impression_time = train_behaviors.set_index("impression_id")["time"]
+
+    train_rows = pd.read_parquet(TRAIN_PATH)
+    _fit_rows, tune_rows = split_train_for_tuning(train_rows)
+
+    at_configured_threshold = _coverage_at_threshold(
+        tune_rows, impression_time, first_seen, DEFAULT_FRESH_THRESHOLD_DAYS
+    )
+    fresh_row_rate = at_configured_threshold["fresh_row_rate"]
     return {
         "original_validation_fresh_row_rate": ORIGINAL_VALIDATION_FRESH_ROW_RATE,
         "tune_fold_fresh_row_rate": fresh_row_rate,
         "original_validation_zero_fresh_impression_rate": ORIGINAL_VALIDATION_ZERO_FRESH_IMPRESSION_RATE,
-        "tune_fold_zero_fresh_impression_rate": (
-            zero_fresh_impressions / total_impressions if total_impressions else None
-        ),
+        "tune_fold_zero_fresh_impression_rate": at_configured_threshold["zero_fresh_impression_rate"],
         "decision_confirmed": fresh_row_rate is not None and 0.2 <= fresh_row_rate <= 0.5,
-        "impressions_checked": total_impressions,
+        "impressions_checked": at_configured_threshold["impressions_checked"],
+        "currently_configured_min_fresh_in_slate": DEFAULT_MIN_FRESH_IN_SLATE,
+        "threshold_value_comparison": _compare_freshness_threshold_values(
+            tune_rows, impression_time, first_seen
+        ),
     }
 
 

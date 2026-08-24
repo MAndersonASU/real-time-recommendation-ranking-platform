@@ -20,13 +20,11 @@ def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> d
 
     Uses a fresh topic and a fresh consumer group per call (the same
     pattern `verify_recovery.py` already uses), rather than one fixed
-    topic/group reused across every run. A real bug, found by actually
-    running this repeatedly against a long-lived broker rather than
-    once and assumed durable: this consumer never commits its offset,
-    so a fixed group id has no committed position to resume from and
-    re-reads the topic's very first message every time -- stale, from
-    whichever run produced it -- instead of the one this call just
-    produced.
+    topic/group reused across every run: this consumer never commits
+    its offset, so a fixed group id would have no committed position to
+    resume from and would re-read the topic's very first message every
+    time -- stale, from whichever run produced it -- instead of the one
+    this call just produced.
     """
     topic = f"connectivity-check-{time.time()}".replace(".", "-")
     ensure_topic(topic, bootstrap_servers=bootstrap_servers)

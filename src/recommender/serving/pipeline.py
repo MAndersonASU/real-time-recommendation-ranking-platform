@@ -102,17 +102,16 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     faiss_index.add(catalog_embeddings)
 
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
-    # sio.load (skops), not joblib.load -- a real bug, found by audit:
-    # joblib is a thin wrapper over pickle, so loading a ranking
-    # artifact meant executing arbitrary code embedded in the file. No
-    # `trusted=` list is passed: this project's own real trained model
-    # is a plain Pipeline of StandardScaler + LogisticRegression, already
-    # confirmed to load with zero untrusted types, so the safe default
-    # (raise on anything not already known-safe) is exactly the
-    # behavior wanted here -- a future artifact containing an
-    # unrecognized type should fail loudly at startup, the same
-    # "fails loudly" discipline this function already applies to a
-    # missing model file.
+    # sio.load (skops), not joblib.load: joblib is a thin wrapper over
+    # pickle, so loading a ranking artifact that way means executing
+    # arbitrary code embedded in the file. No `trusted=` list is passed:
+    # this project's own real trained model is a plain Pipeline of
+    # StandardScaler + LogisticRegression, already confirmed to load
+    # with zero untrusted types, so the safe default (raise on anything
+    # not already known-safe) is exactly the behavior wanted here -- a
+    # future artifact containing an unrecognized type should fail
+    # loudly at startup, the same "fails loudly" discipline this
+    # function already applies to a missing model file.
     ranking_model = sio.load(RANKING_MODEL_PATH)
 
     # Exploded once and shared, rather than each function re-deriving its
@@ -257,17 +256,16 @@ def recommend(
     else:
         content_sims = np.zeros(len(candidate_news_ids))
 
-    # A real bug: this used to fall back to the bare local-wall-clock
-    # `datetime.now()` when a caller (e.g. /demo, which never sets
-    # request_time) supplied none -- on a server whose OS timezone isn't
-    # UTC, that produced a naive value that was actually *local* time,
-    # silently inconsistent with every other naive timestamp in this
-    # project, which represents naive-but-UTC-by-convention (MIND's own
-    # timestamps, `first_seen`, and so on). `datetime.now(timezone.utc)`
-    # is genuinely UTC; `.replace(tzinfo=None)` keeps it naive-typed so
-    # it stays directly comparable to those other naive-UTC values
-    # rather than needing every downstream consumer to become
-    # timezone-aware.
+    # Falls back to a genuinely UTC clock, not bare local wall-clock
+    # time, when a caller (e.g. /demo, which never sets request_time)
+    # supplies none -- every other naive timestamp in this project
+    # represents naive-but-UTC-by-convention (MIND's own timestamps,
+    # `first_seen`, and so on), and on a server whose OS timezone isn't
+    # UTC, a bare `datetime.now()` would be naive-but-*local*, silently
+    # inconsistent with that convention. `datetime.now(UTC)` is
+    # genuinely UTC; `.replace(tzinfo=None)` keeps it naive-typed so it
+    # stays directly comparable to those other naive-UTC values rather
+    # than needing every downstream consumer to become timezone-aware.
     has_real_request_time = request.request_time is not None
     request_time = request.request_time or datetime.now(UTC).replace(tzinfo=None)
     frame = pd.DataFrame(
