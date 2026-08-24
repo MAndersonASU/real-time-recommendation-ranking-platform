@@ -79,6 +79,21 @@ services:
       # Phase 6 do), so blocking API startup on Kafka's health would be
       # a real, unnecessary coupling -- found and removed while testing
       # what a Kafka interruption should and shouldn't affect.
+    healthcheck:
+      # No curl/wget in the slim base image -- urllib is already there.
+      # /health is process liveness only (not /ready), matching what a
+      # container orchestrator's own health probe should check: is this
+      # process able to respond at all, not whether every dependency is
+      # currently healthy.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT:-8000}/health', timeout=3)\" || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   redis_data:

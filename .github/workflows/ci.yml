@@ -14,10 +14,36 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: Install package with dev dependencies
+      - name: Install package with dev dependencies (flexible, lower-bound versions)
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Test
+        run: pytest -q
+      - name: Static security analysis
+        run: bandit -r src/recommender -ll
+      - name: Validate docker-compose.yml
+        run: docker compose config >/dev/null
+
+  locked-install-test:
+    runs-on: ubuntu-latest
+    # A second, separate install path from lint-and-test above:
+    # requirements-lock.txt's exact, pinned versions, not
+    # pyproject.toml's own flexible lower bounds. A real gap found by a
+    # follow-up audit: the lock file had drifted (a dependency added to
+    # pyproject.toml was never re-frozen into it), which silently broke
+    # a from-scratch locked install without either install path in CI
+    # ever catching it -- lint-and-test's flexible install always
+    # resolved a working set on its own, so it couldn't have.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install exact locked dependencies
+        run: pip install -r requirements-lock.txt
+      - name: Install the project with no dependency resolution
+        run: pip install --no-deps -e .
       - name: Test
         run: pytest -q
 

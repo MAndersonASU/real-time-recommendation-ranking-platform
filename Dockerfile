@@ -7,6 +7,14 @@ COPY src/ ./src/
 
 RUN pip install --no-cache-dir .
 
+# Runs as a real, unprivileged user rather than root -- no part of this
+# process (serving live HTTP traffic) needs root, so it doesn't run as
+# root. /app/data is where the model/index/ranking-pipeline volume gets
+# mounted at runtime (below); owned by the app user so the mounted
+# volume is actually readable.
+RUN useradd --create-home --uid 1000 app && mkdir -p /app/data && chown -R app:app /app
+USER app
+
 EXPOSE 8000
 
 # data/ (the trained model, index, ranking pipeline, and licensed
@@ -15,7 +23,10 @@ EXPOSE 8000
 # way this project has always treated it as external, reproducible-
 # from-source artifacts rather than something to ship inside a build.
 #
-# Shell form, not exec form, so ${API_PORT:-8000} actually expands --
-# API_PORT is real, explicit, environment-based configuration
-# (docs/configuration.md), not a value hidden inside the image.
-CMD uvicorn recommender.serving.app:app --host 0.0.0.0 --port ${API_PORT:-8000}
+# `sh -c "exec ..."`, not a bare shell-form CMD: still lets
+# `${API_PORT:-8000}` expand (API_PORT is real, explicit, environment-
+# based configuration, docs/configuration.md), but `exec` replaces the
+# shell process with uvicorn itself instead of running it as a child --
+# so a real `docker stop`'s SIGTERM reaches uvicorn directly for a clean
+# shutdown, instead of being sent to a shell that may not forward it.
+CMD ["sh", "-c", "exec uvicorn recommender.serving.app:app --host 0.0.0.0 --port ${API_PORT:-8000}"]

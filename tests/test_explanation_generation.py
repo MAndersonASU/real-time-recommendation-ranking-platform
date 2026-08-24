@@ -102,12 +102,12 @@ def test_generate_explanation_refuses_without_calling_the_generator():
 
 def test_generate_explanation_uses_the_models_rewrite_when_it_keeps_the_real_category():
     context = _context(category_match=True, content_similarity=0.0, category="sports")
-    generator = _FakeGenerator("This was picked for you because you like sports.")
+    generator = _FakeGenerator("This is recommended because it matches your interest in sports.")
 
     response = generate_explanation(context, generator=generator)
 
     assert response.refused is False
-    assert response.explanation == "This was picked for you because you like sports."
+    assert response.explanation == "This is recommended because it matches your interest in sports."
     assert response.evidence_used == ["category_match"]
 
 
@@ -182,15 +182,75 @@ def test_generate_explanation_rejects_an_invented_entity_even_when_the_category_
     assert "NASA" not in response.explanation
 
 
-def test_generate_explanation_accepts_a_genuine_rewrite_with_no_invented_terms():
-    """Confirms the new check doesn't overreach: an honest rewrite that
-    only rewords the template, introducing no new capitalized term,
-    must still be accepted -- the fix should reject fabrication, not
-    reject every rewrite.
+def test_generate_explanation_rejects_a_lowercase_fabricated_attribution():
+    """Regression test for a real gap, found by a follow-up audit: the
+    original gate only ever flagged an *unfamiliar capitalized* word, so
+    a fully lowercase fabrication passed unchanged. This is one of the
+    exact examples the audit confirmed was accepted before this fix.
     """
     context = _context(category_match=False, content_similarity=0.4)
-    generator = _FakeGenerator("this was picked because its content closely matches what you read.")
+    generator = _FakeGenerator("the president personally selected this story for you.")
 
     response = generate_explanation(context, generator=generator)
 
-    assert response.explanation == "this was picked because its content closely matches what you read."
+    assert response.explanation == build_template_explanation(context)
+    assert "president" not in response.explanation.lower()
+
+
+def test_generate_explanation_rejects_a_lowercase_fabricated_causation_claim():
+    """A second exact example the audit confirmed was accepted before
+    this fix -- a fabricated causal claim with no capitalized word at
+    all.
+    """
+    context = _context(category_match=False, content_similarity=0.4)
+    generator = _FakeGenerator("this was selected because your employer requested it.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == build_template_explanation(context)
+    assert "employer" not in response.explanation.lower()
+
+
+def test_generate_explanation_rejects_a_fabrication_that_keeps_the_real_category_word():
+    """The third exact example the audit confirmed was accepted before
+    this fix: the fabrication is mixed-case and *does* keep the real
+    category word ("Sports"), so a check that only verified the category
+    word was present (without also checking for unsupported content)
+    would have wrongly accepted it.
+    """
+    context = _context(category_match=True, content_similarity=0.0, category="sports")
+    generator = _FakeGenerator("Sports officials confirmed this guarantees financial success.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == build_template_explanation(context)
+    assert "guarantees" not in response.explanation.lower()
+    assert "financial" not in response.explanation.lower()
+
+
+def test_generate_explanation_rejects_a_sentence_initial_fabricated_entity():
+    context = _context(category_match=True, content_similarity=0.0, category="sports")
+    generator = _FakeGenerator("President Smith recommends this because it matches your interest in sports.")
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == build_template_explanation(context)
+    assert "smith" not in response.explanation.lower()
+
+
+def test_generate_explanation_accepts_a_genuine_rewrite_with_no_invented_terms():
+    """Confirms the closed-vocabulary check doesn't overreach: a rewrite
+    built only from the template's own words plus pure grammatical
+    scaffolding must still be accepted -- the fix should reject
+    fabrication, not reject every rewrite.
+    """
+    context = _context(category_match=False, content_similarity=0.4)
+    generator = _FakeGenerator(
+        "It is recommended because its content closely resembles articles you have read before."
+    )
+
+    response = generate_explanation(context, generator=generator)
+
+    assert response.explanation == (
+        "It is recommended because its content closely resembles articles you have read before."
+    )

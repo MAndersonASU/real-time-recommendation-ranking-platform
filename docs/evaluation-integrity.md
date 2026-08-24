@@ -57,7 +57,7 @@ Both the diversity cap and the freshness threshold hold up under a
 genuinely disjoint, held-out re-check. The original decisions were not
 simply noise fit to validation.
 
-## Real finding, now resolved: the popularity discrepancy was a recency-leakage artifact
+## Real finding: evidence supports a recency-leakage explanation for the popularity discrepancy
 
 An earlier version of this document reported the single-feature
 popularity AUC check as a real, unresolved discrepancy. Measured with
@@ -95,24 +95,41 @@ check against this chronological split
 |---|---|---|---|
 | Popularity-alone AUC | 0.47 | 0.665 | **0.489** |
 
-The chronological split's AUC (0.489) lands almost exactly on the
-original validation result (0.47) — confirming the recency-leakage
-explanation directly, rather than leaving it a plausible-but-unproven
-story. The random split's inflated 0.665 was a real artifact of
-temporal proximity between its own fit and tune halves, not evidence
-that popularity is actually predictive of a real future click.
+The chronological split's AUC (0.489) lands close to the original
+validation result (0.47) — this result supports the recency-leakage
+hypothesis, not a controlled experiment that isolates recency as the
+sole variable (fit and tune also differ in which users and impressions
+land on each side of a chronological boundary versus a random one, a
+real confound this check does not separately rule out). It is real
+evidence in favor of that explanation, not proof of it.
+
+**A separate, larger gap this section does not close**: this check —
+and the diversity/freshness checks above — measure the *chosen*
+hyperparameter value's own behavior on held-out data. None of the
+three compare the chosen value against real alternatives (no diversity
+cap at all, other cap values; other freshness thresholds and minimum
+counts), and the diversity check's own "naive top-10" scores come from
+the ranking model as currently trained — on all of `train`, including
+these tuning rows, not refit without them. A held-out re-measurement of
+one already-chosen value is weaker evidence than an actual comparison
+across candidate values decided in advance. That comparison has not
+been done yet.
 
 ## What this means going forward
 
-- The diversity cap and freshness threshold: genuinely reconfirmed by
-  held-out data, not just validation. No further action needed.
-- The popularity exclusion: **fully reconfirmed**. The original
-  decision to exclude `popularity` (AUC 0.47, no better than random on
-  genuinely out-of-sample, temporally-realistic data) holds. The
-  earlier discrepancy is now understood, not just disclosed: it was an
-  artifact of `split_train_for_tuning`'s random split letting recency
-  leak across the fold boundary, confirmed directly by a chronological
-  re-check rather than assumed. No model change needed.
+- The diversity cap and freshness threshold: the *chosen* values'
+  behavior held up on held-out data, not just validation — real
+  evidence, but not a comparison against alternative values, and not
+  yet a closed question (see the gap above).
+- The popularity exclusion: the original decision to exclude
+  `popularity` (AUC 0.47, no better than random on genuinely
+  out-of-sample, temporally-realistic data) is supported, not proven,
+  by the chronological-split re-check. The earlier discrepancy has a
+  real, evidence-backed explanation now, not just a disclosed
+  correlation: it is consistent with `split_train_for_tuning`'s random
+  split letting recency leak across the fold boundary, a hypothesis a
+  chronological re-check now supports rather than one left as an
+  untested assumption. No model change made.
 - `split_train_for_tuning`'s random-by-impression_id split remains the
   right default for the diversity and freshness checks above (both
   reconfirmed cleanly under it, and neither has any reason to be

@@ -60,19 +60,37 @@ rejected: `docs/architecture.md`.
 An optional grounded explanation layer sits on top of the finished
 recommendation pipeline, using a small local model
 (`google/flan-t5-small`) to explain — never influence — a
-recommendation already made, with a real evidence-faithfulness
-guarantee (`docs/explanation-boundary.md`).
+recommendation already made. The layer's structural boundary (it can
+only ever describe a decision already made elsewhere, never feed back
+into ranking) is enforced by the request type itself
+(`docs/explanation-boundary.md`); its wording is checked against a
+closed-vocabulary faithfulness gate before use and falls back to a
+deterministic, evidence-only template on any failure
+(`docs/explanation-generation.md`, `docs/explanation-evaluation.md`).
 
-## Real infrastructure, not simulated in isolation
+## What CI actually runs, and what's verified locally instead
 
-Kafka, Redis, and a containerized recommendation API are exercised for
-real in CI on every push (`docs/ci-automation.md`) — not mocked.
-Failure paths (a stopped dependency, a missing model file, a restarted
-container) are tested against the real running system
-(`docs/restart-and-failure-testing.md`). The one thing CI does not do
-is load the licensed MIND dataset itself, since it cannot be
-redistributed (`docs/data-card.md`) — that verification is real, and
-documented, but run locally rather than in a public CI runner.
+CI (`docs/ci-automation.md`) runs three jobs on every push: linting and
+the full test suite against two independent installs (`pyproject.toml`'s
+flexible lower bounds, and `requirements-lock.txt`'s exact pinned
+versions); a static security scan (`bandit`) and a `docker compose
+config` validation; and a real Kafka + Redis integration job — actual
+containers, actual produce/consume and read/write round-trips, not
+mocked. The test suite itself already includes FastAPI `TestClient`
+integration tests against the real ASGI app (a synthetic, no-licensed-
+data `ServingContext` fixture standing in for the trained model/index),
+so the request/response contract is exercised in CI too.
+
+What CI does *not* do: run the actual built container image, or load
+the licensed MIND dataset. The trained model, Faiss index, and ranking
+pipeline all depend on that dataset (`docs/data-card.md`), which this
+project has never redistributed and never will — so the full
+`docker compose up` stack, and every result that depends on real data
+(`docs/professional-demonstration.md`, `docs/reproducibility.md`,
+evaluation reports), is verified locally by the maintainer and
+documented here, not run in a public CI runner. Failure paths (a
+stopped dependency, a missing model file, a restarted container) are
+also tested this way (`docs/restart-and-failure-testing.md`).
 
 ## Getting started
 

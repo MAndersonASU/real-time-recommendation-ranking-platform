@@ -110,39 +110,48 @@ def build_template_explanation(context: SupportContext) -> str:
     return "Recommended because " + " and ".join(clauses) + "."
 
 
-# Ordinary sentence openers a real, faithful rewrite routinely starts
-# with -- allowed regardless of case or position, since flagging every
-# sentence-initial capital would reject harmless rewrites, not just
-# fabricated ones. Deliberately small and specific to this project's
-# own template vocabulary, not a general stopword list.
-_COMMON_SENTENCE_STARTERS = {
-    "the", "this", "it", "a", "an", "that", "these", "recommended", "its", "you", "your",
+# Every word a rewrite is allowed to use that the template doesn't
+# already contain -- pure closed-class grammatical connectives with no
+# capacity to carry a factual claim on their own (no actor, no entity,
+# no cause, no outcome). Deliberately does not include ordinary content
+# verbs like "picked", "chose", or "selected": those are exactly the
+# words a fabricated attribution reaches for ("the president selected
+# this..."), so leaving them out forces any content-bearing word in the
+# rewrite to come from the evidence-grounded template itself.
+_SAFE_SCAFFOLDING_WORDS = {
+    "a", "an", "the", "this", "that", "these", "those", "some", "any",
+    "it", "its", "you", "your", "yours", "we", "our",
+    "what", "which", "who", "whose",
+    "and", "or", "but", "because", "since", "as", "so", "also",
+    "of", "to", "for", "with", "in", "on", "by", "from", "about",
+    "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
+    "not", "no",
 }
 
 
-def _introduces_an_unfounded_capitalized_word(text: str, template: str) -> bool:
-    """True if `text` contains a capitalized word that isn't just a
-    re-casing of a word the template already had (e.g. "sports" ->
-    "SPORTS" is fine) and isn't an ordinary sentence opener -- what a
-    real invented proper noun or claim looks like ("The President...",
-    "NASA recommends..."). Compared case-insensitively against every
-    word in the template, not only the template's own capitalized
-    words, and checked by word regardless of position, so a genuine
-    proper noun that happens to start the sentence ("NASA...") is still
-    caught, not excluded just for being first.
+def _introduces_unsupported_content(text: str, template: str) -> bool:
+    """True if `text` contains any word that is neither already in the
+    deterministic template nor pure grammatical scaffolding -- closed-
+    vocabulary, not a capitalization heuristic: a fabrication does not
+    have to invent a capitalized proper noun to be a fabrication.
+    "the president personally selected this story for you" introduces
+    no capitalized word at all, but "president", "personally", and
+    "selected" are all real, unsupported content the template never
+    said. Checked case-insensitively and by word regardless of
+    position, so a lowercase, mixed-case, or sentence-initial
+    fabrication is caught the same way.
 
-    Not a guarantee against every possible failure mode -- a cheap,
-    honest check against the specific failures this project's own real
-    testing actually found, not a general hallucination detector.
+    Biased deliberately toward over-rejection: a rewrite that fails
+    this check falls back to the safe template, which is never wrong,
+    only less naturally worded -- so a genuine but differently-worded
+    paraphrase being rejected is an acceptable cost for never accepting
+    a fabricated claim.
     """
     template_words = {w.lower() for w in re.findall(r"\b[A-Za-z]+\b", template)}
+    allowed = template_words | _SAFE_SCAFFOLDING_WORDS
     for word in re.findall(r"\b[A-Za-z]+\b", text):
-        if not word[0].isupper():
-            continue
-        lowered = word.lower()
-        if lowered in _COMMON_SENTENCE_STARTERS or lowered in template_words:
-            continue
-        return True
+        if word.lower() not in allowed:
+            return True
     return False
 
 
@@ -155,18 +164,14 @@ def _preserves_required_facts(text: str, context: SupportContext, template: str)
        must still be present -- catches the rewrite dropping the one
        fact it was given.
     2. Regardless of which evidence applies, the rewrite must not
-       introduce an unfounded capitalized word absent from the
-       deterministic template -- catches the rewrite inventing a claim
-       it was never given at all. A real, reproduced example of
-       exactly this: given only a content-similarity signal (no
-       category to check), the model produced "The President
-       personally selected this story for you" and the original
-       version of this gate accepted it unchanged, since it only ever
-       checked the category-match branch.
+       introduce any word outside the template's own vocabulary plus a
+       small, fixed set of grammatical connectives -- catches the
+       rewrite inventing a claim it was never given at all, whether or
+       not that claim happens to be capitalized.
     """
     if context.category_match and context.category.lower() not in text.lower():
         return False
-    return not _introduces_an_unfounded_capitalized_word(text, template)
+    return not _introduces_unsupported_content(text, template)
 
 
 def generate_explanation(

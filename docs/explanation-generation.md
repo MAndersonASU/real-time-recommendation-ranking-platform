@@ -48,13 +48,25 @@ from fabrication, but no longer actually explanatory.
 Given all three prompting strategies, the model was consistently either
 unsafe (attempt 1) or uninformative (attempts 2 and 3) on its own. The
 adopted design keeps the deterministic template
-(`build_template_explanation`) as the guaranteed-correct source of
-truth, asks the model only to reword that exact sentence, and applies
-a real, checkable faithfulness gate (`_preserves_required_facts`)
-before ever using the model's rewrite: does it still contain the real
-category name it was given. If not, the response falls back to the
-unmodified template — always factually correct, never blank, never
-inventing anything.
+(`build_template_explanation`) — built directly and only from the real
+matched signals, with no free-text generation involved at all — as the
+one part of this feature whose correctness is enforced by construction,
+not by a check that could itself have a gap. The model is asked only
+to reword that exact sentence, and its rewrite is used only if it
+passes `_preserves_required_facts`: the real category name is still
+present (when a category match is the evidence), and every other word
+in the rewrite is either already in the template or a small, fixed set
+of grammatical connectives — a stricter check than an earlier version
+of this gate used, which only flagged unfamiliar *capitalized* words; a
+follow-up review found real, reproduced fabrications that check missed
+entirely, since a fabricated claim does not have to be capitalized to
+be one (`docs/explanation-evaluation.md` has the current real result).
+If
+the rewrite fails, the response falls back to the unmodified template.
+That fallback is unconditional and factually correct by construction;
+the gate that decides whether to use the rewrite instead is a real,
+tested check against a documented set of failure modes, not a proof
+that no fabrication could ever pass it.
 
 ## Real result across 15 real recommendations, 5 real users
 

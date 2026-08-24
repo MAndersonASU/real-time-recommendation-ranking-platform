@@ -17,53 +17,64 @@ DEFAULT_NUM_USERS = 60
 DEFAULT_NUM_CANDIDATES = 3
 
 
-_COMMON_SENTENCE_STARTERS = {
-    "the", "this", "it", "a", "an", "that", "these", "recommended", "its", "you", "your",
+# A hand-curated, independently-reasoned blacklist -- deliberately the
+# opposite design from the generation module's own gate (a closed-
+# vocabulary *whitelist*: every word must already be in the template or
+# a small grammar-only scaffolding set). A whitelist and a blacklist
+# fail in genuinely different, non-overlapping ways: a bug that lets an
+# unlisted word slip through the whitelist (e.g. a missed scaffolding
+# word) has no reason to also be missing from this independently-built
+# blacklist, and vice versa. Grouped by what kind of fabrication each
+# word tends to signal -- an actor a template never names, a causal or
+# guarantee claim a template never makes, or an outcome/success claim a
+# template never asserts.
+_FABRICATION_INDICATOR_WORDS = {
+    # actors/entities
+    "president", "government", "nasa", "fbi", "cia", "congress",
+    "company", "companies", "editor", "editors", "staff", "employer",
+    "employers", "expert", "experts", "scientist", "scientists",
+    "doctor", "doctors", "official", "officials", "celebrity", "celebrities",
+    # causal attribution / guarantee verbs
+    "confirmed", "announced", "reported", "requested", "selected",
+    "chose", "chosen", "decided", "determined", "guarantees", "guarantee",
+    "promises", "promise", "ensures", "ensure", "proves", "prove",
+    "personally", "specifically", "exclusively", "certainly", "definitely",
+    # outcome/success claims
+    "success", "successful", "wealth", "wealthy", "financial", "money",
+    "rich", "famous", "viral",
 }
 
 
-def _introduces_an_unfounded_capitalized_word(explanation: str, template: str) -> bool:
-    """A separate implementation of the same idea the generation
-    module's own gate uses, deliberately not imported from there -- the
-    whole point of this function is to catch a mistake in that other
-    module's code, which importing its helper directly could not do.
-    True if `explanation` contains a capitalized word that isn't just a
-    re-casing of a real template word and isn't an ordinary sentence
-    opener -- what a real invented proper noun looks like. Compared
-    case-insensitively against every word in the template (not only its
-    own capitalized words) and checked regardless of position, so a
-    proper noun that happens to start the sentence ("NASA...") is still
-    caught rather than excluded just for being first.
+def _contains_a_known_fabrication_indicator(explanation: str) -> bool:
+    """True if `explanation` contains any word from the independently
+    curated blacklist above -- a genuinely different check from the
+    generation module's own whitelist gate, not a second typing of the
+    same idea. Deliberately case-insensitive from the start (a
+    fabrication does not have to be capitalized to be a fabrication --
+    "the president personally selected this story for you" contains no
+    capitalized word at all and was, in fact, real output this project's
+    own testing produced and confirmed the original version of this
+    check -- itself a capitalization-only whitelist duplicate at the
+    time -- did not catch).
     """
-    template_words = {w.lower() for w in re.findall(r"\b[A-Za-z]+\b", template)}
-    for word in re.findall(r"\b[A-Za-z]+\b", explanation):
-        if not word[0].isupper():
-            continue
-        lowered = word.lower()
-        if lowered in _COMMON_SENTENCE_STARTERS or lowered in template_words:
-            continue
-        return True
-    return False
+    words = {w.lower() for w in re.findall(r"\b[A-Za-z]+\b", explanation)}
+    return bool(words & _FABRICATION_INDICATOR_WORDS)
 
 
-def _independently_verify_faithfulness(
-    explanation: str, category: str, category_match: bool, template: str
-) -> bool:
+def _independently_verify_faithfulness(explanation: str, category: str, category_match: bool) -> bool:
     """Re-checks the real outcome from scratch, rather than trusting
     that the generation module's own gate
     (recommender.explanation.generation._preserves_required_facts) must
-    have worked correctly. A separate check here would still catch a
-    mistake in that gate's own code -- and did: an earlier version of
-    this exact function only checked the category-match branch, so a
-    fabricated claim on a content-similarity-only recommendation
-    ("The President personally selected this story for you") would
-    have been counted as faithful by this "independent" check too,
-    since it shared the same blind spot as the code it was meant to
-    verify. Both are fixed together now.
+    have worked correctly. Uses a genuinely different check from that
+    gate (a blacklist here vs. a whitelist there), not a second
+    implementation of the same lexical assumption -- a prior version of
+    this function shared the production gate's own capitalization-only
+    design and therefore shared its exact blind spot, catching nothing
+    a bug in that design would also have missed.
     """
     if category_match and category.lower() not in explanation.lower():
         return False
-    return not _introduces_an_unfounded_capitalized_word(explanation, template)
+    return not _contains_a_known_fabrication_indicator(explanation)
 
 
 def evaluate_explanations(
@@ -104,7 +115,7 @@ def evaluate_explanations(
 
             template = build_template_explanation(support)
             if _independently_verify_faithfulness(
-                result.explanation, support.category, support.category_match, template
+                result.explanation, support.category, support.category_match
             ):
                 faithful += 1
 

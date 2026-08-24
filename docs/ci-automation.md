@@ -1,13 +1,21 @@
 # Automating CI
 
-Two jobs, running two genuinely different kinds of check.
+Three jobs, running three genuinely different kinds of check.
 Implementation: `.github/workflows/ci.yml`.
 
-## Two tiers, not one
+## Three tiers, not one
 
-`lint-and-test` is unchanged: static checks (`ruff`) and unit tests
-against synthetic fixtures — no real infrastructure, no licensed data,
-fast and deterministic. `integration-smoke-test` is new: it starts the
+`lint-and-test`: static checks (`ruff`, `bandit`), a `docker compose
+config` validation, and the full unit/integration test suite (including
+real FastAPI `TestClient` requests against synthetic fixtures — no real
+infrastructure, no licensed data) — installed via `pyproject.toml`'s own
+flexible lower bounds. `locked-install-test`: the identical test suite,
+installed instead from `requirements-lock.txt`'s exact pinned versions
+— a separate install path specifically so a lock file that's drifted
+out of sync with `pyproject.toml` (a real gap a follow-up review found:
+a dependency added to the runtime dependency list was never re-frozen
+into the lock) gets caught here, not discovered by a user doing a
+from-scratch install months later. `integration-smoke-test`: starts the
 real Kafka and Redis containers in the CI runner and runs two real,
 bounded round-trips against them — `verify_connectivity.py` (produce
 and consume a real message) and `verify_state_store.py` (write, read

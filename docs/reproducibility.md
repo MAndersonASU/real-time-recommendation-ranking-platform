@@ -68,24 +68,32 @@ own containers were rebuilt and restored afterward.
 
 ## Exact dependency versions (requirements-lock.txt)
 
-A real, disclosed limitation, found by audit: `pyproject.toml` declares
-only lower bounds (`pandas>=2.2`, and so on) with no upper bound and no
-lock file at all, so a fresh install can silently resolve to a newer,
-untested version of any dependency -- the exact-version story above is
-about *this project's own code*, not about pinning what it depends on.
+`pyproject.toml` declares only lower bounds (`pandas>=2.2`, and so on)
+with no upper bound and no lock file at all, so a fresh install can
+silently resolve to a newer, untested version of any dependency -- the
+exact-version story above is about *this project's own code*, not about
+pinning what it depends on.
 
 `requirements-lock.txt` is the exact, fully-resolved set of every
-dependency version the full test suite has actually passed against --
-generated via `pip freeze` from a real working environment, not typed by
-hand. Verified for real: installed into a genuinely fresh virtual
-environment (`pip install -r requirements-lock.txt`, then `pip install
---no-deps -e .`) on this machine, all 67 pinned packages installed
-cleanly, and the complete test suite passed (262/262). `pyproject.toml`'s
-loose lower bounds remain the default install path (what the fresh-clone
-check above actually exercised, and what CI still installs) -- this file
-is the additional, exact-reproduction option for anyone who wants the
-precise versions already known to work, not a replacement for the
-flexible path.
+runtime and dev-tool dependency version the full test suite has
+actually passed against -- generated via `pip freeze` from a real
+working environment, not typed by hand. A first version of this file
+omitted `skops` (added to `pyproject.toml`'s runtime dependencies but
+never re-frozen), which broke a from-scratch install with test-collection
+errors -- found by a follow-up review and fixed by regenerating the
+lock from an environment that actually has every declared dependency
+installed.
+
+Verified for real, from scratch: a genuinely fresh virtual environment,
+`pip install -r requirements-lock.txt`, `pip install --no-deps -e .`,
+then the complete test suite -- all pinned packages installed cleanly
+and every test passed. `pyproject.toml`'s loose lower bounds remain the
+default install path (what the fresh-clone check above actually
+exercised); this file is the additional, exact-reproduction option for
+anyone who wants the precise versions already known to work, not a
+replacement for the flexible path. CI runs both: a lower-bound install
+job (matching the flexible path) and a locked install job (matching
+this file) — see `.github/workflows/ci.yml`.
 
 ## The one honest limitation this doesn't remove
 
