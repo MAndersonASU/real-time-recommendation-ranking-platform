@@ -4,6 +4,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from recommender.monitoring.dashboard import render_dashboard_html
@@ -105,7 +106,33 @@ async def request_id_and_access_log(request: Request, call_next):
     """
     request.state.request_id = new_request_id()
     start = time.perf_counter()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # An unhandled exception raised inside a route bypasses this
+        # middleware's own return path entirely (call_next itself
+        # raises), so without this, neither the X-Request-ID header nor
+        # the access log line below ever ran for that request -- an
+        # operator diagnosing a real failure from an alert or a client
+        # report would have no way to find the matching log line at all.
+        # Reconstructs the same request_id/path/duration a completed
+        # request already logs; never includes the exception's own
+        # message or traceback in the client-facing response.
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.exception(
+            "request_failed",
+            extra={
+                "event": "request_failed",
+                "request_id": request.state.request_id,
+                "method": request.method,
+                "path": _loggable_path(request.url.path),
+                "status_code": 500,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        error_response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        error_response.headers["X-Request-ID"] = request.state.request_id
+        return error_response
     duration_ms = (time.perf_counter() - start) * 1000
 
     response.headers["X-Request-ID"] = request.state.request_id
@@ -218,10 +245,11 @@ def demo(
 
 @app.post("/recommend", response_model=RecommendationResponse)
 def recommend_endpoint(payload: RecommendationRequest, http_request: Request) -> RecommendationResponse:
-    fell_back = {"value": False}
+    fell_back = {"value": False, "reason": None}
 
-    def _mark_fallback() -> None:
+    def _mark_fallback(reason: str) -> None:
         fell_back["value"] = True
+        fell_back["reason"] = reason
 
     stage_timings: dict[str, float] = {}
     start = time.perf_counter()
@@ -232,7 +260,12 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
     except Exception:
         record_error()
         raise
-    record_response(response, is_fallback=fell_back["value"], latency_seconds=time.perf_counter() - start)
+    record_response(
+        response,
+        is_fallback=fell_back["value"],
+        fallback_reason=fell_back["reason"],
+        latency_seconds=time.perf_counter() - start,
+    )
     if "feature_lookup_ms" in stage_timings:
         record_feature_lookup_latency(stage_timings["feature_lookup_ms"] / 1000)
 
@@ -262,6 +295,7 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
                 "num_candidates_requested": payload.num_candidates,
                 "num_candidates_returned": len(response.recommendations),
                 "is_fallback": fell_back["value"],
+                "fallback_reason": fell_back["reason"],
                 "durable_features_used": response.durable_features_used,
                 "recent_features_used": response.recent_features_used,
             },

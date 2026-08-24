@@ -4,26 +4,18 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import redis
 
-logger = logging.getLogger("recommender.serving.fallback")
-
+from recommender.monitoring.structured_logging import hash_user_id
 from recommender.ranking.baselines import rank_by_popularity
 from recommender.serving.contract import (
     RecommendationRequest,
     RecommendationResponse,
     RecommendedItem,
 )
+from recommender.serving.errors import DependencyUnavailableError
 from recommender.serving.pipeline import ServingContext, recommend
 
-# Deliberately narrow and specific, not a bare `except Exception` -- the
-# same discipline the streaming consumer already applies to malformed
-# messages (docs/streaming-consumer.md): catching everything would risk
-# silently hiding a real logic bug behind a "safe" fallback. RedisError
-# covers the feature store being unreachable; RuntimeError is the common
-# base both torch and Faiss raise for an unusable model/index; OSError
-# covers a missing or unreadable model file on disk.
-DEPENDENCY_FAILURE_EXCEPTIONS = (redis.exceptions.RedisError, RuntimeError, OSError)
+logger = logging.getLogger("recommender.serving.fallback")
 
 
 def _normalized_popularity(popularity: pd.Series, news_ids) -> np.ndarray:
@@ -70,7 +62,7 @@ def build_fallback_response(request: RecommendationRequest, context: ServingCont
 def safe_recommend(
     request: RecommendationRequest,
     context: ServingContext,
-    on_fallback: Callable[[], None] | None = None,
+    on_fallback: Callable[[str], None] | None = None,
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
     include_matched_signals: bool = False,
@@ -82,17 +74,25 @@ def safe_recommend(
     user," which the real path already handles without falling back at
     all; this answers "the real path itself cannot run right now."
 
-    `on_fallback`, when given a callable, is invoked right before a
-    fallback response is returned -- opt-in instrumentation of this
-    exact branch, rather than a caller inferring "was this a fallback"
-    from the response's feature flags, which a genuine cold-start
-    response can also legitimately have both set to False.
-    `stage_timings`, `use_recent_features`, and `include_matched_signals`
-    pass straight through to `recommend()` on the real path (there is no
-    per-stage breakdown, recent-features toggle, or matched-signals
-    detail for a fallback response, since it never runs those stages at
-    all -- `build_fallback_response` always leaves `matched_signals`
-    unset).
+    Only `DependencyUnavailableError` triggers a fallback -- raised by
+    `recommend()` at the specific call sites where a known dependency's
+    own library exception (Redis, the two-tower model, Faiss) was caught
+    and translated. Any other exception -- a real bug in feature
+    construction, ranking, or reranking -- is not caught here and
+    propagates to the caller, so it surfaces as a real error instead of
+    a silently "successful" popularity response.
+
+    `on_fallback`, when given a callable, is invoked with the fallback
+    reason string right before a fallback response is returned --
+    opt-in instrumentation of this exact branch, rather than a caller
+    inferring "was this a fallback" from the response's feature flags,
+    which a genuine cold-start response can also legitimately have both
+    set to False. `stage_timings`, `use_recent_features`, and
+    `include_matched_signals` pass straight through to `recommend()` on
+    the real path (there is no per-stage breakdown, recent-features
+    toggle, or matched-signals detail for a fallback response, since it
+    never runs those stages at all -- `build_fallback_response` always
+    leaves `matched_signals` unset).
     """
     try:
         return recommend(
@@ -102,24 +102,12 @@ def safe_recommend(
             use_recent_features=use_recent_features,
             include_matched_signals=include_matched_signals,
         )
-    except DEPENDENCY_FAILURE_EXCEPTIONS:
-        # A real, disclosed limitation, found by audit: RuntimeError is
-        # deliberately broad (the common base torch and Faiss both raise
-        # for an unusable model/index), which means a genuine programming
-        # bug that happens to raise RuntimeError -- not just a real
-        # dependency failure -- would also be swallowed into a "safe"
-        # popularity fallback with no visible trace at all. Narrowing the
-        # caught type risks the opposite failure (a real dependency
-        # outage no longer degrading gracefully), so this doesn't narrow
-        # it -- it logs the full exception here, at the one place that
-        # sees it, so a spike in fallbacks caused by an actual bug is at
-        # least investigable from the logs rather than fully invisible.
+    except DependencyUnavailableError as exc:
         logger.exception(
-            "safe_recommend fell back to popularity ranking for user_id=%r -- see the "
-            "exception above; if this keeps recurring for reasons other than a genuinely "
-            "unavailable dependency, it may be a real bug rather than degraded infrastructure.",
-            request.user_id,
+            "safe_recommend fell back to popularity ranking (reason=%s) for user_id_hash=%s",
+            exc.reason,
+            hash_user_id(request.user_id),
         )
         if on_fallback is not None:
-            on_fallback()
+            on_fallback(exc.reason)
         return build_fallback_response(request, context)

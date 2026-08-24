@@ -206,3 +206,42 @@ def test_loggable_path_redacts_a_demo_path_with_a_trailing_slash_too():
 
     assert "a-very-identifiable-raw-user-id" not in redacted
     assert redacted == f"/demo/{hash_user_id('a-very-identifiable-raw-user-id')}/"
+
+
+def test_unhandled_exception_still_gets_an_x_request_id_header_and_an_error_log():
+    """Regression test for a real bug, found by a follow-up audit: an
+    unhandled exception raised inside a route bypasses this middleware's
+    own return path entirely (call_next itself raises), so neither the
+    X-Request-ID header nor any access-log line was ever written for
+    that request. Fails on the pre-fix code (no header, no log line, a
+    raw framework 500 with no diagnosable trace) and passes once the
+    middleware wraps call_next in its own try/except.
+    """
+    _client()  # sets up _state["context"] / _state["quality_tracker"]
+    client = TestClient(app_module.app, raise_server_exceptions=False)
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture()
+    app_module.logger.addHandler(handler)
+    try:
+        # Quality tracking already runs inside its own try/except in the
+        # route (a separate, earlier fix), so patching that would not
+        # reproduce a truly unhandled exception -- patch safe_recommend
+        # itself instead, the one call the route never wraps.
+        with patch.object(app_module, "safe_recommend", side_effect=RuntimeError("simulated unhandled bug")):
+            response = client.post("/recommend", json={"user_id": "u1", "num_candidates": 3})
+    finally:
+        app_module.logger.removeHandler(handler)
+
+    assert response.status_code == 500
+    assert "X-Request-ID" in response.headers
+    assert response.json() == {"detail": "Internal server error"}
+
+    failed_records = [r for r in records if r.__dict__.get("event") == "request_failed"]
+    assert len(failed_records) == 1
+    assert failed_records[0].__dict__["request_id"] == response.headers["X-Request-ID"]
+    assert failed_records[0].__dict__["status_code"] == 500

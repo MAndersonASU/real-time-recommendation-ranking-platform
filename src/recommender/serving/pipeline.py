@@ -5,6 +5,7 @@ from datetime import datetime
 import faiss
 import numpy as np
 import pandas as pd
+import redis
 import skops.io as sio
 import torch
 
@@ -34,6 +35,7 @@ from recommender.serving.contract import (
     RecommendationResponse,
     RecommendedItem,
 )
+from recommender.serving.errors import DependencyUnavailableError
 
 RETRIEVAL_MULTIPLIER = 5
 MIN_RETRIEVAL_CANDIDATES = 50
@@ -197,21 +199,32 @@ def recommend(
             stage_timings[name] = (time.perf_counter() - start) * 1000
 
     t = _stage_start()
-    lookup = get_online_features(
-        request.user_id,
-        context.durable_cache.features_by_user,
-        context.redis_client,
-        use_recent_features=use_recent_features,
-    )
+    try:
+        lookup = get_online_features(
+            request.user_id,
+            context.durable_cache.features_by_user,
+            context.redis_client,
+            use_recent_features=use_recent_features,
+        )
+    except redis.exceptions.RedisError as exc:
+        raise DependencyUnavailableError("redis_unavailable") from exc
     history_ids = lookup.recent.recent_clicked_items
     _stage_end("feature_lookup_ms", t)
 
     t = _stage_start()
     hist_cat, hist_subcat, hist_mask = encode_recent_history(history_ids, context.item_vocab)
-    with torch.no_grad():
-        user_emb = context.two_tower_model.user_vector(
-            torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
-        ).numpy()
+    try:
+        with torch.no_grad():
+            user_emb = context.two_tower_model.user_vector(
+                torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
+            ).numpy()
+    except RuntimeError as exc:
+        # Narrow to this one call: a RuntimeError from *this specific*
+        # torch forward pass plausibly means the model itself is in a
+        # bad state (e.g. a resource exhaustion error). A RuntimeError
+        # from anywhere else in this function is a real bug and must not
+        # be caught here.
+        raise DependencyUnavailableError("two_tower_inference_failed") from exc
     _stage_end("embedding_ms", t)
 
     t = _stage_start()
@@ -219,7 +232,13 @@ def recommend(
         max(request.num_candidates * RETRIEVAL_MULTIPLIER, MIN_RETRIEVAL_CANDIDATES),
         context.faiss_index.ntotal,
     )
-    retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
+    try:
+        retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
+    except RuntimeError as exc:
+        # Narrow to this one call, for the same reason as above -- a
+        # RuntimeError specifically from Faiss's own search call, not a
+        # stand-in for any RuntimeError anywhere in this function.
+        raise DependencyUnavailableError("faiss_search_failed") from exc
     candidate_news_ids = context.news_ids[item_rows[0]]
     _stage_end("retrieval_ms", t)
 

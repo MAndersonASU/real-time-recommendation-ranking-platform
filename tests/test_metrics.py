@@ -50,11 +50,19 @@ def test_record_response_flags_an_empty_response():
 
 
 def test_record_response_counts_a_real_fallback():
-    before = _count(FALLBACK_COUNT)
+    before = _count(FALLBACK_COUNT, reason="unknown")
 
     record_response(_response(), is_fallback=True, latency_seconds=0.01)
 
-    assert _count(FALLBACK_COUNT) == before + 1
+    assert _count(FALLBACK_COUNT, reason="unknown") == before + 1
+
+
+def test_record_response_labels_the_fallback_with_its_real_reason():
+    before = _count(FALLBACK_COUNT, reason="redis_unavailable")
+
+    record_response(_response(), is_fallback=True, fallback_reason="redis_unavailable", latency_seconds=0.01)
+
+    assert _count(FALLBACK_COUNT, reason="redis_unavailable") == before + 1
 
 
 def test_record_response_tracks_durable_and_recent_cache_hit_vs_miss():

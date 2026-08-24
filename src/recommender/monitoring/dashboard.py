@@ -6,6 +6,21 @@ def _counter_value(counter, **labels) -> float:
     return target._value.get()
 
 
+def _counter_total(counter) -> float:
+    """Sums a labeled Counter across every label combination -- used for
+    FALLBACK_COUNT, which is labeled by `reason` (so a fallback's real
+    cause is visible in `/metrics`, not just an opaque count) but the
+    dashboard's own summary line cares about the total regardless of
+    reason.
+    """
+    return sum(
+        sample.value
+        for metric in counter.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_total")
+    )
+
+
 def build_dashboard_data() -> dict:
     """Pulls the handful of numbers that actually reveal whether this
     service is healthy and whether recommendation behavior is drifting
@@ -37,7 +52,7 @@ def build_dashboard_data() -> dict:
         "total_requests": total,
         "error_rate": (error / total) if total else None,
         "mean_latency_ms": (latency_sum / success * 1000) if success else None,
-        "fallback_rate": (_counter_value(m.FALLBACK_COUNT) / total) if total else None,
+        "fallback_rate": (_counter_total(m.FALLBACK_COUNT) / total) if total else None,
         "empty_response_rate": (_counter_value(m.EMPTY_RESPONSE_COUNT) / total) if total else None,
         "durable_cache_hit_rate": (
             durable_hit / (durable_hit + durable_miss) if (durable_hit + durable_miss) else None

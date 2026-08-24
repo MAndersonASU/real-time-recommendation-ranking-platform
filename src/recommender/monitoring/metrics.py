@@ -23,7 +23,7 @@ EMPTY_RESPONSE_COUNT = Counter(
 # (durable_features_used / recent_features_used) rather than a second,
 # separately-tracked copy of the same fact.
 FALLBACK_COUNT = Counter(
-    "recommend_fallback_total", "Responses served by the popularity fallback path"
+    "recommend_fallback_total", "Responses served by the popularity fallback path", ["reason"]
 )
 DURABLE_CACHE_COUNT = Counter(
     "recommend_durable_cache_total", "Requests, by whether durable features were found", ["result"]
@@ -51,7 +51,13 @@ KAFKA_CONSUMER_LAG = Gauge(
 )
 
 
-def record_response(response: RecommendationResponse, *, is_fallback: bool, latency_seconds: float) -> None:
+def record_response(
+    response: RecommendationResponse,
+    *,
+    is_fallback: bool,
+    latency_seconds: float,
+    fallback_reason: str | None = None,
+) -> None:
     """Records every operational signal for one real response -- called
     once per `/recommend` request, from the one place a response is
     actually produced, so the metrics can never drift from what was
@@ -63,7 +69,7 @@ def record_response(response: RecommendationResponse, *, is_fallback: bool, late
     if not response.recommendations:
         EMPTY_RESPONSE_COUNT.inc()
     if is_fallback:
-        FALLBACK_COUNT.inc()
+        FALLBACK_COUNT.labels(reason=fallback_reason or "unknown").inc()
     DURABLE_CACHE_COUNT.labels(result="hit" if response.durable_features_used else "miss").inc()
     RECENT_CACHE_COUNT.labels(result="hit" if response.recent_features_used else "miss").inc()
 
