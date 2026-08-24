@@ -1,41 +1,64 @@
 # Automating CI
 
-Three jobs, running three genuinely different kinds of check.
+Four jobs, running four genuinely different kinds of check.
 Implementation: `.github/workflows/ci.yml`.
 
-## Three tiers, not one
+## Four jobs, not one
 
-`lint-and-test`: static checks (`ruff`, `bandit`), a `docker compose
-config` validation, and the full unit/integration test suite (including
-real FastAPI `TestClient` requests against synthetic fixtures — no real
-infrastructure, no licensed data) — installed via `pyproject.toml`'s own
-flexible lower bounds. `locked-install-test`: the identical test suite,
-installed instead from `requirements-lock.txt`'s exact pinned versions
-— a separate install path specifically so a lock file that's drifted
-out of sync with `pyproject.toml` (a real gap a follow-up review found:
-a dependency added to the runtime dependency list was never re-frozen
-into the lock) gets caught here, not discovered by a user doing a
-from-scratch install months later. `integration-smoke-test`: starts the
-real Kafka and Redis containers in the CI runner and runs two real,
-bounded round-trips against them — `verify_connectivity.py` (produce
-and consume a real message) and `verify_state_store.py` (write, read
-back, and measure real latency against a real Redis).
+**`lint-and-test`** — static checks (`ruff`, `bandit`), a
+`docker compose config` validation, and the full test suite behind a
+coverage floor, installed via `pyproject.toml`'s own flexible lower
+bounds. Real FastAPI `TestClient` requests against synthetic fixtures;
+no infrastructure, no licensed data.
 
-## Why the full API service isn't smoke-tested here
+**`locked-install-test`** — the identical suite, installed instead from
+`requirements-lock.txt` with `--require-hashes`. A separate install path
+on purpose: a lock file drifted out of sync with `pyproject.toml` is
+invisible to the flexible install above, which always resolves *some*
+working set. Hash verification additionally means a package republished
+under a pinned version is rejected rather than silently installed. This
+job then runs `pip-audit` against exactly that installed set.
+
+**`api-container-test`** — builds and runs the real containerized API,
+waits on the container's own health check, asserts it runs as a
+non-root user, and makes real HTTP requests against it: `/health`,
+`/ready`, a `/recommend` call checked for both a contract-valid body and
+an `X-Request-ID` header, a malformed `/demo` request checked for a
+clean 422 rather than a 500, and `/metrics` checked for the derived
+serving version.
+
+**`integration-smoke-test`** — starts the real Kafka and Redis
+containers and runs two bounded round-trips against them:
+`verify_connectivity.py` (produce and consume a real message) and
+`verify_state_store.py` (write, read back, measure real latency).
+
+## How the API container is testable here at all
 
 The trained two-tower model, the Faiss index, and the ranking pipeline
-all depend on the licensed MIND dataset (`docs/dataset-source.md`),
-which this project has never redistributed and never will. Kafka and
-Redis are open-source images with nothing licensed involved, so they
-run for real in CI; the full containerized API from
-`docs/containerization.md` genuinely cannot, without either
-redistributing data this project isn't allowed to redistribute, or
-training a fake model just to make a smoke test pass — real complexity
-added to test something that wouldn't actually be testing the real
-system. This is the same "synthetic in CI, real data verified
-separately and documented" line this project has held since Phase 1;
-this step doesn't cross it, it just adds a real check on the one side
-of that line CI actually can reach.
+all derive from the licensed MIND dataset (`docs/dataset-source.md`),
+which this project has never redistributed. For a long time that meant
+the containerized API simply could not run in CI — the image would
+start, fail to load its artifacts, and exit — so the container was
+verified only locally.
+
+`recommender.data.synthetic` removes that blocker without crossing the
+licensing line: it generates a seeded, entirely synthetic catalog,
+splits, and trained models, written to the same paths the real artifacts
+occupy. The serving code needs no CI-only branch, and nothing licensed
+is involved.
+
+The models are trained through the real training code paths rather than
+hand-assembled, deliberately: an artifact built some other way could
+load cleanly while the real training path was broken, which is exactly
+the failure this is meant to catch.
+
+What this does and does not prove is worth stating plainly. It proves
+wiring: the image builds, starts unprivileged, loads its models, passes
+its health check, and returns contract-valid responses. It proves
+nothing about recommendation quality — the synthetic model's scores are
+meaningless, and every quality number this project publishes still comes
+from local runs against the real licensed data
+(`docs/serving-path-end-to-end-evaluation.md`).
 
 ## A real bug found while wiring this up
 

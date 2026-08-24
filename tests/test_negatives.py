@@ -6,6 +6,7 @@ from recommender.retrieval.dataset import SampledNegativeDataset
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
     build_user_clicked_rows,
 )
@@ -122,14 +123,18 @@ def test_sample_negatives_for_positives_shape():
 def test_sampled_negative_dataset_always_labels_zero():
     train = _behaviors([(1, "U1", "2019-11-09 10:00:00", "N0", "N1-1 N2-0")])
     item_vocab, _, _ = build_item_vocab(NEWS)
-    cat, subcat, mask, impression_row = build_history_arrays(train, item_vocab, max_history=5)
-    catalog_cat, catalog_subcat, _row_by_news_id = build_catalog_arrays(NEWS, item_vocab)
+    catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(NEWS, item_vocab)
+    content_matrix = build_item_content_matrix(NEWS)
+    cat, subcat, mask, rows, impression_row = build_history_arrays(
+        train, item_vocab, max_history=5, row_by_news_id=row_by_news_id
+    )
 
     impression_rows = np.array([impression_row[1]])
     negative_rows = np.array([[3, 4]])  # pretend these were already sampled
 
     dataset = SampledNegativeDataset(
-        impression_rows, negative_rows, cat, subcat, mask, catalog_cat, catalog_subcat
+        impression_rows, negative_rows, cat, subcat, mask, rows,
+        catalog_cat, catalog_subcat, content_matrix,
     )
 
     assert len(dataset) == 2

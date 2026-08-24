@@ -36,33 +36,45 @@ the offset unmoved, and a restarted consumer picks the same message back
 up rather than silently skipping it. This is what makes the recovery
 testing that follows this step meaningful.
 
-## Real, disclosed limitation: at-least-once, not exactly-once
+## Restart idempotency: a redelivered event is repaired, not re-applied
 
-This consumer's own commit step and the Redis state mutation
-(`SyncingStreamConsumer`, `docs/state-store.md`) are two separate
-operations, not one atomic one. A crash after the Redis write but
-before the Kafka offset commit means that message gets redelivered on
-restart — and the in-process `_seen_event_ids` dedup set
-(`BoundedSet`) that would normally catch a redelivery does not survive
-a restart either (a brand new process starts it empty). The real,
-concrete consequence: that one event's effect on Redis state
-(`impressions_seen`, `clicks_seen`, `recent_clicked_items`) can be
-applied twice. `tests/test_live_sync.py::
-test_syncing_consumer_can_double_count_state_after_a_crash_before_commit`
-demonstrates this directly, honestly, rather than assuming it away.
+The Redis state mutation and the Kafka offset commit are two separate
+operations. A crash between them redelivers the message after restart,
+and the in-process dedup set (`_seen_event_ids`) does not survive a
+restart either, since a new process starts it empty. That combination
+once counted the same real click twice.
 
-This project accepts at-least-once semantics with a real, disclosed
-possibility of double-counted state on the specific crash window
-above, rather than building a Redis transaction or Lua-script-based
-exactly-once mechanism — a real, larger piece of infrastructure whose
-complexity isn't justified for a research/portfolio project's own
-recent-feature signal (a slightly inflated recent click count on a
-rare crash-timing coincidence, not a correctness-critical financial or
-safety system). If this project's scope ever required exactly-once
-guarantees, the correct fix would be to make the state mutation and a
-processed-event-id record atomic — a Redis `MULTI`/`EXEC` transaction
-or a Lua script, with bounded retention on the processed-id record so
-it doesn't grow forever — not something built here speculatively.
+Neither ordering of the two writes fixes it on its own. Marking the
+event processed first can lose its effect entirely if the crash lands
+before the state write; writing state first can apply the event twice.
+
+`claim_event` (`recommender.features.state_store`) closes it by storing
+the resulting state *inside* the claim:
+
+1. Compute the new state for the user.
+2. `SET processed_event:<id> <state> NX EX <ttl>` — one atomic
+   operation, which either claims the event or reports it already
+   claimed.
+3. On a successful claim, write the user's state key.
+4. On an already-claimed event, read the state out of the claim and
+   restore it — both to Redis and to the consumer's own in-process
+   state — then report the event as a duplicate so it is not counted
+   again.
+
+A crash between steps 2 and 3 is therefore self-healing: the redelivery
+finds the claim, recovers the exact state that event produced, and
+repairs the state key. Nothing is applied twice and nothing is lost.
+
+The claim carries a TTL rather than accumulating forever, so the
+processed-event set stays bounded on its own. That TTL is the real,
+remaining bound on the guarantee: a redelivery arriving after it expires
+would be treated as new. It is set to a day, far longer than any
+realistic restart-and-redelivery window.
+
+`tests/test_live_sync.py` covers both halves — that a redelivery does
+not double-count, and that the consumer's in-process state is left
+correct afterwards so the next genuine event applies on top of the right
+value.
 
 ## A real bug, found by testing against a live broker, not assumed away
 

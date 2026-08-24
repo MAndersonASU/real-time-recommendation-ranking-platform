@@ -133,58 +133,119 @@ zero-fresh-impression rate stays under 5%.
 0.5 days is the smallest threshold clearing the 5% bar — the rule
 selects exactly the currently-configured value.
 
-**Diversity: the predefined rule does not work as intended, and that
-is reported honestly rather than papered over.** Rule as written:
-choose the smallest cap reaching at least 90% of the *uncapped* mean
-distinct-category count.
+**Diversity: the first rule did not work, and the replacement does.**
+
+The rule originally written here was: choose the smallest cap reaching
+at least 90% of the *uncapped* mean distinct-category count. It could
+not work, and that was reported rather than quietly patched. Slate
+diversity rises monotonically as the cap falls, so a bar stated relative
+to the uncapped (least diverse) case is cleared by every capped value —
+the rule always selected the smallest cap tried, whatever it cost in
+relevance, and so settled nothing.
+
+The replacement bounds the cost instead of the benefit: among caps whose
+mean slate relevance stays within a stated budget of the uncapped mean,
+take the one with the highest mean distinct-category count. That is not
+monotone-trivial, because an aggressive cap spends relevance to buy
+diversity and a tight budget can rule it out.
+
+Measured on the tuning fold:
 
 | Cap | Mean slate relevance | Mean distinct categories |
 |---|---|---|
-| 1 | 0.438 | 7.59 |
-| 2 | 0.482 | 5.64 |
-| **3 (configured)** | **0.507** | **4.96** |
-| 5 | 0.530 | 4.42 |
-| No cap | 0.546 | 4.05 |
+| 1 | 0.475 | 7.72 |
+| 2 | 0.533 | 5.83 |
+| **3 (configured)** | **0.573** | **5.06** |
+| 5 | 0.597 | 4.52 |
+| No cap | 0.611 | 4.22 |
 
-Because a smaller cap can only ever *increase* diversity relative to no
-cap, every candidate value clears a bar set relative to the *worst*
-(uncapped) case — the rule trivially selects the smallest cap tried
-(1), regardless of the real tradeoff. That is a flaw in this specific
-rule's design, not evidence that cap=1 is actually better than cap=3:
-a meaningful rule would need to weigh relevance loss against diversity
-gain jointly (e.g. a fixed relevance budget), which this rule does not
-do. The real, useful output here is the tradeoff table itself — cap=3
-gives up about 7% mean relevance versus no cap in exchange for roughly
-22% more distinct categories per slate — not the rule's own selected
-value. Choosing among these values is a real product tradeoff this
-project has not made via a formal decision procedure; cap=3 remains a
-disclosed, reasonable choice within the measured tradeoff space, not
-something this comparison proves optimal or proves wrong.
+The rule's answer now genuinely depends on how much relevance a
+diversity gain is judged to be worth:
+
+| Relevance budget | Cap selected |
+|---|---|
+| 85% | 2 |
+| 90% | **3 (the configured value)** |
+| 95% | 5 |
+| 99% | none affordable |
+
+That spread is the point. The budget is a product decision, not
+something this data can settle, and fixing a single value after seeing
+the table would be exactly the post-hoc rule-fitting this document
+exists to prevent. What can be said honestly: cap=3 is the choice a 90%
+relevance budget produces, it sits mid-range in a real measured
+tradeoff, and nothing here shows it to be wrong.
+
+**Retrieval depth: a real change, decided on the tuning fold.**
+
+Retrieval depth — how many candidates the serving path pulls from the
+index before ranking — was 50 out of 51,282 items. Measured on the
+tuning fold (`verify_retrieval_depth`):
+
+| Depth | Clicked item reached the ranker | Search p99 |
+|---|---|---|
+| 50 (was configured) | 5.8% | 0.34 ms |
+| 100 | 7.8% | 0.38 ms |
+| 200 | 10.6% | 0.47 ms |
+| 500 | 15.4% | 0.99 ms |
+| **1000 (now configured)** | **20.9%** | **0.89 ms** |
+
+Ranking cannot promote an item retrieval never surfaced, so this was a
+hard ceiling on the whole pipeline.
+
+A predefined search-latency budget was stated before these numbers were
+produced — and it did not bind, since every depth came in under a
+millisecond. A "deepest affordable" rule would therefore have
+degenerated into "deepest tried", the same defect as the original
+diversity rule, so it is not presented as having selected anything.
+Index search is also not where depth actually costs: ranking and
+reranking both scale with candidate count. Measured end to end,
+depth 1,000 adds about 4 ms of p50 request latency over depth 50.
+
+Depth 1,000 was therefore chosen as a judgment call from a measured
+tradeoff — roughly 3.6x more clicked items reaching the ranker for about
+4 ms — not as the output of a rule. It was measured on the tuning fold
+specifically because deciding it on `validation` and then reporting
+against `validation` is the exact mistake this document records.
 
 ## What this means going forward
 
-- The freshness threshold: reconfirmed twice now — once by held-out
-  coverage at the chosen value, once by a predefined rule comparing
-  real alternatives that independently selects the same value.
-- The diversity cap: the chosen value's own held-out behavior
-  reconfirmed cleanly, and a real relevance/diversity tradeoff curve
-  across alternatives now exists and is reported honestly — but no
-  rule tested here actually settles which cap value is "best," a real,
-  disclosed, still-open question distinct from whether cap=3's own
-  measured behavior is real (it is).
-- The popularity exclusion: the original decision to exclude
-  `popularity` (AUC 0.47, no better than random on genuinely
-  out-of-sample, temporally-realistic data) is supported, not proven,
-  by the chronological-split re-check. The earlier discrepancy has a
-  real, evidence-backed explanation now, not just a disclosed
-  correlation: it is consistent with `split_train_for_tuning`'s random
-  split letting recency leak across the fold boundary, a hypothesis a
-  chronological re-check now supports rather than one left as an
-  untested assumption. No model change made.
-- `split_train_for_tuning`'s random-by-impression_id split remains the
-  right default for the diversity and freshness checks above (both
-  reconfirmed cleanly under it, and neither has any reason to be
-  sensitive to short-term recency the way popularity is) —
+- **The freshness threshold**: reconfirmed twice — once by held-out
+  coverage at the chosen value, once by a predefined rule comparing real
+  alternatives that independently selects the same value.
+- **The diversity cap**: the flawed rule was replaced by a
+  relevance-budget rule that genuinely discriminates between cap values.
+  cap=3 is what a 90% relevance budget selects, and it sits mid-range in
+  a real measured tradeoff. The budget itself remains a product
+  judgment, not something this data settles — which is a narrower and
+  more honest claim than "reconfirmed".
+- **Retrieval depth**: raised from 50 to 1,000 on tuning-fold evidence,
+  roughly tripling how often the clicked item reaches the ranker for
+  about 4 ms of end-to-end latency. Chosen as a judgment call from a
+  measured tradeoff, since the predefined latency budget did not bind.
+- **The popularity exclusion**: supported, not proven, by the
+  chronological-split re-check. The earlier discrepancy is consistent
+  with `split_train_for_tuning`'s random split letting recency leak
+  across the fold boundary. A real confound remains — a chronological
+  split also changes which users land on each side — so this is
+  evidence for the explanation, not isolation of it. No model change
+  made.
+- **`split_train_for_tuning`'s random-by-impression_id split** remains
+  the right default for the diversity and freshness checks (neither has
+  reason to be sensitive to short-term recency the way popularity is);
   `chronological_tuning_split_impression_ids` is a second, deliberately
-  different tool for exactly this kind of recency-sensitive question,
-  not a replacement.
+  different tool for recency-sensitive questions, not a replacement.
+
+## The pattern worth naming
+
+Two selection rules written for this document turned out not to
+discriminate at all: both stated a bound on the *benefit* of a change
+along an axis that moves monotonically with the parameter, so every
+candidate value cleared the bar and the rule silently collapsed into
+"pick the most extreme value tried."
+
+The fix in both cases was to bound the **cost** instead — relevance lost
+for diversity, latency spent for recall — because cost is what actually
+trades off against the thing being maximized. A rule that cannot reject
+any candidate is not a selection rule, and reporting one as though it
+had chosen something would be worse than having no rule at all.

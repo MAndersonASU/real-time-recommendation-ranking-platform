@@ -18,9 +18,9 @@ different candidate set or protocol.
 
 | Metric | Retrieval score only | Ranked |
 |---|---|---|
-| Hit rate@10 | 0.6603 | 0.6801 |
+| Hit rate@10 | 0.6689 | 0.6828 |
 | Recall@10 | 0.5801 | 0.5975 |
-| NDCG@10 | 0.3446 | 0.3670 |
+| NDCG@10 | 0.3518 | 0.3671 |
 | MRR | 0.3084 | 0.3347 |
 | Catalog coverage@10 | 0.0698 | 0.0712 |
 
@@ -34,9 +34,9 @@ alone, given the same candidates.
 
 | Metric | Popularity | Content similarity | Collaborative | Retrieval score only | Ranked |
 |---|---|---|---|---|---|
-| Hit rate@10 | 0.5697 | 0.6557 | 0.5709 | 0.6603 | **0.6801** |
+| Hit rate@10 | 0.5697 | 0.6557 | 0.5709 | 0.6689 | **0.6828** |
 | Recall@10 | 0.5034 | 0.5743 | 0.5046 | 0.5801 | **0.5975** |
-| NDCG@10 | 0.2830 | 0.3526 | 0.2847 | 0.3446 | **0.3670** |
+| NDCG@10 | 0.2830 | 0.3526 | 0.2847 | 0.3518 | **0.3671** |
 | MRR | 0.2484 | 0.3236 | 0.2509 | 0.3084 | **0.3347** |
 | Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 | 0.0698 | 0.0712 |
 
@@ -51,7 +51,7 @@ Phase 3).
 
 ## One more honest observation, not a new mystery
 
-`retrieval_score` alone performs respectably here (0.6603 hit rate) —
+`retrieval_score` alone performs respectably here (0.6689 hit rate) —
 noticeably better than it did in Phase 3's own full-catalog retrieval
 evaluation (0.0044 hit rate at N=100, `docs/retrieval-evaluation.md`). That
 is not a contradiction; it's exactly what the tied-vector limitation

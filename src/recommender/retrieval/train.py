@@ -12,6 +12,7 @@ from recommender.retrieval.dataset import SampledNegativeDataset, TwoTowerDatase
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
     build_user_clicked_rows,
 )
@@ -31,11 +32,18 @@ def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
     train = load_split("train")
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
-    cat, subcat, mask, impression_row = build_history_arrays(train, item_vocab)
-    exploded = explode_impressions(train)
-    in_impression_dataset = TwoTowerDataset(exploded, impression_row, cat, subcat, mask, item_vocab)
-
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
+    content_matrix = build_item_content_matrix(news)
+
+    cat, subcat, mask, history_item_rows, impression_row = build_history_arrays(
+        train, item_vocab, row_by_news_id=row_by_news_id
+    )
+    exploded = explode_impressions(train)
+    in_impression_dataset = TwoTowerDataset(
+        exploded, impression_row, cat, subcat, mask, history_item_rows,
+        item_vocab, content_matrix, row_by_news_id,
+    )
+
     user_clicked_rows = build_user_clicked_rows(train, row_by_news_id)
 
     positives = exploded[exploded["clicked"] == 1]
@@ -50,7 +58,8 @@ def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
         num_negatives=num_sampled_negatives,
     )
     sampled_negative_dataset = SampledNegativeDataset(
-        positive_impression_rows, sampled_negative_rows, cat, subcat, mask, catalog_cat, catalog_subcat
+        positive_impression_rows, sampled_negative_rows, cat, subcat, mask, history_item_rows,
+        catalog_cat, catalog_subcat, content_matrix,
     )
 
     dataset = ConcatDataset([in_impression_dataset, sampled_negative_dataset])
@@ -86,9 +95,9 @@ def train_model(
     checkpoints = []
     step = 0
     while step < max_steps:
-        for h_cat, h_subcat, h_mask, c_cat, c_subcat, label in loader:
+        for h_cat, h_subcat, h_mask, h_content, c_cat, c_subcat, c_content, label in loader:
             optimizer.zero_grad()
-            logits = model(h_cat, h_subcat, h_mask, c_cat, c_subcat)
+            logits = model(h_cat, h_subcat, h_mask, h_content, c_cat, c_subcat, c_content)
             loss = loss_fn(logits, label)
             loss.backward()
             optimizer.step()

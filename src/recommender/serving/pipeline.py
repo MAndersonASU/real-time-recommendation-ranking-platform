@@ -23,7 +23,13 @@ from recommender.reranking.freshness import (
     compute_age_days,
     compute_first_seen,
 )
-from recommender.retrieval.features import MAX_HISTORY, build_catalog_arrays, build_item_vocab
+from recommender.retrieval.features import (
+    CONTENT_DIM,
+    MAX_HISTORY,
+    build_catalog_arrays,
+    build_item_content_matrix,
+    build_item_vocab,
+)
 from recommender.retrieval.index import compute_catalog_embeddings
 from recommender.retrieval.model import TwoTowerModel
 from recommender.retrieval.train import EMBEDDING_DIM
@@ -38,7 +44,17 @@ from recommender.serving.contract import (
 from recommender.serving.errors import DependencyUnavailableError
 
 RETRIEVAL_MULTIPLIER = 5
-MIN_RETRIEVAL_CANDIDATES = 50
+# Raised from 50 after measuring the real recall/latency tradeoff on the
+# tuning fold, never on `validation` (`verify_retrieval_depth` in
+# recommender.evaluation.verify_tuning_decisions). Retrieving 50 of
+# 51,282 items put the clicked article in front of the ranker on 5.8% of
+# tune-fold impressions; 1,000 raises that to 20.9%, and ranking cannot
+# recover a click retrieval never surfaced. The cost is real but small:
+# end-to-end p50 rises about 4 ms (index search itself stays under a
+# millisecond -- the added time is ranking and reranking scoring more
+# candidates). Chosen as a judgment call from that measured tradeoff,
+# not selected by an automatic rule; see docs/evaluation-integrity.md.
+MIN_RETRIEVAL_CANDIDATES = 1000
 
 
 @dataclass
@@ -50,6 +66,8 @@ class ServingContext:
     """
 
     item_vocab: dict
+    item_content: np.ndarray
+    item_row_by_news_id: dict
     news_ids: np.ndarray
     category_by_id: pd.Series
     tfidf_vectors: object
@@ -94,10 +112,13 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     news = load_catalog()
     train = load_split("train")
     item_vocab, categories, subcategories = build_item_vocab(news)
-    catalog_cat, catalog_subcat, _ = build_catalog_arrays(news, item_vocab)
+    catalog_cat, catalog_subcat, item_row_by_news_id = build_catalog_arrays(news, item_vocab)
+    item_content = build_item_content_matrix(news)
 
     two_tower_model = _load_two_tower_model(len(categories) + 1, len(subcategories) + 1)
-    catalog_embeddings = compute_catalog_embeddings(two_tower_model, catalog_cat, catalog_subcat)
+    catalog_embeddings = compute_catalog_embeddings(
+        two_tower_model, catalog_cat, catalog_subcat, item_content
+    )
     faiss_index = faiss.IndexFlatIP(catalog_embeddings.shape[1])
     faiss_index.add(catalog_embeddings)
 
@@ -122,6 +143,8 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
 
     return ServingContext(
         item_vocab=item_vocab,
+        item_content=item_content,
+        item_row_by_news_id=item_row_by_news_id,
         news_ids=news["news_id"].to_numpy(),
         category_by_id=news.set_index("news_id")["category"],
         tfidf_vectors=tfidf_vectors,
@@ -136,20 +159,37 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     )
 
 
-def encode_recent_history(item_ids: list, item_vocab: dict, max_history: int = MAX_HISTORY) -> tuple:
-    """The same fixed-length, masked category/subcategory encoding
-    `build_history_arrays` produces for one offline impression's history
-    string, built here instead from a live user's recent-clicked-items
-    list (Phase 7) for a single query.
+def encode_recent_history(
+    item_ids: list,
+    item_vocab: dict,
+    max_history: int = MAX_HISTORY,
+    item_content: np.ndarray | None = None,
+    item_row_by_news_id: dict | None = None,
+) -> tuple:
+    """The same fixed-length, masked category/subcategory/content
+    encoding `build_history_arrays` produces for one offline
+    impression's history string, built here instead from a live user's
+    recent-clicked-items list (Phase 7) for a single query.
+
+    The content block is gathered from the same catalog content matrix
+    the item tower was trained against, so a live query is encoded
+    exactly the way a training example was.
     """
     cat = np.zeros((1, max_history), dtype=np.int64)
     subcat = np.zeros((1, max_history), dtype=np.int64)
     mask = np.zeros((1, max_history), dtype=np.float32)
+    content_dim = item_content.shape[1] if item_content is not None else CONTENT_DIM
+    content = np.zeros((1, max_history, content_dim), dtype=np.float32)
+
     for j, news_id in enumerate(item_ids[-max_history:]):
         if news_id in item_vocab:
             cat[0, j], subcat[0, j] = item_vocab[news_id]
             mask[0, j] = 1.0
-    return cat, subcat, mask
+            if item_content is not None and item_row_by_news_id is not None:
+                row = item_row_by_news_id.get(news_id)
+                if row is not None:
+                    content[0, j] = item_content[row]
+    return cat, subcat, mask, content
 
 
 def recommend(
@@ -221,11 +261,18 @@ def recommend(
     _stage_end("feature_lookup_ms", t)
 
     t = _stage_start()
-    hist_cat, hist_subcat, hist_mask = encode_recent_history(history_ids, context.item_vocab)
+    hist_cat, hist_subcat, hist_mask, hist_content = encode_recent_history(
+        history_ids, context.item_vocab,
+        item_content=context.item_content,
+        item_row_by_news_id=context.item_row_by_news_id,
+    )
     try:
         with torch.no_grad():
             user_emb = context.two_tower_model.user_vector(
-                torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
+                torch.from_numpy(hist_cat),
+                torch.from_numpy(hist_subcat),
+                torch.from_numpy(hist_mask),
+                torch.from_numpy(hist_content),
             ).numpy()
     except RuntimeError as exc:
         # Narrow to this one call: a RuntimeError from *this specific*

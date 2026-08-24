@@ -8,7 +8,10 @@ from recommender.retrieval.model import TwoTowerModel
 
 
 def compute_catalog_embeddings(
-    model: TwoTowerModel, catalog_category: np.ndarray, catalog_subcategory: np.ndarray
+    model: TwoTowerModel,
+    catalog_category: np.ndarray,
+    catalog_subcategory: np.ndarray,
+    catalog_content: np.ndarray,
 ) -> np.ndarray:
     """Run every catalog item through the trained item tower once. No
     training, no gradient -- just producing a fixed embedding per item.
@@ -16,7 +19,9 @@ def compute_catalog_embeddings(
     model.eval()
     with torch.no_grad():
         vectors = model.item_vector(
-            torch.from_numpy(catalog_category), torch.from_numpy(catalog_subcategory)
+            torch.from_numpy(catalog_category),
+            torch.from_numpy(catalog_subcategory),
+            torch.from_numpy(catalog_content),
         )
     return vectors.numpy().astype(np.float32)
 

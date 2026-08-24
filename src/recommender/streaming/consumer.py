@@ -136,7 +136,13 @@ class StreamConsumer:
         elif event.event_type is EventType.CLICK:
             state.clicks_seen += 1
             state.recent_clicked_items.append(event.item_id)
-        self._on_state_updated(event.user_id, state)
+        if not self._on_state_updated(event.user_id, state, event.event_id):
+            # A durable store rejected this as already applied (a
+            # redelivery after a restart, which the in-process set above
+            # cannot see). It has restored the correct state itself; the
+            # event must not be counted a second time.
+            self.counters.duplicates_skipped += 1
+            return False
 
         self.counters.events_by_type[event.event_type.value] = (
             self.counters.events_by_type.get(event.event_type.value, 0) + 1
@@ -157,16 +163,22 @@ class StreamConsumer:
         """
         return self.user_states.setdefault(user_id, UserState())
 
-    def _on_state_updated(self, user_id: str, state: UserState) -> None:
+    def _on_state_updated(self, user_id: str, state: UserState, event_id: str) -> bool:
         """Hook called every time an event updates a user's state, with
-        the user id and their state exactly as it stands right after that
-        update. No-op here -- a plain StreamConsumer's only job is
-        in-process state. A subclass that also needs to push each update
-        through to an external low-latency store (the Redis-backed state
-        store, `docs/state-store.md`) can
-        override this without touching the parsing, dedup, or counting
-        logic above it at all.
+        the user id, their state exactly as it stands right after that
+        update, and the id of the event that caused it. A plain
+        StreamConsumer's only job is in-process state, so this always
+        reports the update as newly applied.
+
+        Returning False means a durable store recognized this event as
+        already applied and has restored the correct state itself, so
+        the caller must treat it as a duplicate rather than counting it
+        again. `event_id` is passed so such a store can make the
+        already-applied check and the state write one atomic operation;
+        the in-process dedup set above cannot help there, since it
+        starts empty after every restart.
         """
+        return True
 
 
 def run_consumer(

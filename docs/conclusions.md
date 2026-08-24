@@ -26,8 +26,8 @@ general.**
 
 Yes, clearly, the strongest positive result in this project. Over the
 same frozen candidate pool, the ranking model beat sorting by raw
-retrieval score alone on every relevance metric (hit rate 0.6800 vs.
-0.6603, NDCG 0.3670 vs. 0.3446 — `docs/ranking-evaluation.md`), and
+retrieval score alone on every relevance metric (hit rate 0.6828 vs.
+0.6689, NDCG 0.3671 vs. 0.3518 — `docs/ranking-evaluation.md`), and
 beat every one of Phase 2's non-learned baselines too. The
 retrieval-feature ablation (`docs/ablations.md`) confirms this isn't
 just the ranker's other features doing the work: removing
@@ -89,9 +89,9 @@ shown in one place rather than argued about qualitatively. Full detail:
 | Stage | Hit rate@10 | Δ from prior stage |
 |---|---|---|
 | Best baseline (content similarity) | 0.6557 | — |
-| + Retrieval score as sort key | 0.6603 | +0.0045 |
-| + Learned ranking model | 0.6800 | +0.0198 |
-| + Reranking (diversity/freshness) | 0.6678 | −0.0123 |
+| + Retrieval score as sort key | 0.6689 | +0.0132 |
+| + Learned ranking model | 0.6828 | +0.0139 |
+| + Reranking (diversity/freshness) | 0.6675 | −0.0153 |
 
 Ranking is where most of the pipeline's real, cumulative gain over the
 strongest non-learned baseline actually comes from. Retrieval alone

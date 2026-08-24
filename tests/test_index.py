@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+from recommender.retrieval.features import CONTENT_DIM
 from recommender.retrieval.index import (
     build_exact_index,
     build_ivf_index,
@@ -16,7 +17,8 @@ def test_compute_catalog_embeddings_shape():
     cat = torch.tensor([1, 2, 1])
     subcat = torch.tensor([1, 2, 1])
 
-    embeddings = compute_catalog_embeddings(model, cat.numpy(), subcat.numpy())
+    content = np.zeros((len(cat), CONTENT_DIM), dtype=np.float32)
+    embeddings = compute_catalog_embeddings(model, cat.numpy(), subcat.numpy(), content)
 
     assert embeddings.shape == (3, 8)
     assert embeddings.dtype == np.float32

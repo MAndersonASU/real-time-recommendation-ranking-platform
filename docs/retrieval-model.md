@@ -123,3 +123,34 @@ Model saved to `data/processed/mind_small/two_tower_model.pt` (gitignored,
 reproducible via `python -m recommender.retrieval.train`); reload verified
 to reproduce the trained parameters exactly before treating this step as
 done.
+
+
+## Item tower features: category, subcategory, and per-article content
+
+The item tower originally encoded an article from its category and
+subcategory alone. Those two fields take only 284 distinct combinations
+across a 51,282-item catalog, so the tower emitted 284 distinct vectors
+and retrieval could identify a topic but never an article within it
+(`docs/retrieval-evaluation.md`, `docs/faiss-index.md`).
+
+Each article now also carries a dense content vector built from its own
+title and abstract: TF-IDF reduced to a fixed width by `TruncatedSVD`
+and row-normalized (`build_item_content_matrix` in
+`src/recommender/retrieval/features.py`). The item tower projects that
+alongside the two embeddings and mixes them in a single linear layer.
+
+Two properties of this choice matter:
+
+- **Content-derived, not id-derived.** There is no per-item embedding
+  table, so an article never seen during training still receives a real
+  vector from its own text. The tower keeps working for cold items,
+  which an id-embedding approach would have given up.
+- **Deterministic.** `TruncatedSVD` uses a randomized solver, so it is
+  seeded for the same reason training is — a retrained model has to be
+  reproducible, and the catalog vectors feed both training and serving.
+
+Measured effect: distinct catalog embeddings rose from 284 to 50,704,
+and every retrieval metric improved by 7.6x to 13.5x
+(`docs/retrieval-evaluation.md`). The user tower is unchanged — it is
+still the masked mean of the item tower's vectors over a user's click
+history, so it inherits the richer item representation automatically.

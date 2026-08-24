@@ -7,6 +7,7 @@ from recommender.ranking.baselines import build_content_vectors, compute_popular
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.model import TwoTowerModel
@@ -30,17 +31,21 @@ def build_feature_context(train: pd.DataFrame, news: pd.DataFrame, model: TwoTow
     """
     item_vocab, _categories, _subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
+    item_content = build_item_content_matrix(news)
 
     model.eval()
     with torch.no_grad():
         catalog_embeddings = model.item_vector(
-            torch.from_numpy(catalog_cat), torch.from_numpy(catalog_subcat)
+            torch.from_numpy(catalog_cat),
+            torch.from_numpy(catalog_subcat),
+            torch.from_numpy(item_content),
         ).numpy()
 
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
 
     return {
         "item_vocab": item_vocab,
+        "item_content": item_content,
         "model": model,
         "catalog_embeddings": catalog_embeddings,
         "row_by_news_id": row_by_news_id,
@@ -91,10 +96,16 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
     tfidf_row_by_id = context["tfidf_row_by_id"]
     category_by_id = context["category_by_id"]
 
-    hist_cat, hist_subcat, hist_mask, impression_row = build_history_arrays(behaviors, item_vocab)
+    hist_cat, hist_subcat, hist_mask, hist_rows, impression_row = build_history_arrays(
+        behaviors, item_vocab, row_by_news_id=row_by_news_id
+    )
+    item_content = context["item_content"]
     with torch.no_grad():
         user_embeddings = context["model"].user_vector(
-            torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
+            torch.from_numpy(hist_cat),
+            torch.from_numpy(hist_subcat),
+            torch.from_numpy(hist_mask),
+            torch.from_numpy(item_content[hist_rows]),
         ).numpy()
 
     history_by_impression = behaviors.set_index("impression_id")["history"]

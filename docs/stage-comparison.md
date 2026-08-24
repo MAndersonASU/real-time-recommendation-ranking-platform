@@ -27,9 +27,9 @@ on top of the best pre-existing approach.
 | Stage | Hit rate@10 | Recall@10 | NDCG@10 | Δ hit rate | Δ NDCG |
 |---|---|---|---|---|---|
 | Best baseline (content similarity) | 0.6557 | 0.5743 | 0.3526 | — | — |
-| Retrieval | 0.6603 | 0.5801 | 0.3446 | +0.0045 | **−0.0080** |
-| Ranking | 0.6800 | 0.5975 | 0.3670 | +0.0198 | +0.0224 |
-| Reranking | 0.6678 | 0.5851 | 0.3620 | −0.0123 | −0.0049 |
+| Retrieval | 0.6689 | 0.5864 | 0.3518 | +0.0132 | **−0.0008** |
+| Ranking | 0.6828 | 0.5999 | 0.3671 | +0.0139 | +0.0153 |
+| Reranking | 0.6675 | 0.5848 | 0.3610 | −0.0153 | −0.0061 |
 
 ## A nuance only visible once the numbers sit side by side
 

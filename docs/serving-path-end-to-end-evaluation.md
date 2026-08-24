@@ -46,29 +46,45 @@ list the original protocol scores).
 
 ## Real result
 
-Chronologically-earliest validation impressions, K=10.
+Chronologically-earliest validation impressions, K=10. "Before" is the
+state this evaluation first reported; "after" is the same measurement
+following the fixes described below and the item-tower change in
+`docs/retrieval-evaluation.md`.
 
-| Metric | 500 impressions | 2,000 impressions |
-|---|---|---|
-| Impressions evaluated | 500 (0 skipped) | 2,000 (0 skipped) |
-| Durable-feature coverage | 100% | 100% |
-| Recent-feature coverage | 97.8% | 97.8% |
-| Fallback count | 0 | 0 |
-| Catalog coverage | 2.3% | 3.9% |
-| **Retrieval contained a click** | **0.2%** | **0.2%** |
-| Hit rate@10 | 0.0 | 0.0005 |
-| Recall@10 | 0.0 | 0.00025 |
-| NDCG@10 | 0.0 | 0.00013 |
-| MRR | 0.0 | 0.000125 |
+| Metric | Before (2,000) | After (2,000) | Change |
+|---|---|---|---|
+| Impressions evaluated | 2,000 (0 skipped) | 2,000 (0 skipped) | — |
+| Durable-feature coverage | 100% | 100% | — |
+| Recent-feature coverage | 8.2% | **97.8%** | 11.9x |
+| Fallback count | 0 | 0 | — |
+| Catalog coverage | 3.9% | **8.1%** | 2.1x |
+| **Retrieval contained a click** | **0.2%** | **12.2%** | **61x** |
+| Hit rate@10 | 0.0005 | **0.0145** | 29x |
+| Recall@10 | 0.00025 | **0.0092** | 37x |
+| NDCG@10 | 0.00013 | **0.0061** | 46x |
+| MRR | 0.000125 | **0.0074** | 59x |
 
-Ranking quality is effectively zero, and the row that explains it is
-`retrieval_contained_a_click`: the item the user actually clicked was
-among the 50 retrieved candidates in only 0.2% of impressions. That is
-a hard ceiling — the end-to-end hit rate cannot exceed it no matter how
-good ranking becomes. At 2,000 impressions the clicked item was
-retrieved 4 times and ranked into the top 10 once. The bottleneck is
-candidate generation, not ranking or reranking, and this run measures
-that directly rather than leaving it inferred.
+`retrieval_contained_a_click` is the row that explains the rest: it
+reports how often the item the user actually clicked was among the
+candidates retrieval handed to the ranker. It is a hard ceiling, since
+ranking cannot promote an item it never received. Raising it from 0.2%
+to 12.2% is what moved every metric below it.
+
+Three separate changes produced this, and they are worth keeping
+distinct rather than credited as one:
+
+1. **The item tower gained per-article content features**, ending the
+   284-distinct-vector collapse (`docs/retrieval-evaluation.md`).
+2. **Retrieval depth rose from 50 to 1,000 candidates**, decided on the
+   tuning fold rather than on `validation`
+   (`docs/evaluation-integrity.md`).
+3. **Two zero-vector defects were fixed**, described immediately below.
+
+Absolute quality remains low and should be read as such: a hit rate of
+1.45% means this system puts the user's real next click in a ten-item
+slate about once in every seventy impressions. That is a large relative
+improvement on a genuinely hard task (ten items chosen from 51,282), not
+a competitive recommender.
 
 ### A real evaluation bug found and fixed while producing these numbers
 
@@ -103,69 +119,55 @@ The same zero-vector condition was a real defect on the live serving
 path too, not only in evaluation — see `docs/serving-fallback.md` for
 the cold-start retrieval change it prompted.
 
-## This is not a new defect — it is the already-diagnosed retrieval limitation, run end to end
+## Reading these numbers honestly
 
-`docs/retrieval-evaluation.md` already measured hit rate@100 at 0.0044
-against the full catalog and traced it to a specific, named architecture
-limitation: the item tower's category/subcategory-only features collapse
-51,282 catalog items into 284 distinct embedding vectors
-(`docs/faiss-index.md`), so retrieval can identify the right cluster but
-has no signal at all to pick the right item within it. At K=10 — a
-narrower slice than the N=100 that measurement used — the expected
-number of hits across 500 sampled impressions is close enough to zero
-that observing exactly zero is consistent with that already-measured
-rate, not a new or different failure. Ranking and reranking cannot
-recover a click that retrieval's candidate set never contained in the
-first place; this result is the same limitation propagating through the
-full pipeline, not a second, independent problem.
+`docs/retrieval-evaluation.md` originally measured hit rate@100 at
+0.0044 against the full catalog and traced it to a named architecture
+limitation: the item tower's category/subcategory-only features
+collapsed 51,282 items into 284 distinct embedding vectors
+(`docs/faiss-index.md`). That limitation propagated through this whole
+pipeline — ranking and reranking cannot recover a click that retrieval's
+candidate set never contained — which is why every metric here was once
+effectively zero. It was one problem observed twice, not two problems.
 
-Durable- and recent-feature coverage are both high by construction now
-(each is computed from the impression's own `history` field, which MIND
-provides for essentially every row) — a real change in what those
-numbers mean compared to a cache-hit-rate interpretation, not a claim
-that personalization quality improved. Catalog coverage (2.3–3.9%)
-reflects the same collapsed-embedding-space limitation described above.
+That cause has since been fixed rather than restated, and the numbers
+above are the result. What remains true, and should not be smoothed
+over:
 
-One further measured factor, reported but deliberately not acted on:
-the serving path retrieves 50 candidates out of 51,282
-(`RETRIEVAL_MULTIPLIER` × K, floored at `MIN_RETRIEVAL_CANDIDATES`).
-Measuring the clicked item's rank under full-catalog retrieval gives a
-median rank of 11,779 — better than the ~25,600 random chance would
-predict, so the model has learned something real — with recall@50 of
-about 2% rising to about 16% at depth 1,000. Retrieving deeper would
-therefore put the clicked item in front of the ranker substantially
-more often. That is a hyperparameter choice, and
-`docs/evaluation-integrity.md` records why this project no longer makes
-such choices by looking at `validation` and then reporting against it.
-Changing retrieval depth on the strength of the numbers above would be
-exactly that mistake, so the finding is recorded here and left for a
-decision made against the tuning fold instead.
-
-## Honest interpretation
-
-This evaluation does not change RQ1's or RQ2's answer. It confirms, via
-the actual serving code path rather than an isolated retrieval-only
-measurement, that a real user of this system today would not reliably
-receive their real next click in their slate at K=10 — a fact
-`docs/retrieval-evaluation.md` already stated plainly for retrieval
-alone, now also observed to hold true of the assembled system's own
-code path under point-in-time-correct state reconstruction. The fix is
-the same one already named and scoped there: enrich the item tower with
-per-article features, not something reopened or re-scoped by this
-finding.
+- **This is still not a competitive recommender.** Hit rate@10 of 1.45%
+  means the user's real next click reaches their slate roughly once in
+  seventy impressions.
+- **Retrieval is still the binding constraint.** The clicked item
+  reaches the ranker 12.2% of the time, so no ranking or reranking work
+  can lift the end-to-end result past that ceiling. Further gains have
+  to come from retrieval quality, not from the stages after it.
+- **Coverage numbers mean something specific here.** Durable- and
+  recent-feature coverage are high by construction, since both derive
+  from each impression's own `history` field, which MIND provides for
+  essentially every row. That is a statement about reconstruction
+  fidelity, not about personalization quality.
+- **Retrieval depth was changed deliberately, and not on this split.**
+  Raising it from 50 to 1,000 candidates was decided against the tuning
+  fold (`verify_retrieval_depth`), because choosing a hyperparameter by
+  looking at `validation` and then reporting against `validation` is
+  precisely the leakage `docs/evaluation-integrity.md` exists to record.
+  The cost is real and measured: about 4 ms of additional end-to-end p50
+  latency, since ranking and reranking both scale with candidate count
+  even though index search itself stays under a millisecond.
 
 ## Status and limitations
 
-The point-in-time-correctness gap a follow-up review found (durable
-features leaking a user's future history, recent features depending on
-ambient shared Redis state) is fixed and covered by regression tests
-proving chronological state evolution, isolation from the shared
-serving context, determinism, and the absence of future leakage. What
-this evaluation does *not* establish: real production traffic patterns,
-concurrency, or infrastructure latency; a durable-feature refresh
-cadence matching any real deployment plan; or an improvement to the
-zero ranking-quality result itself, which remains an open, disclosed
-limitation of retrieval's current item-tower architecture. Reported
-here alongside — not in place of — the frozen-candidate-list protocol,
-since the two measure genuinely different things and neither should be
-read as superseding the other.
+The point-in-time-correctness gaps found in review — durable features
+leaking a user's future history, recent features depending on ambient
+shared Redis state, and an empty seed producing a degenerate zero-vector
+query — are fixed and covered by regression tests proving chronological
+state evolution, isolation from the shared serving context, determinism,
+correct seeding, and the absence of future leakage.
+
+What this evaluation still does *not* establish: real production traffic
+patterns, concurrency, or infrastructure latency; a durable-feature
+refresh cadence matching any real deployment plan; or that the ranking
+quality reported above is adequate for any real use. It is reported
+alongside — not in place of — the frozen-candidate-list protocol, since
+the two measure genuinely different things and neither supersedes the
+other.

@@ -5,6 +5,7 @@ from recommender.retrieval.dataset import SampledNegativeDataset, TwoTowerDatase
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.negatives import sample_negatives_for_positives
@@ -26,11 +27,16 @@ def _tiny_dataset():
     from recommender.data.mind import explode_impressions
 
     item_vocab, categories, subcategories = build_item_vocab(NEWS)
-    cat, subcat, mask, impression_row = build_history_arrays(TRAIN_BEHAVIORS, item_vocab)
-    exploded = explode_impressions(TRAIN_BEHAVIORS)
-    in_impression_dataset = TwoTowerDataset(exploded, impression_row, cat, subcat, mask, item_vocab)
-
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(NEWS, item_vocab)
+    content_matrix = build_item_content_matrix(NEWS)
+    cat, subcat, mask, rows, impression_row = build_history_arrays(
+        TRAIN_BEHAVIORS, item_vocab, row_by_news_id=row_by_news_id
+    )
+    exploded = explode_impressions(TRAIN_BEHAVIORS)
+    in_impression_dataset = TwoTowerDataset(
+        exploded, impression_row, cat, subcat, mask, rows,
+        item_vocab, content_matrix, row_by_news_id,
+    )
     positives = exploded[exploded["clicked"] == 1]
     positive_item_rows = positives["news_id"].map(row_by_news_id).to_numpy()
     positive_impression_rows = positives["impression_id"].map(impression_row).to_numpy()
@@ -43,7 +49,8 @@ def _tiny_dataset():
         num_negatives=2,
     )
     sampled_negative_dataset = SampledNegativeDataset(
-        positive_impression_rows, sampled_negative_rows, cat, subcat, mask, catalog_cat, catalog_subcat
+        positive_impression_rows, sampled_negative_rows, cat, subcat, mask, rows,
+        catalog_cat, catalog_subcat, content_matrix,
     )
     from torch.utils.data import ConcatDataset
 

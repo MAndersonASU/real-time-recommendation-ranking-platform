@@ -110,10 +110,15 @@ def test_retrieval_score_matches_a_manual_dot_product_recomputation():
         hist_cat = torch.tensor([[item_vocab["N1"][0]] + [0] * 19])
         hist_subcat = torch.tensor([[item_vocab["N1"][1]] + [0] * 19])
         mask = torch.tensor([[1.0] + [0.0] * 19])
-        user_emb = model.user_vector(hist_cat, hist_subcat, mask)[0]
+        item_content = context["item_content"]
+        row_by_news_id = context["row_by_news_id"]
+        hist_content = torch.zeros((1, 20, item_content.shape[1]))
+        hist_content[0, 0] = torch.from_numpy(item_content[row_by_news_id["N1"]])
+        user_emb = model.user_vector(hist_cat, hist_subcat, mask, hist_content)[0]
         cand_cat = torch.tensor([item_vocab["N2"][0]])
         cand_subcat = torch.tensor([item_vocab["N2"][1]])
-        item_emb = model.item_vector(cand_cat, cand_subcat)[0]
+        cand_content = torch.from_numpy(item_content[[row_by_news_id["N2"]]])
+        item_emb = model.item_vector(cand_cat, cand_subcat, cand_content)[0]
         expected = float(user_emb @ item_emb)
 
     actual = rows.loc[rows["news_id"] == "N2", "retrieval_score"].iloc[0]

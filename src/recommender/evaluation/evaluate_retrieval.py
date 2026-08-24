@@ -12,6 +12,7 @@ from recommender.retrieval.build_index import load_trained_model
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.index import build_exact_index, compute_catalog_embeddings
@@ -24,19 +25,27 @@ def evaluate_retrieval(n: int = N) -> dict:
     validation = load_split("validation")
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
-    catalog_cat, catalog_subcat, _ = build_catalog_arrays(news, item_vocab)
+    catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
+    item_content = build_item_content_matrix(news)
     news_ids = news["news_id"].to_numpy()
 
     model = load_trained_model(len(categories) + 1, len(subcategories) + 1)
-    catalog_embeddings = compute_catalog_embeddings(model, catalog_cat, catalog_subcat)
+    catalog_embeddings = compute_catalog_embeddings(
+        model, catalog_cat, catalog_subcat, item_content
+    )
     # Exact search, deliberately: isolates embedding quality from the
     # approximate index's already-measured accuracy cost (docs/faiss-index.md).
     index = build_exact_index(catalog_embeddings)
 
-    hist_cat, hist_subcat, hist_mask, _ = build_history_arrays(validation, item_vocab)
+    hist_cat, hist_subcat, hist_mask, hist_rows, _ = build_history_arrays(
+        validation, item_vocab, row_by_news_id=row_by_news_id
+    )
     with torch.no_grad():
         user_embeddings = model.user_vector(
-            torch.from_numpy(hist_cat), torch.from_numpy(hist_subcat), torch.from_numpy(hist_mask)
+            torch.from_numpy(hist_cat),
+            torch.from_numpy(hist_subcat),
+            torch.from_numpy(hist_mask),
+            torch.from_numpy(item_content[hist_rows]),
         )
     user_embeddings = user_embeddings.numpy().astype(np.float32)
 

@@ -48,11 +48,11 @@ routine that could drift from the real one.
 
 | Metric | Full ranking model | Retrieval feature removed | Change |
 |---|---|---|---|
-| Hit rate@10 | 0.6801 | 0.6589 | −3.1% |
-| Recall@10 | 0.5975 | 0.5775 | −3.3% |
-| NDCG@10 | 0.3670 | 0.3545 | −3.4% |
-| MRR | 0.3347 | 0.3252 | −2.8% |
-| Catalog coverage@10 | 0.0712 | 0.0732 | +2.8% |
+| Hit rate@10 | 0.6828 | 0.6589 | −3.5% |
+| Recall@10 | 0.5999 | 0.5775 | −3.7% |
+| NDCG@10 | 0.3671 | 0.3545 | −3.4% |
+| MRR | 0.3340 | 0.3252 | −2.6% |
+| Catalog coverage@10 | 0.0678 | 0.0732 | +8.0% |
 
 This was a predicted result, checked rather than assumed: the ranking
 model's own fitted coefficients (`docs/ranking-features.md`)

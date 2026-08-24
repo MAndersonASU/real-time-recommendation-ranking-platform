@@ -23,9 +23,9 @@ evaluation, see below.
 
 | Metric | Ranked only | Reranked | Change |
 |---|---|---|---|
-| Hit rate@10 | 0.6800 | 0.6678 | −1.8% |
+| Hit rate@10 | 0.6828 | 0.6675 | −2.2% |
 | Recall@10 | 0.5975 | 0.5851 | −2.1% |
-| NDCG@10 | 0.3670 | 0.3620 | −1.4% |
+| NDCG@10 | 0.3671 | 0.3610 | −1.7% |
 | MRR (slate-scoped) | 0.3188 | 0.3169 | −0.6% |
 | Mean distinct categories | 4.50 | 5.33 | +18.3% |
 | Mean max-category count | 4.25 | 2.82 | −33.5% |

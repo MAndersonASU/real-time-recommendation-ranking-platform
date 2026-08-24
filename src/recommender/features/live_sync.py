@@ -4,7 +4,11 @@ from recommender.features.online_features import (
     recent_features_from_user_state,
     user_state_from_recent_features,
 )
-from recommender.features.state_store import load_recent_features, save_recent_features
+from recommender.features.state_store import (
+    claim_event,
+    load_recent_features,
+    save_recent_features,
+)
 from recommender.streaming.consumer import StreamConsumer, UserState
 
 
@@ -39,7 +43,24 @@ class SyncingStreamConsumer(StreamConsumer):
         self.user_states[user_id] = state
         return state
 
-    def _on_state_updated(self, user_id: str, state: UserState) -> None:
-        save_recent_features(
-            self._redis_client, recent_features_from_user_state(user_id, state)
-        )
+    def _on_state_updated(self, user_id: str, state: UserState, event_id: str) -> bool:
+        """Claims the event before writing, so a message redelivered
+        after a restart cannot be applied twice.
+
+        The Redis mutation and the Kafka offset commit are separate
+        operations, and a crash between them redelivers the message.
+        `claim_event` stores the resulting state inside the claim under
+        a single atomic `SET NX`, so a redelivery gets the state that
+        event already produced instead of applying it again. Restoring
+        that state here (rather than keeping the local mutation) is what
+        makes reprocessing a repair rather than a double count.
+        """
+        features = recent_features_from_user_state(user_id, state)
+        already_applied = claim_event(self._redis_client, event_id, features)
+        if already_applied is not None:
+            self.user_states[user_id] = user_state_from_recent_features(already_applied)
+            save_recent_features(self._redis_client, already_applied)
+            return False
+
+        save_recent_features(self._redis_client, features)
+        return True

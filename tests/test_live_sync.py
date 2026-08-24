@@ -1,25 +1,15 @@
+from recommender.features.fake_redis import InMemoryRedis
 from recommender.features.live_sync import SyncingStreamConsumer
 from recommender.features.state_store import load_recent_features
 from recommender.streaming.consumer import StreamConsumer
 from recommender.streaming.schema import EventType, make_event
 
-
-class _FakeRedis:
-    """Satisfies the tiny subset of the redis.Redis interface state_store
-    actually calls (set/get), so the wiring between SyncingStreamConsumer
-    and state_store can be tested without a live Redis. Real latency and
-    real expiry behavior are proven separately, against the actual
-    running container, in verify_state_store.py and verify_live_sync.py.
-    """
-
-    def __init__(self):
-        self._data: dict[str, str] = {}
-
-    def set(self, key, value, ex=None):
-        self._data[key] = value
-
-    def get(self, key):
-        return self._data.get(key)
+# The project's single in-process Redis stand-in, rather than a second
+# copy here: this one implements SET NX, which claim_event's idempotency
+# guarantee depends on. Real latency and real expiry behavior are proven
+# separately, against the actual running container, in
+# verify_state_store.py and verify_live_sync.py.
+_FakeRedis = InMemoryRedis
 
 
 def test_syncing_consumer_writes_recent_features_after_every_event():
@@ -86,22 +76,18 @@ def test_syncing_consumer_restores_prior_state_after_a_restart():
     assert after.last_event_time == "t2"
 
 
-def test_syncing_consumer_can_double_count_state_after_a_crash_before_commit():
-    """Documents a real, disclosed limitation rather than assuming it
-    away: the Redis state mutation and the Kafka offset commit are two
-    separate operations, not one atomic one. A
-    crash after the mutation but before the commit means that message
-    is redelivered on restart -- and the in-process dedup set
-    (`_seen_event_ids`) that would normally catch a redelivery does not
-    survive a restart either, since a new process starts it empty. This
-    test demonstrates the real, concrete consequence directly: the same
-    real click can be counted twice.
+def test_syncing_consumer_does_not_double_count_after_a_crash_before_commit():
+    """Regression test for real at-least-once duplication: the Redis
+    mutation and the Kafka offset commit are separate operations, so a
+    crash between them redelivers the message after restart -- and the
+    in-process dedup set does not survive a restart either, since a new
+    process starts it empty. This once counted the same real click
+    twice.
 
-    This project accepts at-least-once semantics with this disclosed
-    risk (`docs/streaming-consumer.md`) rather than building a Redis
-    transaction/Lua-script-based exactly-once mechanism, whose
-    complexity isn't justified for this project's own recent-feature
-    signal.
+    `claim_event` closes it by storing the resulting state inside a
+    single atomic `SET NX` claim, so the redelivery recovers the state
+    that event already produced instead of applying it again. Fails on
+    the pre-fix code (clicks_seen == 2) and passes now.
     """
     client = _FakeRedis()
     click_event = make_event(EventType.CLICK, "u1", "n1", 1, "t1")
@@ -111,22 +97,39 @@ def test_syncing_consumer_can_double_count_state_after_a_crash_before_commit():
     # then, in this scenario, the process crashes before the Kafka
     # offset commit that would have followed.
     consumer_before_crash = SyncingStreamConsumer(client)
-    consumer_before_crash.process(raw)
-
-    after_first_process = load_recent_features(client, "u1")
-    assert after_first_process.clicks_seen == 1
+    assert consumer_before_crash.process(raw) is True
+    assert load_recent_features(client, "u1").clicks_seen == 1
 
     # A real restart: a brand new consumer instance (empty
     # _seen_event_ids), same Redis. Because the offset was never
     # committed, the same message is redelivered and reprocessed.
     consumer_after_restart = SyncingStreamConsumer(client)
-    consumer_after_restart.process(raw)
+    assert consumer_after_restart.process(raw) is False
 
     after_redelivery = load_recent_features(client, "u1")
-    # The one real click has now been counted twice -- the real,
-    # disclosed consequence of at-least-once semantics under this exact
-    # crash timing, not a hidden bug.
-    assert after_redelivery.clicks_seen == 2
+    assert after_redelivery.clicks_seen == 1
+    assert consumer_after_restart.counters.duplicates_skipped == 1
+
+
+def test_syncing_consumer_restores_correct_state_for_the_user_after_a_redelivery():
+    """A redelivery must leave the consumer's own in-process state
+    correct too, not just the Redis record -- otherwise the next real
+    event for that user would be applied on top of a state that had
+    already counted the redelivered event locally.
+    """
+    client = _FakeRedis()
+    first = make_event(EventType.CLICK, "u1", "n1", 1, "t1").to_json()
+
+    SyncingStreamConsumer(client).process(first)
+    restarted = SyncingStreamConsumer(client)
+    restarted.process(first)  # redelivered, must be repaired not re-applied
+
+    # A genuinely new event now applies on top of the correct state.
+    restarted.process(make_event(EventType.CLICK, "u1", "n2", 1, "t2").to_json())
+
+    final = load_recent_features(client, "u1")
+    assert final.clicks_seen == 2
+    assert final.recent_clicked_items == ["n1", "n2"]
 
 
 def test_get_or_create_state_only_hits_redis_once_per_user():

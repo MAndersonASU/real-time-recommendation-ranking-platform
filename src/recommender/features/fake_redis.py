@@ -11,8 +11,18 @@ class InMemoryRedis:
     def __init__(self) -> None:
         self._data: dict[str, str] = {}
 
-    def set(self, key: str, value: str, ex: int | None = None) -> None:
+    def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
+        """`nx=True` sets only when the key is absent and reports whether
+        it did, matching Redis's own SET NX. `claim_event`
+        (`recommender.features.state_store`) relies on that single
+        operation being the atomic step deciding whether an event has
+        already been applied, so a stand-in that ignored `nx` would
+        quietly break the guarantee it exists to provide.
+        """
+        if nx and key in self._data:
+            return None
         self._data[key] = value
+        return True
 
     def get(self, key: str) -> str | None:
         return self._data.get(key)

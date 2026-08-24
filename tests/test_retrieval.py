@@ -3,7 +3,13 @@ import torch
 
 from recommender.data.mind import explode_impressions
 from recommender.retrieval.dataset import TwoTowerDataset
-from recommender.retrieval.features import build_history_arrays, build_item_vocab
+from recommender.retrieval.features import (
+    CONTENT_DIM,
+    build_catalog_arrays,
+    build_history_arrays,
+    build_item_content_matrix,
+    build_item_vocab,
+)
 from recommender.retrieval.model import TwoTowerModel
 
 NEWS = pd.DataFrame(
@@ -49,7 +55,7 @@ def test_build_history_arrays_masks_padding_and_truncates_to_max_history():
     )
     item_vocab, _, _ = build_item_vocab(NEWS)
 
-    cat, _subcat, mask, impression_row = build_history_arrays(behaviors, item_vocab, max_history=5)
+    cat, _subcat, mask, _rows, impression_row = build_history_arrays(behaviors, item_vocab, max_history=5)
 
     assert mask[0].tolist() == [1.0, 1.0, 0.0, 0.0, 0.0]  # U1: 2 real items, padded to 5
     assert cat[0, 0] == item_vocab["N1"][0]
@@ -65,8 +71,11 @@ def test_user_vector_ignores_masked_padding_positions():
     real_mask = torch.tensor([[1.0, 1.0, 0.0, 0.0]])
     mask_including_padding = torch.tensor([[1.0, 1.0, 1.0, 1.0]])
 
-    correctly_masked = model.user_vector(history_cat, history_subcat, real_mask)
-    incorrectly_unmasked = model.user_vector(history_cat, history_subcat, mask_including_padding)
+    content = torch.zeros((1, 4, CONTENT_DIM))
+    correctly_masked = model.user_vector(history_cat, history_subcat, real_mask, content)
+    incorrectly_unmasked = model.user_vector(
+        history_cat, history_subcat, mask_including_padding, content
+    )
 
     # If padding leaked into the average, including it would change the result,
     # since index 0's embedding is a real (if meaningless) trainable vector.
@@ -82,7 +91,11 @@ def test_two_tower_forward_produces_one_score_per_example():
     cand_cat = torch.tensor([1, 2])
     cand_subcat = torch.tensor([1, 2])
 
-    scores = model(history_cat, history_subcat, mask, cand_cat, cand_subcat)
+    hist_content = torch.zeros((batch, 5, CONTENT_DIM))
+    cand_content = torch.zeros((batch, CONTENT_DIM))
+    scores = model(
+        history_cat, history_subcat, mask, hist_content, cand_cat, cand_subcat, cand_content
+    )
 
     assert scores.shape == (batch,)
 
@@ -90,12 +103,19 @@ def test_two_tower_forward_produces_one_score_per_example():
 def test_two_tower_dataset_builds_correct_example():
     behaviors = _behaviors([(1, "U1", "2019-11-10 09:00:00", "N1", "N2-1 N3-0")])
     item_vocab, _, _ = build_item_vocab(NEWS)
-    cat, subcat, mask, impression_row = build_history_arrays(behaviors, item_vocab, max_history=5)
+    _catalog_cat, _catalog_subcat, row_by_news_id = build_catalog_arrays(NEWS, item_vocab)
+    content_matrix = build_item_content_matrix(NEWS)
+    cat, subcat, mask, rows, impression_row = build_history_arrays(
+        behaviors, item_vocab, max_history=5, row_by_news_id=row_by_news_id
+    )
     exploded = explode_impressions(behaviors)
 
-    dataset = TwoTowerDataset(exploded, impression_row, cat, subcat, mask, item_vocab)
+    dataset = TwoTowerDataset(
+        exploded, impression_row, cat, subcat, mask, rows,
+        item_vocab, content_matrix, row_by_news_id,
+    )
 
     assert len(dataset) == 2  # N2 and N3
-    _h_cat, _h_subcat, h_mask, _c_cat, _c_subcat, label = dataset[0]
+    _h_cat, _h_subcat, h_mask, _h_content, _c_cat, _c_subcat, _c_content, label = dataset[0]
     assert h_mask.sum().item() == 1.0  # N1 is the only real history item
     assert label.item() in (0.0, 1.0)

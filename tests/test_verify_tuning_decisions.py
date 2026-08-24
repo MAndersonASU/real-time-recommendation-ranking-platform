@@ -89,4 +89,43 @@ def test_compare_diversity_cap_values_reports_real_relevance_and_diversity_per_c
     no_cap_diversity = result["by_cap_value"]["no_cap"]["mean_distinct_categories"]
     assert cap_1_diversity >= no_cap_diversity
     assert result["selection_rule"]
-    assert result["cap_value_selected_by_rule"] in {1, 2, 3, 5, None}
+    by_budget = result["cap_selected_by_relevance_budget"]
+    assert set(by_budget.keys()) == {"0.85", "0.90", "0.95", "0.99"}
+    assert all(cap in {1, 2, 3, 5, None} for cap in by_budget.values())
+
+
+def test_diversity_budget_rule_is_not_trivially_satisfied_by_the_smallest_cap():
+    """The rule this replaced could not work: slate diversity rises
+    monotonically as the cap falls, so a bar stated relative to the
+    uncapped (least diverse) case was cleared by every capped value and
+    always selected the smallest cap tried, whatever it cost in
+    relevance. A relevance budget is not monotone that way -- an
+    aggressive cap spends relevance to buy diversity, so a tight budget
+    must be able to rule it out.
+
+    Needs more candidates than the 10-item slate, otherwise every cap
+    returns the same full slate and no cap can cost anything.
+    """
+    # 12 strong sports items and 8 weak items spread over other
+    # categories: capping sports forces the algorithm to reach past the
+    # strong items into much weaker ones, which is genuinely expensive.
+    category_by_id = pd.Series(
+        {f"s{i}": "sports" for i in range(12)} | {f"o{i}": f"cat{i}" for i in range(8)}
+    )
+    rows = []
+    for impression_id in range(5):
+        for i in range(12):
+            rows.append({"impression_id": impression_id, "news_id": f"s{i}", "ranked_score": 0.9})
+        for i in range(8):
+            rows.append({"impression_id": impression_id, "news_id": f"o{i}", "ranked_score": 0.01})
+    scored_rows = pd.DataFrame(rows)
+
+    result = _compare_diversity_cap_values(scored_rows, category_by_id, sample_impressions=5)
+
+    by_cap = result["by_cap_value"]
+    # Reaching for other categories here is genuinely expensive.
+    assert by_cap["1"]["mean_slate_relevance"] < by_cap["no_cap"]["mean_slate_relevance"]
+    assert by_cap["1"]["mean_distinct_categories"] > by_cap["no_cap"]["mean_distinct_categories"]
+    # A strict budget must therefore reject the most aggressive cap,
+    # which the old monotonic rule could never do.
+    assert result["cap_selected_by_relevance_budget"]["0.99"] != 1

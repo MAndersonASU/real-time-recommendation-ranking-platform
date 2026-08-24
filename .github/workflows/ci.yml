@@ -44,48 +44,109 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: Install exact locked dependencies
-        run: pip install -r requirements-lock.txt
+      # --require-hashes makes pip refuse any artifact whose SHA-256
+      # does not match the lock file, so a package republished under a
+      # pinned version cannot slip in unnoticed. Version pinning alone
+      # cannot catch that.
+      - name: Install exact locked dependencies, hash-verified
+        run: pip install --require-hashes -r requirements-lock.txt
       - name: Install the project with no dependency resolution
         run: pip install --no-deps -e .
       - name: Test
         run: pytest -q
-      # Audits the exact pinned versions installed above -- the set that
-      # would actually ship -- rather than whatever a flexible resolve
-      # happened to pick. Deliberately blocking, not advisory: a
-      # dependency check that cannot fail the build reports nothing a
-      # reader can rely on. This does mean a newly disclosed CVE in a
-      # transitive dependency can break CI on a commit that changed
-      # nothing related; that is the intended signal, and the fix is to
-      # bump the dependency and re-freeze the lock file.
+      # Audits the environment installed above -- the exact pinned set
+      # that would actually ship -- rather than whatever a flexible
+      # resolve happens to pick. Auditing the installed environment
+      # rather than passing --requirement avoids pip-audit building a
+      # second throwaway virtualenv and re-resolving everything;
+      # --skip-editable omits the project itself, which is installed
+      # from local source and has no PyPI release to have advisories
+      # against.
       #
-      # This step exists because the check could not be run on the
-      # maintainer's own machine: pip-audit queries PyPI's JSON API
-      # directly rather than through pip, so pip's trusted-host settings
-      # do not apply to it, and TLS interception there fails it with
+      # Deliberately blocking, not advisory: a dependency check that
+      # cannot fail the build tells a reader nothing they can rely on.
+      # This does mean a newly disclosed CVE in a transitive dependency
+      # can break CI on a commit that changed nothing related; that is
+      # the intended signal, and the fix is to bump the dependency and
+      # regenerate the lock file.
+      #
+      # CI is also the only place this check runs: pip-audit queries
+      # PyPI's JSON API directly rather than through pip, so pip's
+      # trusted-host settings do not apply to it, and TLS interception
+      # on the maintainer's network fails it with
       # SSLCertVerificationError even with certifi's CA bundle set
-      # explicitly. CI has no such interception, so this is where the
-      # check genuinely runs.
-      #
-      # Audits the environment installed above rather than passing
-      # --requirement: with a requirements file pip-audit builds a second
-      # throwaway virtualenv and re-resolves everything, while the steps
-      # above have already installed exactly the locked set. --skip-editable
-      # omits the project itself, which is installed from local source and
-      # has no release on PyPI to have advisories against.
+      # explicitly.
       - name: Audit locked dependencies for known vulnerabilities
         run: pip-audit --strict --skip-editable
+
+  api-container-test:
+    runs-on: ubuntu-latest
+    # Runs the real containerized API, end to end, against entirely
+    # synthetic artifacts. The catalog, splits, and trained models
+    # normally derive from the licensed MIND dataset
+    # (docs/dataset-source.md), which this project has never
+    # redistributed -- which is why the container could not previously
+    # be exercised here at all. recommender.data.synthetic generates a
+    # seeded stand-in for every artifact the container loads, written to
+    # the same paths, so the serving code needs no CI-only branch.
+    #
+    # This verifies wiring, not quality: that the image builds, starts
+    # as a non-root user, loads its models, passes its own health check,
+    # and returns a contract-valid response. The synthetic model's
+    # scores are meaningless and no published result comes from them.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
+      - name: Generate synthetic catalog, splits, and models
+        run: python -m recommender.data.synthetic
+      - name: Build and start the API container
+        run: GIT_COMMIT_SHA=$(git rev-parse HEAD) docker compose up -d --build api
+      - name: Wait for the container's own health check to pass
+        run: |
+          for i in $(seq 1 40); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' recommender-api 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then echo "api healthy"; exit 0; fi
+            if [ "$status" = "unhealthy" ]; then docker logs recommender-api; exit 1; fi
+            sleep 3
+          done
+          docker logs recommender-api
+          echo "api never became healthy" >&2
+          exit 1
+      - name: Verify it runs as a non-root user
+        run: |
+          uid=$(docker exec recommender-api id -u)
+          test "$uid" != "0" || { echo "container is running as root" >&2; exit 1; }
+      - name: Real requests against the running container
+        run: |
+          set -e
+          curl -fsS http://localhost:8000/health
+          curl -fsS http://localhost:8000/ready
+          # -i so the X-Request-ID header is part of what gets asserted,
+          # not just the body.
+          response=$(curl -fsS -i -X POST http://localhost:8000/recommend \
+            -H 'Content-Type: application/json' \
+            -d '{"user_id":"U1","num_candidates":5}')
+          echo "$response" | grep -qi '^x-request-id:' || { echo "missing X-Request-ID" >&2; exit 1; }
+          echo "$response" | grep -q '"recommendations"' || { echo "no recommendations" >&2; exit 1; }
+          # A validation error must be a clean 422, not a 500.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8000/demo/U1?num_candidates=0")
+          test "$code" = "422" || { echo "expected 422, got $code" >&2; exit 1; }
+          curl -fsS http://localhost:8000/metrics | grep -q 'serving_version' \
+            || { echo "no serving_version in metrics" >&2; exit 1; }
+      - name: Tear down
+        if: always()
+        run: docker compose down
 
   integration-smoke-test:
     runs-on: ubuntu-latest
     # Kafka and Redis are open-source images with no licensed data
-    # involved, so this runs for real in CI. The trained model, the
-    # Faiss index, and the ranking pipeline all depend on the licensed
-    # MIND dataset (docs/dataset-source.md), which this project has
-    # never redistributed and never will -- so the full API container
-    # is verified locally, against the real data, not here. This job's
-    # scope is exactly what's genuinely feasible in CI: a bounded,
-    # real round-trip against the two services that don't need it.
+    # involved, so this runs for real in CI, separately from the API
+    # container job above: a bounded, real round-trip against the two
+    # services the serving path depends on.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

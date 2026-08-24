@@ -9,6 +9,7 @@ from recommender.evaluation.contract import load_catalog, load_split
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
+    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.index import (
@@ -37,12 +38,23 @@ def load_trained_model(num_categories: int, num_subcategories: int) -> TwoTowerM
     return model
 
 
-def build_query_embeddings(model: TwoTowerModel, item_vocab: dict, num_users: int) -> np.ndarray:
+def build_query_embeddings(
+    model: TwoTowerModel,
+    item_vocab: dict,
+    num_users: int,
+    item_content: np.ndarray,
+    row_by_news_id: dict,
+) -> np.ndarray:
     validation = load_split("validation").head(num_users)
-    cat, subcat, mask, _ = build_history_arrays(validation, item_vocab)
+    cat, subcat, mask, hist_rows, _ = build_history_arrays(
+        validation, item_vocab, row_by_news_id=row_by_news_id
+    )
     with torch.no_grad():
         vectors = model.user_vector(
-            torch.from_numpy(cat), torch.from_numpy(subcat), torch.from_numpy(mask)
+            torch.from_numpy(cat),
+            torch.from_numpy(subcat),
+            torch.from_numpy(mask),
+            torch.from_numpy(item_content[hist_rows]),
         )
     return vectors.numpy().astype(np.float32)
 
@@ -50,10 +62,13 @@ def build_query_embeddings(model: TwoTowerModel, item_vocab: dict, num_users: in
 def main() -> None:
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
-    catalog_cat, catalog_subcat, _ = build_catalog_arrays(news, item_vocab)
+    catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
+    item_content = build_item_content_matrix(news)
 
     model = load_trained_model(len(categories) + 1, len(subcategories) + 1)
-    catalog_embeddings = compute_catalog_embeddings(model, catalog_cat, catalog_subcat)
+    catalog_embeddings = compute_catalog_embeddings(
+        model, catalog_cat, catalog_subcat, item_content
+    )
     print(f"catalog embeddings: {catalog_embeddings.shape}")
 
     exact_index = build_exact_index(catalog_embeddings)
@@ -61,7 +76,9 @@ def main() -> None:
     faiss.write_index(exact_index, str(EXACT_INDEX_PATH))
     faiss.write_index(ivf_index, str(IVF_INDEX_PATH))
 
-    queries = build_query_embeddings(model, item_vocab, NUM_QUERY_USERS)
+    queries = build_query_embeddings(
+        model, item_vocab, NUM_QUERY_USERS, item_content, row_by_news_id
+    )
     print(f"query embeddings: {queries.shape}")
 
     recall_by_nprobe = {}

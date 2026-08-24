@@ -12,7 +12,7 @@ input features. Implementation:
 
 30,270 impressions analyzed, the identical reranked production slate
 every other evaluation in this project scores. **Overall miss rate:
-33.2%** (consistent with the tracked hit rate of 0.6678 for the reranked
+33.2%** (consistent with the tracked hit rate of 0.6675 for the reranked
 system, `docs/reranking-evaluation.md`).
 
 ## By user history length

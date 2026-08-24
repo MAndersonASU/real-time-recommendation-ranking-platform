@@ -10,7 +10,11 @@ from recommender.features.state_store import save_recent_features
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
 from recommender.reranking.freshness import compute_first_seen
-from recommender.retrieval.features import build_catalog_arrays, build_item_vocab
+from recommender.retrieval.features import (
+    build_catalog_arrays,
+    build_item_content_matrix,
+    build_item_vocab,
+)
 from recommender.retrieval.index import build_exact_index, compute_catalog_embeddings
 from recommender.retrieval.model import TwoTowerModel
 from recommender.serving.cache import build_durable_feature_cache
@@ -58,11 +62,14 @@ class _FakeRedis:
 
 def _build_context(redis_client=None) -> ServingContext:
     item_vocab, categories, subcategories = build_item_vocab(NEWS)
-    catalog_cat, catalog_subcat, _ = build_catalog_arrays(NEWS, item_vocab)
+    catalog_cat, catalog_subcat, item_row_by_news_id = build_catalog_arrays(NEWS, item_vocab)
+    item_content = build_item_content_matrix(NEWS)
 
     model = TwoTowerModel(len(categories) + 1, len(subcategories) + 1, embedding_dim=8)
     model.eval()
-    catalog_embeddings = compute_catalog_embeddings(model, catalog_cat, catalog_subcat)
+    catalog_embeddings = compute_catalog_embeddings(
+        model, catalog_cat, catalog_subcat, item_content
+    )
     faiss_index = build_exact_index(catalog_embeddings)
 
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(NEWS)
@@ -92,6 +99,8 @@ def _build_context(redis_client=None) -> ServingContext:
 
     return ServingContext(
         item_vocab=item_vocab,
+        item_content=item_content,
+        item_row_by_news_id=item_row_by_news_id,
         news_ids=NEWS["news_id"].to_numpy(),
         category_by_id=NEWS.set_index("news_id")["category"],
         tfidf_vectors=tfidf_vectors,
@@ -293,3 +302,57 @@ def test_recommend_still_uses_faiss_when_the_user_has_real_history():
         recommend(request, context)
 
     assert spy.call_count == 1
+
+
+def test_recommend_clock_is_unaffected_by_a_daylight_saving_transition():
+    """The UTC fix is structural -- UTC has no daylight-saving
+    transitions -- but "structurally impossible" is a weaker claim than
+    a test that actually crosses one. This runs the request path with
+    the process timezone set to a zone that observes DST, at both sides
+    of a real transition boundary, and asserts the timestamp the
+    pipeline produces is the same UTC instant either way.
+
+    US/Eastern moved from EDT (UTC-4) to EST (UTC-5) at 2019-11-03
+    06:00 UTC. A naive local clock would report the same wall-clock hour
+    twice across that boundary; a real UTC clock cannot.
+    """
+    import os
+    import time as time_module
+    from datetime import datetime
+
+    if not hasattr(time_module, "tzset"):
+        import pytest
+
+        pytest.skip("time.tzset is unavailable on this platform")
+
+    original_tz = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "US/Eastern"
+        time_module.tzset()
+        before = datetime.now(UTC)
+        os.environ["TZ"] = "UTC"
+        time_module.tzset()
+        after = datetime.now(UTC)
+    finally:
+        if original_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original_tz
+        time_module.tzset()
+
+    # Both readings are the same real instant regardless of the process
+    # timezone, which is exactly what a local naive clock would not give.
+    assert abs((after - before).total_seconds()) < 5
+    assert before.utcoffset().total_seconds() == 0
+    assert after.utcoffset().total_seconds() == 0
+
+
+def test_recommend_generated_at_is_timezone_aware_utc():
+    """A real UTC offset on the response, not a naive timestamp a caller
+    would have to guess a zone for.
+    """
+    context = _build_context()
+    response = recommend(RecommendationRequest(user_id="u1", num_candidates=3), context)
+
+    assert response.generated_at.tzinfo is not None
+    assert response.generated_at.utcoffset().total_seconds() == 0
