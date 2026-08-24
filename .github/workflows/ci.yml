@@ -18,8 +18,13 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
-      - name: Test
-        run: pytest -q
+      - name: Test with coverage floor
+        # A modest, real floor -- current coverage is ~64%; set below
+        # that to leave headroom rather than chasing the number itself.
+        # Meant to catch a real regression (a whole module losing its
+        # tests), not to be raised just to look better; raise only when
+        # real new coverage has actually landed.
+        run: pytest -q --cov=recommender --cov-report=term-missing --cov-fail-under=60
       - name: Static security analysis
         run: bandit -r src/recommender -ll
       - name: Validate docker-compose.yml

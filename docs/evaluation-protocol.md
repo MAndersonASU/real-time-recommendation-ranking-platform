@@ -18,9 +18,17 @@ questions themselves.
   disclosed here. Fixed going forward: any future such decision uses
   `recommender.evaluation.tuning_fold`, a held-out fold carved from
   `train`, never validation.
-- **Held out, untouched by any evaluation to date**: `replay`
-  (2019-11-15) — reserved for Phase 6 streaming replay and Phase 9
-  evaluation.
+- **`replay` (2019-11-15)**: reserved for Phase 6 streaming replay and
+  Phase 9 evaluation, and used exactly that way —
+  `recommender.tracking.replay_evaluation.evaluate_via_replay` has
+  already run against it (`docs/replay-evaluation.md`). **Correction**:
+  an earlier version of this document called it "untouched by any
+  evaluation to date," which stopped being accurate once that
+  evaluation ran and was never updated here. Still never used for
+  gradient-based training, and still never used to make a feature or
+  hyperparameter decision later reported against it (the leakage
+  pattern the correction above describes) — but it is not an unused,
+  fully reserved split.
 - **K = 10** for every Top-K metric (Recall@K, NDCG@K, hit rate@K,
   catalog coverage@K). A result reported at a different K is a different,
   not-directly-comparable number.
