@@ -7,6 +7,10 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from recommender.monitoring.artifact_manifest import (
+    build_serving_artifact_manifest,
+    compute_serving_version,
+)
 from recommender.monitoring.dashboard import render_dashboard_html
 from recommender.monitoring.metrics import (
     MODEL_VERSION,
@@ -15,13 +19,12 @@ from recommender.monitoring.metrics import (
     record_response,
     update_quality_gauges,
 )
-from recommender.monitoring.quality_signals import QualitySignalTracker, compute_model_version
+from recommender.monitoring.quality_signals import QualitySignalTracker
 from recommender.monitoring.structured_logging import (
     configure_structured_logging,
     hash_user_id,
     new_request_id,
 )
-from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.config import load_settings
 from recommender.serving.contract import (
     MAX_NUM_CANDIDATES,
@@ -59,6 +62,24 @@ logger = logging.getLogger("recommender.serving.app")
 _state: dict = {}
 
 
+def _flatten_manifest(manifest: dict) -> dict[str, str]:
+    """Prometheus's `Info` metric needs a flat string-to-string mapping
+    -- flattens the manifest's one nested dict (`reranking_config`) and
+    stringifies its one list (`ranking_feature_schema`) so the complete
+    manifest is visible on `/metrics`, not just the derived version.
+    """
+    flat: dict[str, str] = {}
+    for key, value in manifest.items():
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                flat[f"{key}_{sub_key}"] = str(sub_value)
+        elif isinstance(value, list):
+            flat[key] = ",".join(str(item) for item in value)
+        else:
+            flat[key] = str(value)
+    return flat
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Loads the trained model, index, ranking pipeline, and durable
@@ -86,7 +107,16 @@ async def lifespan(app: FastAPI):
         raise
     _state["context"] = context
     _state["quality_tracker"] = QualitySignalTracker(catalog_size=len(context.news_ids))
-    MODEL_VERSION.info({"sha256_prefix": compute_model_version(RETRIEVAL_MODEL_PATH)})
+    # The deployed version identifier is derived from the complete
+    # serving-artifact manifest (retrieval model, ranking model, feature
+    # schema, catalog, embedding model + pinned revision, reranking
+    # config) -- not just the retrieval model's own file, which a prior
+    # version of this fingerprint used. Changing any one of those
+    # artifacts changes this version even if the retrieval model file
+    # itself never does (tests/test_artifact_manifest.py proves this
+    # directly for each artifact).
+    manifest = build_serving_artifact_manifest()
+    MODEL_VERSION.info({"serving_version": compute_serving_version(manifest), **_flatten_manifest(manifest)})
     yield
     _state.clear()
 

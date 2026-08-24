@@ -36,6 +36,34 @@ the offset unmoved, and a restarted consumer picks the same message back
 up rather than silently skipping it. This is what makes the recovery
 testing that follows this step meaningful.
 
+## Real, disclosed limitation: at-least-once, not exactly-once
+
+This consumer's own commit step and the Redis state mutation
+(`SyncingStreamConsumer`, `docs/state-store.md`) are two separate
+operations, not one atomic one. A crash after the Redis write but
+before the Kafka offset commit means that message gets redelivered on
+restart — and the in-process `_seen_event_ids` dedup set
+(`BoundedSet`) that would normally catch a redelivery does not survive
+a restart either (a brand new process starts it empty). The real,
+concrete consequence: that one event's effect on Redis state
+(`impressions_seen`, `clicks_seen`, `recent_clicked_items`) can be
+applied twice. `tests/test_live_sync.py::
+test_syncing_consumer_can_double_count_state_after_a_crash_before_commit`
+demonstrates this directly, honestly, rather than assuming it away.
+
+This project accepts at-least-once semantics with a real, disclosed
+possibility of double-counted state on the specific crash window
+above, rather than building a Redis transaction or Lua-script-based
+exactly-once mechanism — a real, larger piece of infrastructure whose
+complexity isn't justified for a research/portfolio project's own
+recent-feature signal (a slightly inflated recent click count on a
+rare crash-timing coincidence, not a correctness-critical financial or
+safety system). If this project's scope ever required exactly-once
+guarantees, the correct fix would be to make the state mutation and a
+processed-event-id record atomic — a Redis `MULTI`/`EXEC` transaction
+or a Lua script, with bounded retention on the processed-id record so
+it doesn't grow forever — not something built here speculatively.
+
 ## A real bug, found by testing against a live broker, not assumed away
 
 The first verification run against the real broker reported zero messages

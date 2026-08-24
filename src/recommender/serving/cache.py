@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pandas as pd
 
@@ -35,7 +35,12 @@ class DurableFeatureCache:
         return self.features_by_user.get(user_id)
 
     def is_stale(self, now: datetime | None = None) -> bool:
-        now = now if now is not None else datetime.now()  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        # Genuinely tz-aware UTC, not naive local wall-clock time: this
+        # only ever compares against `computed_at`, set the same way
+        # below, so both sides are consistent -- never compared against
+        # any of the naive-but-UTC-by-convention timestamps derived from
+        # the dataset elsewhere in this project.
+        now = now if now is not None else datetime.now(UTC)
         return (now - self.computed_at).total_seconds() > self.max_age_seconds
 
 
@@ -44,7 +49,7 @@ def build_durable_feature_cache(
 ) -> DurableFeatureCache:
     return DurableFeatureCache(
         features_by_user=compute_durable_features(behaviors, news),
-        computed_at=datetime.now(),  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        computed_at=datetime.now(UTC),
         max_age_seconds=max_age_seconds,
     )
 

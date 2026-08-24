@@ -1,7 +1,5 @@
-import hashlib
 import threading
 from collections import Counter, deque
-from pathlib import Path
 
 from recommender.serving.contract import RecommendationResponse
 
@@ -91,17 +89,3 @@ class QualitySignalTracker:
                 top_n_total / total_recommendations if total_recommendations else None
             ),
         }
-
-
-def compute_model_version(model_path: Path) -> str:
-    """A real, honest stand-in for a formal model version: this project
-    has no version registry (docs/experiment-tracking.md's plain log is
-    the closest thing), and a retrain overwrites the same file path
-    rather than producing a new one. The first 12 hex characters of the
-    real file's SHA-256, computed directly from the bytes actually
-    loaded, is a genuine fingerprint of exactly which weights are
-    serving -- not a fabricated label that could silently drift from
-    the real file.
-    """
-    digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
-    return digest[:12]

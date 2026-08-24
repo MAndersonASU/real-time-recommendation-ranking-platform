@@ -54,7 +54,20 @@ services:
       retries: 10
 
   api:
-    build: .
+    build:
+      context: .
+      # Real commit identity for a container with no .git directory at
+      # all (recommender.tracking.experiment_log's repository-discovery
+      # fallback only works for local development). Compose can't run a
+      # shell command inline -- set GIT_COMMIT_SHA in the host
+      # environment before building for this to carry a real value,
+      # e.g.:
+      #   GIT_COMMIT_SHA=$(git rev-parse HEAD) docker compose build api
+      # Left unset, the image still builds fine; experiment_log simply
+      # falls back to no commit identity at all inside the container
+      # (matching today's prior behavior) rather than failing.
+      args:
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
     container_name: recommender-api
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"

@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import faiss
 import numpy as np
@@ -257,7 +257,19 @@ def recommend(
     else:
         content_sims = np.zeros(len(candidate_news_ids))
 
-    request_time = request.request_time or datetime.now()  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+    # A real bug: this used to fall back to the bare local-wall-clock
+    # `datetime.now()` when a caller (e.g. /demo, which never sets
+    # request_time) supplied none -- on a server whose OS timezone isn't
+    # UTC, that produced a naive value that was actually *local* time,
+    # silently inconsistent with every other naive timestamp in this
+    # project, which represents naive-but-UTC-by-convention (MIND's own
+    # timestamps, `first_seen`, and so on). `datetime.now(timezone.utc)`
+    # is genuinely UTC; `.replace(tzinfo=None)` keeps it naive-typed so
+    # it stays directly comparable to those other naive-UTC values
+    # rather than needing every downstream consumer to become
+    # timezone-aware.
+    has_real_request_time = request.request_time is not None
+    request_time = request.request_time or datetime.now(UTC).replace(tzinfo=None)
     frame = pd.DataFrame(
         {
             "news_id": candidate_news_ids,
@@ -286,7 +298,21 @@ def recommend(
         frame, "ranking_score", request.num_candidates, context.category_by_id,
         context.tfidf_vectors, context.tfidf_row_by_id,
     )
-    slate = apply_freshness_quota(slate, frame, "ranking_score")
+    # Freshness only applies when the caller supplied a real,
+    # dataset-relevant request_time (replay/evaluation always does).
+    # MIND is a frozen November 2019 dataset with no ongoing ingestion,
+    # so "freshness relative to right now" has no real meaning for an
+    # interactive request that never specified what "now" should be
+    # relative to the dataset -- every known item would compare as
+    # several thousand days old against the real wall clock, and
+    # (correctly, since unknown-first-seen items are no longer treated
+    # as age zero -- see compute_age_days) nothing would ever satisfy
+    # the quota anyway. Applying it regardless would either silently do
+    # nothing useful or -- with the old age-zero-for-unseen-items
+    # fallback -- systematically favor items this project has no real
+    # history for, which is not "freshness," just noise.
+    if has_real_request_time:
+        slate = apply_freshness_quota(slate, frame, "ranking_score")
     slate = slate.sort_values("ranking_score", ascending=False).head(request.num_candidates).reset_index(drop=True)
     _stage_end("reranking_ms", t)
 
@@ -317,6 +343,12 @@ def recommend(
         recommendations=recommendations,
         durable_features_used=not lookup.durable_is_fallback,
         recent_features_used=not lookup.recent_is_fallback,
-        generated_at=datetime.now(),  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        # Genuinely tz-aware UTC, not naive: this field is pure output
+        # (echoed to the client, never compared against an internal
+        # naive-UTC-by-convention timestamp), so there's no mixing risk
+        # here, and a real, explicit UTC offset in the serialized
+        # response is strictly more useful to a caller than a naive
+        # value they'd have to assume a timezone for.
+        generated_at=datetime.now(UTC),
         matched_signals=matched_signals,
     )

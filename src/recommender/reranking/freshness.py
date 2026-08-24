@@ -38,13 +38,20 @@ def compute_first_seen(train: pd.DataFrame, exploded: pd.DataFrame | None = None
 def compute_age_days(candidates: pd.DataFrame, impression_time, first_seen: pd.Series) -> pd.Series:
     """Days between this impression and an item's first observed
     appearance in train. An item absent from `first_seen` has never been
-    observed before at all -- treated as age 0 (maximally fresh), not a
-    missing value, since "never seen before" is itself the strongest
-    freshness signal this dataset can offer.
+    observed in train at all -- its real age is genuinely unknown, left
+    as `NaN` here rather than assumed to be anything. A prior version of
+    this function treated a missing first-seen time as age 0 (maximally
+    fresh); a follow-up review correctly flagged that as systematically
+    favoring items this project has no real history for, not a genuine
+    freshness signal. `NaN` compares as neither `<=` nor `>` any real
+    threshold in pandas, so `apply_freshness_quota` below already
+    excludes an unknown-age item from being counted as fresh, without
+    needing a separate check -- and correctly still allows it to be
+    evicted from a slate as not-known-fresh.
     """
     first_seen_time = candidates["news_id"].map(first_seen)
     age = (impression_time - first_seen_time).dt.total_seconds() / 86400
-    return age.fillna(0.0).clip(lower=0.0)
+    return age.clip(lower=0.0)
 
 
 def apply_freshness_quota(

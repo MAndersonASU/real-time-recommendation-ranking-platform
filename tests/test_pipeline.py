@@ -1,3 +1,5 @@
+from datetime import UTC
+
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -181,3 +183,59 @@ def test_recommend_populates_matched_signals_when_opted_in():
         assert isinstance(signals.content_similarity, float)
         assert isinstance(signals.retrieval_score, float)
         assert signals.user_history_length >= 0
+
+
+def test_recommend_falls_back_to_a_real_utc_clock_not_local_wall_clock_time():
+    """Regression test for a real bug, found by a follow-up audit: when
+    no request_time is given (e.g. every /demo request), this used to
+    fall back to the bare local-wall-clock datetime.now() -- on a server
+    whose OS timezone isn't UTC, silently inconsistent with every other
+    naive-but-UTC-by-convention timestamp in this project. Fails on the
+    pre-fix code (datetime.now() called with no timezone argument at
+    all) and passes once it's called with timezone.utc explicitly.
+    """
+    from unittest.mock import patch
+
+    import recommender.serving.pipeline as pipeline_module
+
+    context = _build_context()
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    with patch.object(pipeline_module, "datetime", wraps=pipeline_module.datetime) as mock_datetime:
+        recommend(request, context)
+
+    now_calls = [call for call in mock_datetime.now.call_args_list]
+    assert now_calls, "expected datetime.now() to be called at least once"
+    for call in now_calls:
+        args, kwargs = call
+        tz_arg = args[0] if args else kwargs.get("tz")
+        assert tz_arg is UTC
+
+
+def test_recommend_skips_freshness_reranking_without_a_real_request_time():
+    """Regression test for a real bug, found by a follow-up audit: MIND
+    is a frozen November 2019 dataset, so comparing it against the real
+    wall clock makes every known item look thousands of days old --
+    "freshness relative to right now" has no real meaning for a request
+    that never said what "now" should be relative to the dataset. Fails
+    on the pre-fix code (freshness reranking always ran, even with no
+    real historical grounding) and passes once it's skipped unless a
+    real request_time was actually supplied.
+    """
+    from unittest.mock import patch
+
+    import recommender.serving.pipeline as pipeline_module
+
+    context = _build_context()
+    no_time_request = RecommendationRequest(user_id="u1", num_candidates=3)
+    with_time_request = RecommendationRequest(
+        user_id="u1", num_candidates=3, request_time=pd.Timestamp("2019-11-09T10:00:00")
+    )
+
+    with patch.object(pipeline_module, "apply_freshness_quota") as mock_quota:
+        recommend(no_time_request, context)
+        assert mock_quota.call_count == 0
+
+        mock_quota.side_effect = lambda slate, *a, **k: slate  # pass through unchanged
+        recommend(with_time_request, context)
+        assert mock_quota.call_count == 1

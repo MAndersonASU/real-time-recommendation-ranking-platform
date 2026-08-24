@@ -1,6 +1,7 @@
 import json
+import os
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -9,17 +10,31 @@ DEFAULT_LOG_PATH = Path("data/processed/mind_small/experiment_log.jsonl")
 
 # This file's own location anchors the git command to this project's
 # repo, not wherever the calling process's current working directory
-# happens to be. A real bug, found by audit: `git rev-parse HEAD` with
-# no explicit `cwd` resolves relative to the *process's* cwd -- if a
-# caller (a script launched from a different directory, a notebook, a
-# different working directory inside a container) invokes `log_run`
-# from outside this repo, or from inside a *different* git repo
-# entirely, this would silently record that other repo's commit (or
-# None) as if it were this project's own reproducibility identity.
+# happens to be. `git rev-parse HEAD` with no explicit `cwd` resolves
+# relative to the *process's* cwd -- if a caller (a script launched from
+# a different directory, a notebook, a different working directory
+# inside a container) invokes `log_run` from outside this repo, or from
+# inside a *different* git repo entirely, this would silently record
+# that other repo's commit (or None) as if it were this project's own
+# reproducibility identity.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _current_git_commit() -> str | None:
+    """Prefers the real, documented `GIT_COMMIT_SHA` environment
+    variable over discovering it from a local `.git` directory. A real
+    gap, found by a follow-up audit: repository discovery is a real
+    fallback for local development, but a container image built from a
+    source archive (no `.git` directory at all -- the Dockerfile only
+    copies `pyproject.toml` and `src/`) or a wheel install would always
+    resolve to `None`, silently losing this project's own
+    reproducibility identity in exactly the deployed environment where
+    it matters most. `docker-compose.yml`'s `api` build passes this
+    through from a real `git rev-parse HEAD` at build time.
+    """
+    env_commit = os.environ.get("GIT_COMMIT_SHA")
+    if env_commit:
+        return env_commit
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL, cwd=_PROJECT_ROOT
@@ -43,7 +58,7 @@ def log_run(
     """
     record = {
         "run_name": run_name,
-        "logged_at": datetime.now().isoformat(),  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        "logged_at": datetime.now(UTC).isoformat(),
         "git_commit": _current_git_commit(),
         "params": params,
         "metrics": metrics,

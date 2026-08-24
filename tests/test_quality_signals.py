@@ -2,7 +2,7 @@ import sys
 import threading
 from datetime import datetime
 
-from recommender.monitoring.quality_signals import QualitySignalTracker, compute_model_version
+from recommender.monitoring.quality_signals import QualitySignalTracker
 from recommender.serving.contract import RecommendationResponse, RecommendedItem
 
 
@@ -101,17 +101,6 @@ def test_score_window_holds_the_same_number_of_responses_regardless_of_response_
     assert len(tracker._scores) == window_size
 
 
-def test_compute_model_version_is_a_real_deterministic_fingerprint(tmp_path):
-    model_file = tmp_path / "model.pt"
-    model_file.write_bytes(b"some real model bytes")
-
-    version_a = compute_model_version(model_file)
-    version_b = compute_model_version(model_file)
-
-    assert version_a == version_b
-    assert len(version_a) == 12
-
-
 def test_tracker_survives_real_concurrent_record_and_snapshot_calls():
     """Regression test for a real, reproduced concurrency bug: `record()`
     inserting a never-seen-before news_id into the internal Counter
@@ -163,14 +152,3 @@ def test_tracker_survives_real_concurrent_record_and_snapshot_calls():
         sys.setswitchinterval(original_interval)
 
     assert errors == []
-
-
-def test_compute_model_version_changes_with_the_real_file_contents(tmp_path):
-    model_file = tmp_path / "model.pt"
-    model_file.write_bytes(b"version one")
-    version_one = compute_model_version(model_file)
-
-    model_file.write_bytes(b"version two")
-    version_two = compute_model_version(model_file)
-
-    assert version_one != version_two

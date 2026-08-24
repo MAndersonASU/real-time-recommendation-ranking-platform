@@ -78,3 +78,33 @@ def test_current_git_commit_resolves_this_projects_repo_even_from_a_different_cw
         os.chdir(original_cwd)
 
     assert commit_from_elsewhere == real_commit
+
+
+def test_current_git_commit_prefers_the_git_commit_sha_environment_variable():
+    """Regression test for a real gap, found by a follow-up audit:
+    repository discovery is a real fallback for local development, but
+    a container image built with no .git directory at all (the
+    Dockerfile only copies pyproject.toml and src/) would always
+    resolve to None there. GIT_COMMIT_SHA, when set, must take priority
+    over discovering it from a local .git directory.
+    """
+    original = os.environ.get("GIT_COMMIT_SHA")
+    os.environ["GIT_COMMIT_SHA"] = "deadbeef-a-real-env-supplied-commit-identity"
+    try:
+        assert _current_git_commit() == "deadbeef-a-real-env-supplied-commit-identity"
+    finally:
+        if original is None:
+            os.environ.pop("GIT_COMMIT_SHA", None)
+        else:
+            os.environ["GIT_COMMIT_SHA"] = original
+
+
+def test_current_git_commit_falls_back_to_repository_discovery_when_env_var_is_unset():
+    original = os.environ.pop("GIT_COMMIT_SHA", None)
+    try:
+        real_commit = _current_git_commit()
+        assert real_commit is not None
+        assert len(real_commit) == 40  # a real git commit hash, not the env-var literal
+    finally:
+        if original is not None:
+            os.environ["GIT_COMMIT_SHA"] = original

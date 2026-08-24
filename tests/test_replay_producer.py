@@ -95,6 +95,56 @@ def test_events_for_row_produces_impression_plus_derived_skip_for_a_non_click():
     assert outcome_event.event_type is EventType.SKIP
 
 
+class _KeyCapturingProducer:
+    """Records every real key produce() was called with, so a test can
+    check partitioning behavior (which key gets used) without needing a
+    real, multi-partition Kafka broker -- Kafka's own guarantee that the
+    same key always maps to the same partition is Kafka's, not this
+    project's, to test.
+    """
+
+    def __init__(self):
+        self.keys: list[bytes] = []
+
+    def produce(self, topic, key=None, value=None, callback=None):
+        self.keys.append(key)
+
+    def poll(self, timeout=0):
+        return 0
+
+    def flush(self, timeout=30):
+        return 0
+
+
+def test_replay_keys_every_event_by_user_id_not_news_id():
+    """Regression test for a real bug, found by a follow-up audit:
+    events were keyed by news_id, so two events for the same user but
+    different items could land on different Kafka partitions with more
+    than one partition configured -- breaking the per-user chronological
+    ordering StreamConsumer.process() depends on. Fails on the pre-fix
+    code (keys are the two distinct news_ids) and passes once every
+    event for a user carries that user's own id as its key, regardless
+    of which item it's about.
+    """
+    exploded = _exploded(
+        [
+            ("N1", 1, 1, "U1", "2019-11-15 08:00:00"),
+            ("N2", 0, 2, "U1", "2019-11-15 08:00:01"),  # same user, different item
+            ("N3", 0, 3, "U2", "2019-11-15 08:00:02"),  # different user
+        ]
+    )
+    producer = _KeyCapturingProducer()
+
+    with (
+        patch("recommender.streaming.replay_producer.ensure_topic"),
+        patch("recommender.streaming.replay_producer.build_producer", return_value=producer),
+    ):
+        replay(exploded, speed=999999.0)
+
+    # 3 rows x 2 events (impression + click/skip) = 6 keys.
+    assert producer.keys == [b"U1", b"U1", b"U1", b"U1", b"U2", b"U2"]
+
+
 class _StalledProducer:
     """Mimics confluent_kafka.Producer under real backpressure or a
     broker outage partway through a run: produce() enqueues silently

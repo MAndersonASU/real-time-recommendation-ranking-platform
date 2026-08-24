@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -55,7 +55,7 @@ def build_fallback_response(request: RecommendationRequest, context: ServingCont
         recommendations=recommendations,
         durable_features_used=False,
         recent_features_used=False,
-        generated_at=datetime.now(),  # noqa: DTZ005 -- naive, matches every other timestamp in this project
+        generated_at=datetime.now(UTC),  # pure output field, real UTC offset, no internal comparison
     )
 
 

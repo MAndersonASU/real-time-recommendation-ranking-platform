@@ -86,6 +86,49 @@ def test_syncing_consumer_restores_prior_state_after_a_restart():
     assert after.last_event_time == "t2"
 
 
+def test_syncing_consumer_can_double_count_state_after_a_crash_before_commit():
+    """Documents a real, disclosed limitation rather than assuming it
+    away, per a follow-up audit: the Redis state mutation and the Kafka
+    offset commit are two separate operations, not one atomic one. A
+    crash after the mutation but before the commit means that message
+    is redelivered on restart -- and the in-process dedup set
+    (`_seen_event_ids`) that would normally catch a redelivery does not
+    survive a restart either, since a new process starts it empty. This
+    test demonstrates the real, concrete consequence directly: the same
+    real click can be counted twice.
+
+    This project accepts at-least-once semantics with this disclosed
+    risk (`docs/streaming-consumer.md`) rather than building a Redis
+    transaction/Lua-script-based exactly-once mechanism, whose
+    complexity isn't justified for this project's own recent-feature
+    signal.
+    """
+    client = _FakeRedis()
+    click_event = make_event(EventType.CLICK, "u1", "n1", 1, "t1")
+    raw = click_event.to_json()
+
+    # The real click is processed and its effect written to Redis --
+    # then, in this scenario, the process crashes before the Kafka
+    # offset commit that would have followed.
+    consumer_before_crash = SyncingStreamConsumer(client)
+    consumer_before_crash.process(raw)
+
+    after_first_process = load_recent_features(client, "u1")
+    assert after_first_process.clicks_seen == 1
+
+    # A real restart: a brand new consumer instance (empty
+    # _seen_event_ids), same Redis. Because the offset was never
+    # committed, the same message is redelivered and reprocessed.
+    consumer_after_restart = SyncingStreamConsumer(client)
+    consumer_after_restart.process(raw)
+
+    after_redelivery = load_recent_features(client, "u1")
+    # The one real click has now been counted twice -- the real,
+    # disclosed consequence of at-least-once semantics under this exact
+    # crash timing, not a hidden bug.
+    assert after_redelivery.clicks_seen == 2
+
+
 def test_get_or_create_state_only_hits_redis_once_per_user():
     """The restore-from-Redis path should only run on a user's first
     touch per process, not on every event -- otherwise every single
