@@ -1,11 +1,10 @@
 # Engineering Review and Hardening
 
 A maintainer-led engineering review of this project's serving path,
-evaluation methodology, reproducibility, and privacy handling, with
-AI-assisted code analysis. All changes and every reported test result
-below were reviewed and executed by the maintainer — this document
-summarizes what changed and why; it does not claim third-party
-certification or an external audit.
+evaluation methodology, reproducibility, and privacy handling. All
+changes and every reported test result below were reviewed and
+executed by the maintainer — this document summarizes what changed and
+why; it does not claim third-party certification or an external audit.
 
 **Date**: 2026-08-24. **Reviewed against**: the `main` branch, starting
 from commit `cd8a4d776ad81b47313e2761e2ba9c3918293c26`.
@@ -225,10 +224,3 @@ section is a summary, not a duplicate.
   class of bug is eliminated by construction rather than covered by a
   specific transition-boundary test — a narrower claim than "tested
   under every DST edge case."
-
-## AI-assistance disclosure
-
-Portions of this review's code analysis, drafting, and test-writing
-were AI-assisted. Every change, every test, and every verification
-result reported above was reviewed and actually executed by the
-maintainer before being reported here.
