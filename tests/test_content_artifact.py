@@ -8,7 +8,7 @@ from recommender.retrieval.content_artifact import (
     load_item_content,
     save_item_content,
 )
-from recommender.retrieval.features import build_item_content_matrix
+from recommender.retrieval.features import CONTENT_DIM, build_item_content_matrix
 
 NEWS = pd.DataFrame(
     {
@@ -125,3 +125,102 @@ def test_fingerprint_is_none_when_absent_and_changes_with_content(tmp_path):
     altered[0, 0] += 1.0
     save_item_content(NEWS, altered, path=path)
     assert content_artifact_fingerprint(path=path) != first
+
+
+# --- Structural validation -------------------------------------------
+#
+# Only row count and article order were previously checked, so a
+# structurally broken matrix reached serving and produced silently wrong
+# retrieval instead of an error.
+
+
+def _good_matrix(rows: int | None = None):
+    return np.zeros((rows or len(NEWS), CONTENT_DIM), dtype=np.float32)
+
+
+def test_saving_a_one_dimensional_array_is_rejected(tmp_path):
+    with pytest.raises(ContentArtifactError, match="two-dimensional"):
+        save_item_content(NEWS, np.zeros(len(NEWS), dtype=np.float32), path=tmp_path / "a.npz")
+
+
+def test_saving_the_wrong_feature_width_is_rejected(tmp_path):
+    wrong = np.zeros((len(NEWS), CONTENT_DIM // 2), dtype=np.float32)
+
+    with pytest.raises(ContentArtifactError, match="feature width"):
+        save_item_content(NEWS, wrong, path=tmp_path / "a.npz")
+
+
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+def test_saving_non_finite_values_is_rejected(tmp_path, bad_value):
+    matrix = _good_matrix()
+    matrix[0, 0] = bad_value
+
+    with pytest.raises(ContentArtifactError, match="NaN or infinite"):
+        save_item_content(NEWS, matrix, path=tmp_path / "a.npz")
+
+
+def test_saving_a_non_floating_dtype_is_rejected(tmp_path):
+    integers = np.zeros((len(NEWS), CONTENT_DIM), dtype=np.int32)
+
+    with pytest.raises(ContentArtifactError, match="floating dtype"):
+        save_item_content(NEWS, integers, path=tmp_path / "a.npz")
+
+
+def test_a_float64_matrix_is_narrowed_rather_than_refused(tmp_path):
+    """A fitted transform naturally yields float64; narrowing it to the
+    storage dtype is intended, unlike a non-floating dtype.
+    """
+    path = save_item_content(
+        NEWS, np.zeros((len(NEWS), CONTENT_DIM), dtype=np.float64), path=tmp_path / "a.npz"
+    )
+
+    assert load_item_content(NEWS, path=path).dtype == np.float32
+
+
+def test_loading_a_stored_matrix_with_the_wrong_dtype_is_rejected(tmp_path):
+    path = tmp_path / "a.npz"
+    np.savez(
+        path,
+        content=np.zeros((len(NEWS), CONTENT_DIM), dtype=np.float64),
+        news_ids=NEWS["news_id"].to_numpy().astype(str),
+    )
+
+    with pytest.raises(ContentArtifactError, match="must be float32"):
+        load_item_content(NEWS, path=path)
+
+
+def test_duplicate_article_ids_are_rejected(tmp_path):
+    """Rows are positional, so a duplicate id makes the article-to-row
+    mapping ambiguous rather than merely redundant.
+    """
+    duplicated = NEWS.copy()
+    duplicated.loc[duplicated.index[-1], "news_id"] = duplicated.loc[0, "news_id"]
+
+    with pytest.raises(ContentArtifactError, match="duplicate article ids"):
+        save_item_content(duplicated, _good_matrix(), path=tmp_path / "a.npz")
+
+
+def test_an_empty_article_id_is_rejected(tmp_path):
+    blanked = NEWS.copy()
+    blanked.loc[0, "news_id"] = "   "
+
+    with pytest.raises(ContentArtifactError, match="empty article id"):
+        save_item_content(blanked, _good_matrix(), path=tmp_path / "a.npz")
+
+
+def test_a_tampered_payload_is_caught_by_the_stored_checksum(tmp_path):
+    """Shape and dtype can still look correct after corruption, so the
+    artifact records a checksum over its own bytes.
+    """
+    path = tmp_path / "a.npz"
+    save_item_content(NEWS, _good_matrix(), path=path)
+
+    with np.load(path, allow_pickle=False) as data:
+        stored = {k: data[k] for k in data.files}
+    tampered = stored["content"].copy()
+    tampered[0, 0] = 1.5
+    stored["content"] = tampered
+    np.savez(path, **stored)
+
+    with pytest.raises(ContentArtifactError, match="checksum does not match"):
+        load_item_content(NEWS, path=path)

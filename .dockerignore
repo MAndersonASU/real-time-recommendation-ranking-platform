@@ -1,0 +1,41 @@
+# Everything here would otherwise be sent to the Docker daemon as build
+# context -- including a remote or rootless builder. Beyond the obvious
+# build-time cost, `data/` holds the licensed MIND dataset and trained
+# artifacts, and `.env` can hold a real Redis password, so neither
+# should ever leave this machine as build context.
+
+.git
+.gitignore
+.github/
+
+# Licensed dataset, trained models, evaluation output.
+data/
+
+# Local secrets. .env.example is documentation and is allowed through.
+.env
+.env.*
+!.env.example
+
+# Virtual environments -- large, and platform-specific so useless in an
+# image built for Linux.
+.venv/
+venv/
+ENV/
+
+# Caches and build residue.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Editor and OS noise.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

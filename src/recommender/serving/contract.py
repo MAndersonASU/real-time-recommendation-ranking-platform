@@ -7,6 +7,13 @@ from recommender.evaluation.contract import TOP_K
 MAX_NUM_CANDIDATES = 50
 
 
+# A conservative bound: comfortably above any real identifier, far
+# below anything that would strain a key, a log line or a page.
+MAX_USER_ID_LENGTH = 128
+# Printable, non-whitespace characters only.
+USER_ID_PATTERN = r"^[^\s\x00-\x1f\x7f]+$"
+
+
 class RecommendationRequest(BaseModel):
     """One request for a user's recommendation slate. `request_time` is
     optional context, not a required field -- a caller with no notion of
@@ -14,7 +21,16 @@ class RecommendationRequest(BaseModel):
     request, with the server supplying the real clock time itself.
     """
 
-    user_id: str = Field(min_length=1)
+    # Bounded on both ends. A minimum alone let an arbitrarily large id
+    # through, and that id reaches a Redis key, a hash, a log line and a
+    # rendered page -- so an unbounded value is a cheap way to inflate
+    # memory and log volume. 128 characters is far above any real MIND
+    # id (typically under 10) while staying safely bounded.
+    #
+    # The pattern additionally excludes whitespace and control
+    # characters, which would otherwise corrupt log lines and key names
+    # without ever being a legitimate identifier.
+    user_id: str = Field(min_length=1, max_length=MAX_USER_ID_LENGTH, pattern=USER_ID_PATTERN)
     num_candidates: int = Field(default=TOP_K, gt=0, le=MAX_NUM_CANDIDATES)
     request_time: datetime | None = None
 

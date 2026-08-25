@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from recommender.retrieval.features import CONTENT_DIM
+
 CONTENT_ARTIFACT_PATH = Path("data/processed/mind_small/item_content.npz")
 
 
@@ -39,6 +41,49 @@ class ContentArtifactError(RuntimeError):
     """
 
 
+def _validate_matrix(content: np.ndarray, expected_width: int | None = None) -> None:
+    """Rejects a matrix that is structurally unusable.
+
+    Each check corresponds to a way a corrupt artifact previously
+    reached serving without complaint: only row count and article order
+    were verified, so a one-dimensional array, the wrong feature width,
+    a non-float dtype or NaN/Inf values all passed through and produced
+    silently wrong retrieval instead of an error.
+    """
+    if content.ndim != 2:
+        raise ContentArtifactError(
+            f"content matrix must be two-dimensional, got {content.ndim} dimension(s)"
+        )
+    if expected_width is not None and content.shape[1] != expected_width:
+        raise ContentArtifactError(
+            f"content matrix has feature width {content.shape[1]}, expected {expected_width}"
+        )
+    if content.dtype != np.float32:
+        raise ContentArtifactError(
+            f"content matrix must be float32, got {content.dtype}"
+        )
+    if not np.isfinite(content).all():
+        raise ContentArtifactError(
+            "content matrix contains NaN or infinite values; an embedding built from "
+            "these would be silently meaningless rather than wrong in a detectable way"
+        )
+
+
+def _validate_ids(news_ids: np.ndarray) -> None:
+    if news_ids.size == 0:
+        raise ContentArtifactError("content artifact has no article ids")
+    stripped = np.char.strip(news_ids.astype(str))
+    if (stripped == "").any():
+        raise ContentArtifactError("content artifact contains an empty article id")
+    unique, counts = np.unique(stripped, return_counts=True)
+    if unique.size != news_ids.size:
+        duplicated = unique[counts > 1][:3].tolist()
+        raise ContentArtifactError(
+            f"content artifact contains duplicate article ids (e.g. {duplicated}); "
+            f"rows are positional, so a duplicate makes the mapping ambiguous"
+        )
+
+
 def save_item_content(
     news: pd.DataFrame, content: np.ndarray, path: Path = CONTENT_ARTIFACT_PATH
 ) -> Path:
@@ -50,18 +95,44 @@ def save_item_content(
     silently wrong, and storing the ordering is what makes that
     detectable.
     """
+    content = np.asarray(content)
+    # A floating input is cast to the storage dtype: a fitted transform
+    # naturally produces float64 and narrowing it is intended. Anything
+    # non-floating is a different kind of mistake and is refused rather
+    # than silently reinterpreted.
+    if not np.issubdtype(content.dtype, np.floating):
+        raise ContentArtifactError(
+            f"content matrix must have a floating dtype, got {content.dtype}"
+        )
+    if content.ndim == 2:
+        content = content.astype(np.float32, copy=False)
+    _validate_matrix(content, expected_width=CONTENT_DIM)
     if len(news) != content.shape[0]:
         raise ContentArtifactError(
             f"catalog has {len(news)} articles but the content matrix has "
             f"{content.shape[0]} rows"
         )
+    news_ids = news["news_id"].to_numpy().astype(str)
+    _validate_ids(news_ids)
+
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(
         path,
-        content=content.astype(np.float32),
-        news_ids=news["news_id"].to_numpy().astype(str),
+        content=content,
+        news_ids=news_ids,
+        # Recorded so a loader can check what the artifact claims to be,
+        # rather than inferring its schema from its shape.
+        feature_width=np.int64(content.shape[1]),
+        content_sha256=np.array(_matrix_checksum(content)),
     )
     return path
+
+
+def _matrix_checksum(content: np.ndarray) -> str:
+    """SHA-256 over the matrix bytes, so a corrupted payload is
+    detectable even when its shape and dtype still look correct.
+    """
+    return hashlib.sha256(np.ascontiguousarray(content, dtype=np.float32).tobytes()).hexdigest()
 
 
 def load_item_content(
@@ -84,8 +155,20 @@ def load_item_content(
         with np.load(path, allow_pickle=False) as data:
             content = data["content"]
             stored_ids = data["news_ids"]
+            _stored_width = int(data["feature_width"]) if "feature_width" in data else None
+            _stored_checksum = str(data["content_sha256"]) if "content_sha256" in data else None
     except Exception as exc:
         raise ContentArtifactError(f"content artifact at {path} is unreadable: {exc}") from exc
+
+    stored_width = int(data_width) if (data_width := _stored_width) is not None else None
+    _validate_matrix(np.asarray(content), expected_width=stored_width or CONTENT_DIM)
+    _validate_ids(np.asarray(stored_ids))
+
+    if _stored_checksum is not None and _matrix_checksum(content) != _stored_checksum:
+        raise ContentArtifactError(
+            "content artifact checksum does not match its payload; the file changed "
+            "after it was written"
+        )
 
     catalog_ids = news["news_id"].to_numpy().astype(str)
     if content.shape[0] != len(catalog_ids):

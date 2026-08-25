@@ -1,6 +1,7 @@
 import logging
 from unittest.mock import patch
 
+import pytest
 import redis
 from fastapi.testclient import TestClient
 from redis.backoff import NoBackoff
@@ -265,3 +266,48 @@ def test_unhandled_exception_still_gets_an_x_request_id_header_and_an_error_log(
     assert len(failed_records) == 1
     assert failed_records[0].__dict__["request_id"] == response.headers["X-Request-ID"]
     assert failed_records[0].__dict__["status_code"] == 500
+
+
+@pytest.mark.parametrize(
+    "user_id",
+    [
+        pytest.param("U" * 129, id="over-max-length"),
+        pytest.param("U1\n2", id="newline"),
+        pytest.param("U1\t2", id="tab"),
+        pytest.param("U1 2", id="space"),
+        pytest.param("U1\x00 2", id="nul"),
+        pytest.param("", id="empty"),
+    ],
+)
+def test_recommend_rejects_an_unbounded_or_unsafe_user_id(user_id):
+    """A user id reaches a Redis key, a hash, a log line and a rendered
+    page. A minimum length alone left it unbounded above, and permitted
+    whitespace and control characters that corrupt log lines without
+    ever being a legitimate identifier. All must be a clean 422.
+    """
+    client = _client()
+
+    response = client.post("/recommend", json={"user_id": user_id, "num_candidates": 3})
+
+    assert response.status_code == 422
+
+
+def test_recommend_accepts_a_user_id_at_the_maximum_length():
+    """The bound must not be so tight that a legitimate identifier is
+    refused; 128 characters is far above any real MIND id.
+    """
+    client = _client()
+
+    response = client.post("/recommend", json={"user_id": "U" * 128, "num_candidates": 3})
+
+    assert response.status_code == 200
+
+
+def test_demo_route_applies_the_same_user_id_bounds():
+    """The path parameter reaches the same key, hash and log line, so
+    bounding only the JSON body would move the problem rather than fix
+    it.
+    """
+    client = _client()
+
+    assert client.get(f"/demo/{'U' * 129}", params={"num_candidates": 3}).status_code == 422

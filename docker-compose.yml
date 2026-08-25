@@ -39,7 +39,23 @@ services:
     # REDIS_PASSWORD case) is Redis's own documented way of leaving auth
     # disabled, so an empty or missing REDIS_PASSWORD keeps the default,
     # no-auth local/demo configuration.
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
+    # appendonly yes: the default snapshot-only configuration can lose
+    # the most recent writes on an abrupt kill, which breaks the claim
+    # that streaming state survives a restart -- Kafka offsets may
+    # already be committed for a write Redis then loses.
+    #
+    # appendfsync everysec is the documented trade: an fsync per
+    # second rather than per write, bounding worst-case loss to about
+    # one second of writes instead of eliminating it. `always` would
+    # remove that window at a real throughput cost; this project
+    # states the bound rather than claiming per-write durability.
+    command:
+      [
+        "redis-server",
+        "--requirepass", "${REDIS_PASSWORD:-}",
+        "--appendonly", "yes",
+        "--appendfsync", "everysec",
+      ]
     volumes:
       # A named volume, so every recent-feature record written to Redis
       # (Phase 7) survives a container restart, not just a process one.
@@ -67,7 +83,13 @@ services:
         GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
     container_name: recommender-api
     ports:
-      - "${API_PORT:-8000}:${API_PORT:-8000}"
+      # Loopback by default, matching kafka and redis above. This
+      # service has no authentication, no TLS and no rate limiting --
+      # it is a local demonstration, not an internet-facing
+      # deployment -- so binding every interface would expose it to
+      # anyone on the same network by default. Set API_BIND_HOST=0.0.0.0
+      # deliberately to widen it.
+      - "${API_BIND_HOST:-127.0.0.1}:${API_PORT:-8000}:${API_PORT:-8000}"
     environment:
       REDIS_URL: redis://redis:6379/0
       # A real REDIS_PASSWORD set in a local .env file is passed through

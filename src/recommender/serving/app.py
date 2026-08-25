@@ -3,7 +3,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -28,6 +28,8 @@ from recommender.monitoring.structured_logging import (
 from recommender.serving.config import load_settings
 from recommender.serving.contract import (
     MAX_NUM_CANDIDATES,
+    MAX_USER_ID_LENGTH,
+    USER_ID_PATTERN,
     RecommendationRequest,
     RecommendationResponse,
 )
@@ -249,7 +251,10 @@ def dashboard() -> Response:
 
 @app.get("/demo/{user_id}", response_class=Response)
 def demo(
-    user_id: str,
+    # Same bounds as the JSON request body. A path parameter reaches the
+    # same Redis key, hash and log line, so leaving it unbounded here
+    # would simply move the problem to a different entry point.
+    user_id: str = Path(min_length=1, max_length=MAX_USER_ID_LENGTH, pattern=USER_ID_PATTERN),
     num_candidates: int = Query(DEFAULT_NUM_CANDIDATES, gt=0, le=MAX_NUM_CANDIDATES),
 ) -> Response:
     """A real, human-readable trace of one real request through the full
