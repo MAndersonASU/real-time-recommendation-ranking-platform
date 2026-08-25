@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 
 from recommender.ranking.features import build_feature_context, build_ranking_rows
+from recommender.retrieval.features import build_item_content_matrix
 from recommender.retrieval.model import TwoTowerModel
 
 NEWS = pd.DataFrame(
@@ -34,7 +35,13 @@ def _behaviors(rows):
 def _context(train):
     torch.manual_seed(0)
     model = TwoTowerModel(num_categories=3, num_subcategories=4, embedding_dim=4)
-    return build_feature_context(train, NEWS, model)
+    # Fitted directly for this synthetic catalog: there is no persisted
+    # content artifact for a fixture, and the point of these tests is
+    # the feature maths, not artifact persistence (covered by
+    # tests/test_content_artifact.py).
+    return build_feature_context(
+        train, NEWS, model, item_content=build_item_content_matrix(NEWS)
+    )
 
 
 def test_hour_of_day_matches_impression_timestamp_not_some_other_time():

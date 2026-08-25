@@ -312,22 +312,155 @@ def test_evaluate_end_to_end_seeds_recent_state_from_each_impressions_own_histor
     assert report["recent_feature_coverage"] == 1.0
 
 
-def test_evaluate_end_to_end_seeding_does_not_replace_accumulated_in_window_state():
-    """The seed must apply only on a user's first impression. A later
-    impression has to see the seeded history *plus* the real clicks from
-    earlier in-window impressions, not a reset back to the raw history.
+def test_reconciled_state_combines_authoritative_history_with_in_window_clicks():
+    """State must reflect both sources for this point in time. An
+    earlier version seeded from `history` once and then accumulated,
+    which depended on an unverified assumption about how MIND restates
+    `history` as a run progresses. Recomputing the union makes the state
+    a deterministic function of the impression's own history plus the
+    clicks strictly earlier in the run.
     """
-    from recommender.evaluation.evaluate_end_to_end import (
-        _apply_impression_to_recent_state,
-        _seed_recent_state_from_history,
-    )
+    from recommender.evaluation.evaluate_end_to_end import _reconcile_recent_state
     from recommender.features.state_store import load_recent_features
 
     client = InMemoryRedis()
-    _seed_recent_state_from_history(client, "u1", "n1 n2")
-    _apply_impression_to_recent_state(client, "u1", {"n3"}, "2019-11-14T08:00:00")
-    # A second impression for the same user must not wipe the click above.
-    _seed_recent_state_from_history(client, "u1", "n1 n2")
 
+    _reconcile_recent_state(client, "u1", "n1 n2", [])
+    assert load_recent_features(client, "u1").recent_clicked_items == ["n1", "n2"]
+
+    # A click observed in-window is added on top of the same history --
+    # not instead of it, and not duplicated when history is re-supplied.
+    _reconcile_recent_state(client, "u1", "n1 n2", ["n3"])
     recent = load_recent_features(client, "u1")
     assert recent.recent_clicked_items == ["n1", "n2", "n3"]
+
+    # Reconciling again with identical inputs is idempotent.
+    _reconcile_recent_state(client, "u1", "n1 n2", ["n3"])
+    assert load_recent_features(client, "u1").recent_clicked_items == ["n1", "n2", "n3"]
+
+
+def test_impressions_sharing_a_timestamp_do_not_see_each_others_events():
+    """Equal timestamps carry no ordering information, so one such
+    impression must not observe another's click: that is not
+    strictly-earlier information, only earlier file order. Every
+    impression in a timestamp group is scored before any of the group's
+    events are applied.
+    """
+    context = _build_context()
+    behaviors = pd.DataFrame(
+        {
+            "impression_id": [60, 61],
+            "user_id": ["u1", "u1"],
+            # Deliberately identical.
+            "time": pd.to_datetime(["2019-11-14T08:00:00", "2019-11-14T08:00:00"]),
+            "history": ["", ""],
+            "impressions": ["n2-0 n3-1", "n6-0 n4-1"],
+        }
+    )
+
+    import recommender.evaluation.evaluate_end_to_end as module
+    real = module.safe_recommend
+    responses = []
+
+    def _capture(request, *args, **kwargs):
+        response = real(request, *args, **kwargs)
+        responses.append(response)
+        return response
+
+    with patch.object(module, "safe_recommend", side_effect=_capture):
+        evaluate_end_to_end(context, num_impressions=2, k=3, validation=behaviors, news=NEWS)
+
+    assert len(responses) == 2
+    # Neither may have seen recent state, because the only candidate
+    # source of it is the other impression at the very same instant.
+    assert all(r.recent_features_used is False for r in responses)
+
+
+def test_evaluation_is_prefix_invariant():
+    """The strongest available check on temporal integrity: evaluating a
+    chronological prefix must give bit-identical results whether or not
+    later rows exist in the input.
+
+    Counting metrics alone would not catch a leak that changed *which*
+    items were recommended while leaving totals similar, so this
+    compares every response's candidate ordering and scores.
+    """
+    context = _build_context()
+    prefix = pd.DataFrame(
+        {
+            "impression_id": [70, 71],
+            "user_id": ["u1", "u2"],
+            "time": pd.to_datetime(["2019-11-14T08:00:00", "2019-11-14T09:00:00"]),
+            "history": ["n1", "n4"],
+            "impressions": ["n2-0 n3-1", "n6-0 n5-1"],
+        }
+    )
+    future = pd.DataFrame(
+        {
+            "impression_id": [72, 73],
+            "user_id": ["u1", "u2"],
+            "time": pd.to_datetime(["2019-11-14T10:00:00", "2019-11-14T11:00:00"]),
+            "history": ["n1 n3", "n4 n5"],
+            "impressions": ["n5-1 n7-0", "n2-1 n8-0"],
+        }
+    )
+    with_future = pd.concat([prefix, future], ignore_index=True)
+
+    def _run(frame, limit):
+        import recommender.evaluation.evaluate_end_to_end as module
+        real = module.safe_recommend
+        captured = []
+
+        def _capture(request, *args, **kwargs):
+            response = real(request, *args, **kwargs)
+            captured.append(
+                (
+                    request.user_id,
+                    str(request.request_time),
+                    tuple((i.news_id, round(i.score, 12)) for i in response.recommendations),
+                )
+            )
+            return response
+
+        with patch.object(module, "safe_recommend", side_effect=_capture):
+            report = evaluate_end_to_end(context, num_impressions=limit, k=3, validation=frame, news=NEWS)
+        return captured, report
+
+    prefix_only, prefix_report = _run(prefix, 2)
+    # Same prefix, but the input also contains strictly later rows.
+    with_future_all, _ = _run(with_future, 4)
+
+    assert len(prefix_only) == 2
+    assert with_future_all[: len(prefix_only)] == prefix_only, (
+        "a later row changed an earlier impression's recommendations"
+    )
+
+    # And the prefix's own metric contributions are unchanged.
+    prefix_of_longer, longer_report = _run(with_future.head(2), 2)
+    assert prefix_of_longer == prefix_only
+    assert longer_report["hit_rate_at_k"] == prefix_report["hit_rate_at_k"]
+
+
+def test_out_of_order_source_rows_are_sorted_deterministically():
+    """The source frame's row order must not affect results: the
+    evaluation sorts by (time, impression_id), so a shuffled input
+    produces the same run.
+    """
+    context = _build_context()
+    rows = pd.DataFrame(
+        {
+            "impression_id": [80, 81, 82],
+            "user_id": ["u1", "u2", "u1"],
+            "time": pd.to_datetime(
+                ["2019-11-14T08:00:00", "2019-11-14T09:00:00", "2019-11-14T10:00:00"]
+            ),
+            "history": ["n1", "n4", "n1 n3"],
+            "impressions": ["n2-0 n3-1", "n6-0 n5-1", "n5-1 n7-0"],
+        }
+    )
+    shuffled = rows.iloc[[2, 0, 1]].reset_index(drop=True)
+
+    in_order = evaluate_end_to_end(context, num_impressions=3, k=3, validation=rows, news=NEWS)
+    out_of_order = evaluate_end_to_end(context, num_impressions=3, k=3, validation=shuffled, news=NEWS)
+
+    assert in_order == out_of_order

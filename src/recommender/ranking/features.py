@@ -4,10 +4,10 @@ import torch
 
 from recommender.data.mind import explode_impressions
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
+from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
-    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.model import TwoTowerModel
@@ -22,7 +22,12 @@ FEATURE_COLUMNS = [
 ]
 
 
-def build_feature_context(train: pd.DataFrame, news: pd.DataFrame, model: TwoTowerModel) -> dict:
+def build_feature_context(
+    train: pd.DataFrame,
+    news: pd.DataFrame,
+    model: TwoTowerModel,
+    item_content: np.ndarray | None = None,
+) -> dict:
     """Everything derived once from train + catalog + a trained two-tower
     model, reused across every row a caller builds features for. Separated
     from build_ranking_rows so train and validation feature-building share
@@ -31,7 +36,12 @@ def build_feature_context(train: pd.DataFrame, news: pd.DataFrame, model: TwoTow
     """
     item_vocab, _categories, _subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
-    item_content = build_item_content_matrix(news)
+    # Loaded from the persisted artifact by default, so the ranking
+    # features are built in the same coordinate system the retrieval
+    # model was trained in. Injectable so a caller that already holds
+    # the matrix -- or a test working on a synthetic catalog with no
+    # persisted artifact -- can supply it directly.
+    item_content = item_content if item_content is not None else load_item_content(news)
 
     model.eval()
     with torch.no_grad():

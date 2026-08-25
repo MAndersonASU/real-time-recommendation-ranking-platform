@@ -152,7 +152,10 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
 
 
 def _compare_diversity_cap_values(
-    scored_rows: pd.DataFrame, category_by_id: pd.Series, sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS
+    scored_rows: pd.DataFrame,
+    category_by_id: pd.Series,
+    sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS,
+    news: pd.DataFrame | None = None,
 ) -> dict:
     """Runs the real diversity-reranking algorithm at several candidate
     cap values -- not just the currently-configured one's own behavior
@@ -164,7 +167,11 @@ def _compare_diversity_cap_values(
     a diversity gain judged not worth it; the smallest cap clearing the
     bar is preferred to avoid giving up more relevance than needed.
     """
-    news = load_catalog()
+    # Injectable so a unit test can exercise the real comparison logic
+    # on synthetic articles. Loading the catalog unconditionally made
+    # this function require the licensed dataset even when every other
+    # input was supplied by the caller.
+    news = news if news is not None else load_catalog()
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
 
     sample_impression_ids = scored_rows["impression_id"].drop_duplicates().head(sample_impressions)

@@ -47,37 +47,51 @@ def _point_in_time_durable_features(
     )
 
 
-def _seed_recent_state_from_history(
-    redis_client: InMemoryRedis, user_id: str, history_raw: str | None
+def _reconcile_recent_state(
+    redis_client: InMemoryRedis,
+    user_id: str,
+    history_raw: str | None,
+    in_window_clicks: list,
 ) -> None:
-    """Seeds a user's isolated recent-feature state, once, from that
-    impression's own `history` field -- the clicks MIND records as
-    happening strictly *before* this impression, which is exactly what a
-    live Redis would already hold for a returning user at that moment.
+    """Rebuilds a user's isolated recent-feature state from the two
+    authoritative sources for this point in time, rather than trusting
+    either alone.
 
-    Without this, the store starts empty for every user, and the serving
-    path's two-tower query is built from an empty click list. That
-    produces a genuinely zero-norm user embedding, and an inner-product
-    Faiss search against a zero vector scores every catalog item
-    identically -- so every user receives the same arbitrary tie-ordered
-    candidate list. Measured directly before this fix: 60 impressions
-    produced 1 distinct candidate set with the empty store, versus 50
-    once real history was supplied.
+    MIND records, per impression, the clicks that happened strictly
+    before it -- exactly what a live store would already hold for a
+    returning user, so using it is point-in-time correct rather than
+    leakage. But that field is not guaranteed to be re-stated as the run
+    progresses, so it can miss clicks this evaluation has already
+    observed within its own window. Accumulating only in-window clicks
+    has the opposite gap: it starts empty and misses everything the user
+    did before the window opened.
 
-    Seeded only on a user's first impression in the run; later
-    impressions accumulate on top via `_apply_impression_to_recent_state`,
-    so a user's second impression correctly sees their prior history
-    *plus* the first impression's real clicks.
+    An earlier version seeded from `history` once and then accumulated,
+    which silently depended on an unverified dataset invariant about how
+    `history` evolves. Recomputing the union each time removes that
+    dependency: the state is a deterministic function of this
+    impression's own authoritative history plus the clicks strictly
+    earlier in this run.
+
+    Without any of this the store starts empty for most users, and
+    `recommend()` builds its two-tower query from an empty click list --
+    which produces an exactly zero-norm user vector. An inner-product
+    Faiss index scores every catalog item identically against a zero
+    vector, so every such user receives the same arbitrary candidate
+    list. Measured directly: 60 impressions produced 1 distinct
+    candidate set with an empty store, versus 50 once real history was
+    supplied.
     """
-    if load_recent_features(redis_client, user_id) is not None:
-        return
     history_ids = history_ids_from_raw(history_raw) if history_raw else []
-    if not history_ids:
+    combined = [*history_ids, *in_window_clicks]
+    if not combined:
         return
+
     state = UserState()
-    for news_id in history_ids[-MAX_HISTORY:]:
+    for news_id in combined[-MAX_HISTORY:]:
         state.recent_clicked_items.append(news_id)
-    state.clicks_seen = len(history_ids)
+    state.clicks_seen = len(combined)
+    state.impressions_seen = len(in_window_clicks)
     save_recent_features(redis_client, recent_features_from_user_state(user_id, state))
 
 
@@ -135,7 +149,15 @@ def evaluate_end_to_end(
     numbers, not in place of them.
     """
     validation = validation if validation is not None else load_split("validation")
-    validation = validation.sort_values("time").head(num_impressions).reset_index(drop=True)
+    # impression_id is the deterministic secondary key. Sorting on
+    # `time` alone leaves impressions sharing a timestamp in whatever
+    # order the source happened to supply, so the same data could
+    # produce different results on a differently-ordered input.
+    validation = (
+        validation.sort_values(["time", "impression_id"], kind="mergesort")
+        .head(num_impressions)
+        .reset_index(drop=True)
+    )
     exploded = explode_impressions(validation)
     history_by_impression_id = validation.set_index("impression_id")["history"]
     news = news if news is not None else load_catalog()
@@ -155,61 +177,88 @@ def evaluate_end_to_end(
     retrieval_contained_a_click = 0
     all_recommended_ids: set = set()
 
-    for impression_id, group in exploded.groupby("impression_id", sort=False):
-        clicked_ids = set(group.loc[group["clicked"] == 1, "news_id"])
-        if not clicked_ids:
-            skip_reasons["no_real_click"] += 1
-            continue
-        true_relevant_count = len(clicked_ids)
+    # Clicks observed earlier in this run, per user. Recent state is
+    # rebuilt from the impression's own authoritative `history` plus
+    # these, rather than accumulated blindly: MIND's `history` field is
+    # not guaranteed to be re-stated for every later impression, so
+    # neither source alone is complete, and reconciling them explicitly
+    # avoids depending on an unverified dataset invariant.
+    in_window_clicks: dict[str, list] = {}
 
-        user_id = group["user_id"].iloc[0]
-        request_time = group["time"].iloc[0]
+    # Impressions sharing a timestamp are scored before *any* of that
+    # group's events are applied. Processing them one at a time would let
+    # a row see an event that is not strictly earlier than itself, only
+    # earlier in file order.
+    for _timestamp, timestamp_group in exploded.groupby("time", sort=False):
+        pending_events: list[tuple] = []
 
-        history_raw = history_by_impression_id.get(impression_id)
-        durable = _point_in_time_durable_features(user_id, history_raw, category_by_id)
-        _seed_recent_state_from_history(isolated_redis, user_id, history_raw)
-        per_impression_context = replace(
-            context,
-            durable_cache=DurableFeatureCache(features_by_user={user_id: durable}, computed_at=request_time),
-            redis_client=isolated_redis,
-        )
+        for impression_id, group in timestamp_group.groupby("impression_id", sort=False):
+            clicked_ids = set(group.loc[group["clicked"] == 1, "news_id"])
+            if not clicked_ids:
+                skip_reasons["no_real_click"] += 1
+                continue
+            true_relevant_count = len(clicked_ids)
 
-        request = RecommendationRequest(user_id=user_id, num_candidates=k, request_time=request_time)
+            user_id = group["user_id"].iloc[0]
+            request_time = group["time"].iloc[0]
 
-        fallback_state = {"value": False, "reason": None}
+            history_raw = history_by_impression_id.get(impression_id)
+            durable = _point_in_time_durable_features(user_id, history_raw, category_by_id)
+            _reconcile_recent_state(
+                isolated_redis, user_id, history_raw, in_window_clicks.get(user_id, [])
+            )
+            per_impression_context = replace(
+                context,
+                durable_cache=DurableFeatureCache(
+                    features_by_user={user_id: durable}, computed_at=request_time
+                ),
+                redis_client=isolated_redis,
+            )
 
-        def _mark_fallback(reason: str, state=fallback_state) -> None:
-            state["value"] = True
-            state["reason"] = reason
+            request = RecommendationRequest(
+                user_id=user_id, num_candidates=k, request_time=request_time
+            )
 
-        retrieved_ids: list = []
-        response = safe_recommend(
-            request, per_impression_context, on_fallback=_mark_fallback,
-            capture_candidates=retrieved_ids,
-        )
-        impressions_evaluated += 1
-        if clicked_ids & set(retrieved_ids):
-            retrieval_contained_a_click += 1
-        if fallback_state["value"]:
-            fallback_reasons[fallback_state["reason"]] += 1
-        if response.durable_features_used:
-            durable_hits += 1
-        if response.recent_features_used:
-            recent_hits += 1
+            fallback_state = {"value": False, "reason": None}
 
-        recommended_ids = [item.news_id for item in response.recommendations]
-        all_recommended_ids.update(recommended_ids)
-        relevance = np.array([1 if nid in clicked_ids else 0 for nid in recommended_ids])
+            def _mark_fallback(reason: str, state=fallback_state) -> None:
+                state["value"] = True
+                state["reason"] = reason
 
-        hit_rates.append(hit_rate_at_k(relevance, k))
-        recalls.append(recall_at_n_known_total(relevance, true_relevant_count, k))
-        ndcgs.append(ndcg_at_n_known_total(relevance, true_relevant_count, k))
-        reciprocal_ranks.append(reciprocal_rank(relevance))
+            retrieved_ids: list = []
+            response = safe_recommend(
+                request, per_impression_context, on_fallback=_mark_fallback,
+                capture_candidates=retrieved_ids,
+            )
+            impressions_evaluated += 1
+            if clicked_ids & set(retrieved_ids):
+                retrieval_contained_a_click += 1
+            if fallback_state["value"]:
+                fallback_reasons[fallback_state["reason"]] += 1
+            if response.durable_features_used:
+                durable_hits += 1
+            if response.recent_features_used:
+                recent_hits += 1
 
-        # Applied only now, after this impression has already been
-        # scored -- so it can only affect a strictly later impression's
-        # recent-feature state, never its own or an earlier one's.
-        _apply_impression_to_recent_state(isolated_redis, user_id, clicked_ids, request_time)
+            recommended_ids = [item.news_id for item in response.recommendations]
+            all_recommended_ids.update(recommended_ids)
+            relevance = np.array([1 if nid in clicked_ids else 0 for nid in recommended_ids])
+
+            hit_rates.append(hit_rate_at_k(relevance, k))
+            recalls.append(recall_at_n_known_total(relevance, true_relevant_count, k))
+            ndcgs.append(ndcg_at_n_known_total(relevance, true_relevant_count, k))
+            reciprocal_ranks.append(reciprocal_rank(relevance))
+
+            # Deferred to the end of the timestamp group. Applying it here
+            # would let another impression carrying the *same* timestamp
+            # see this click, which is not strictly-earlier information.
+            pending_events.append((user_id, clicked_ids, request_time))
+
+        for user_id, clicked_ids, request_time in pending_events:
+            in_window_clicks.setdefault(user_id, []).extend(sorted(clicked_ids))
+            _apply_impression_to_recent_state(
+                isolated_redis, user_id, clicked_ids, request_time
+            )
 
     total_impressions = impressions_evaluated + sum(skip_reasons.values())
     return {

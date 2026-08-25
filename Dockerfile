@@ -1,11 +1,33 @@
-FROM python:3.11-slim
+# Pinned by digest, not just by tag: `python:3.11-slim` is a moving
+# target that is rebuilt regularly, so a tag-only base means two builds
+# of the same commit can contain different system libraries. The digest
+# makes the base image part of what the lock file guarantees.
+# Corresponds to python:3.11-slim as of 2026-08-25.
+FROM python@sha256:9c900dea9e8fb7e16277c179b555cc72d29a352dbc33cff48ad5a0412fd5bfc7
 
 WORKDIR /app
+
+# Dependencies come from the hash-verified lock, in their own layer so a
+# source-only change does not trigger a full reinstall.
+COPY requirements-lock.txt ./
+
+# --require-hashes, matching the locked-install CI job exactly. Installing
+# with `pip install .` here instead would re-resolve dependencies at build
+# time, so the container could ship a different dependency set from the
+# one CI actually tested -- the versions would drift apart silently, and
+# only in the artifact that actually gets deployed.
+#
+# The lock is Linux/CPU-only (see requirements-lock.txt), which matches
+# this base image and this project's CPU-only design.
+RUN pip install --no-cache-dir --require-hashes -r requirements-lock.txt
 
 COPY pyproject.toml ./
 COPY src/ ./src/
 
-RUN pip install --no-cache-dir .
+# --no-deps: every dependency is already installed above, hash-verified.
+# Without this, installing the project would let pip resolve and pull
+# replacements outside the lock.
+RUN pip install --no-cache-dir --no-deps .
 
 # This image has no .git directory at all (only pyproject.toml and
 # src/ are copied in above), so recommender.tracking.experiment_log's

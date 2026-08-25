@@ -9,10 +9,10 @@ from recommender.evaluation.contract import load_catalog, load_split
 from recommender.evaluation.metrics import catalog_coverage, hit_rate_at_k, reciprocal_rank
 from recommender.evaluation.retrieval_metrics import ndcg_at_n_known_total, recall_at_n_known_total
 from recommender.retrieval.build_index import load_trained_model
+from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
-    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.index import build_exact_index, compute_catalog_embeddings
@@ -26,7 +26,7 @@ def evaluate_retrieval(n: int = N) -> dict:
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
-    item_content = build_item_content_matrix(news)
+    item_content = load_item_content(news)
     news_ids = news["news_id"].to_numpy()
 
     model = load_trained_model(len(categories) + 1, len(subcategories) + 1)

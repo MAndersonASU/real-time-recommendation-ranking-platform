@@ -1,6 +1,7 @@
 from datetime import UTC
 
 import pandas as pd
+import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -9,7 +10,7 @@ from recommender.features.online_features import RecentUserFeatures
 from recommender.features.state_store import save_recent_features
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
-from recommender.reranking.freshness import compute_first_seen
+from recommender.reranking.freshness import compute_age_days, compute_first_seen
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_item_content_matrix,
@@ -304,26 +305,23 @@ def test_recommend_still_uses_faiss_when_the_user_has_real_history():
     assert spy.call_count == 1
 
 
-def test_recommend_clock_is_unaffected_by_a_daylight_saving_transition():
-    """The UTC fix is structural -- UTC has no daylight-saving
-    transitions -- but "structurally impossible" is a weaker claim than
-    a test that actually crosses one. This runs the request path with
-    the process timezone set to a zone that observes DST, at both sides
-    of a real transition boundary, and asserts the timestamp the
-    pipeline produces is the same UTC instant either way.
+def test_utc_clock_is_invariant_to_the_process_timezone():
+    """Named for what it actually proves: reading the clock as UTC gives
+    the same instant regardless of the process timezone.
 
-    US/Eastern moved from EDT (UTC-4) to EST (UTC-5) at 2019-11-03
-    06:00 UTC. A naive local clock would report the same wall-clock hour
-    twice across that boundary; a real UTC clock cannot.
+    This is *not* a DST-transition test -- an earlier version of it was
+    described as one, which overstated it. The real DST-boundary
+    behaviour is covered by the two tests below. POSIX-only, because
+    changing the process timezone at runtime needs `time.tzset`, which
+    Windows does not provide; the DST tests below are portable and carry
+    the substantive coverage.
     """
     import os
     import time as time_module
     from datetime import datetime
 
     if not hasattr(time_module, "tzset"):
-        import pytest
-
-        pytest.skip("time.tzset is unavailable on this platform")
+        pytest.skip("time.tzset is POSIX-only; the DST-boundary tests below are portable")
 
     original_tz = os.environ.get("TZ")
     try:
@@ -340,11 +338,71 @@ def test_recommend_clock_is_unaffected_by_a_daylight_saving_transition():
             os.environ["TZ"] = original_tz
         time_module.tzset()
 
-    # Both readings are the same real instant regardless of the process
-    # timezone, which is exactly what a local naive clock would not give.
     assert abs((after - before).total_seconds()) < 5
     assert before.utcoffset().total_seconds() == 0
     assert after.utcoffset().total_seconds() == 0
+
+
+def test_item_age_is_correct_across_an_ambiguous_dst_local_time():
+    """A real DST boundary, using fixed instants rather than the wall
+    clock. America/New_York left DST at 2019-11-03 06:00 UTC, so local
+    01:30 happens twice -- once at 05:30 UTC and again at 06:30 UTC.
+
+    A system that reasoned in local time would compute the same age for
+    both, losing an hour. Because every timestamp this project compares
+    is UTC, the two must differ by exactly one hour.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    eastern = ZoneInfo("America/New_York")
+    first_pass = datetime(2019, 11, 3, 1, 30, fold=0, tzinfo=eastern).astimezone(UTC)
+    second_pass = datetime(2019, 11, 3, 1, 30, fold=1, tzinfo=eastern).astimezone(UTC)
+
+    assert (second_pass - first_pass).total_seconds() == 3600
+
+    first_seen = pd.Series({"n1": pd.Timestamp("2019-11-01 00:00:00")})
+    candidates = pd.DataFrame({"news_id": ["n1"]})
+
+    age_first = compute_age_days(
+        candidates, pd.Timestamp(first_pass.replace(tzinfo=None)), first_seen
+    )
+    age_second = compute_age_days(
+        candidates, pd.Timestamp(second_pass.replace(tzinfo=None)), first_seen
+    )
+
+    elapsed_days = float(age_second.iloc[0]) - float(age_first.iloc[0])
+    assert abs(elapsed_days - 1 / 24) < 1e-9, "the repeated local hour must still be an hour apart"
+
+
+def test_nonexistent_dst_local_time_still_converts_to_a_real_utc_instant():
+    """The spring-forward gap: America/New_York jumped 02:00 -> 03:00
+    local on 2019-03-10, so local 02:30 never happened. Converting it
+    must still yield a well-defined UTC instant rather than raising or
+    silently producing a duplicate, so a dataset timestamp landing in
+    the gap cannot crash the freshness path.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    eastern = ZoneInfo("America/New_York")
+    gap_local = datetime(2019, 3, 10, 2, 30, tzinfo=eastern)
+
+    as_utc = gap_local.astimezone(UTC)
+
+    assert as_utc.tzinfo is not None
+    assert as_utc.utcoffset().total_seconds() == 0
+    # PEP 495 resolves the gap deterministically; the exact side matters
+    # less than it being defined and usable in real arithmetic.
+    assert datetime(2019, 3, 10, 6, 0, tzinfo=UTC) <= as_utc <= datetime(2019, 3, 10, 8, 0, tzinfo=UTC)
+
+    first_seen = pd.Series({"n1": pd.Timestamp("2019-03-09 00:00:00")})
+    age = compute_age_days(
+        pd.DataFrame({"news_id": ["n1"]}),
+        pd.Timestamp(as_utc.replace(tzinfo=None)),
+        first_seen,
+    )
+    assert float(age.iloc[0]) > 0
 
 
 def test_recommend_generated_at_is_timezone_aware_utc():
@@ -356,3 +414,48 @@ def test_recommend_generated_at_is_timezone_aware_utc():
 
     assert response.generated_at.tzinfo is not None
     assert response.generated_at.utcoffset().total_seconds() == 0
+
+
+def test_featureless_users_all_receive_the_same_global_popularity_slate():
+    """Documents the real cold-start behaviour rather than implying
+    personalization that does not exist: with no durable and no recent
+    features, every user gets the same globally popular items.
+
+    This is deliberate. The alternative -- hashing the user id or
+    randomising the order to make slates look different -- would be
+    fabricated personalization, which is worse than an honest global
+    fallback.
+    """
+    context = _build_context()
+
+    first = recommend(RecommendationRequest(user_id="nobody-a", num_candidates=4), context)
+    second = recommend(RecommendationRequest(user_id="nobody-b", num_candidates=4), context)
+
+    assert first.durable_features_used is False and first.recent_features_used is False
+    assert second.durable_features_used is False and second.recent_features_used is False
+    assert [i.news_id for i in first.recommendations] == [i.news_id for i in second.recommendations]
+    assert [i.score for i in first.recommendations] == [i.score for i in second.recommendations]
+
+
+def test_a_user_with_real_features_is_not_served_the_cold_start_slate():
+    """The counterpart: real features must actually change the slate,
+    otherwise the fallback would be silently swallowing personalization.
+    """
+    redis_client = _FakeRedis()
+    save_recent_features(
+        redis_client,
+        RecentUserFeatures(
+            user_id="u1", recent_clicked_items=["n1", "n2"],
+            impressions_seen=2, clicks_seen=2, last_event_time=None,
+        ),
+    )
+    context = _build_context(redis_client=redis_client)
+
+    known = recommend(RecommendationRequest(user_id="u1", num_candidates=4), context)
+    featureless = recommend(RecommendationRequest(user_id="nobody", num_candidates=4), context)
+
+    assert known.recent_features_used is True
+    assert featureless.recent_features_used is False
+    assert [i.news_id for i in known.recommendations] != [
+        i.news_id for i in featureless.recommendations
+    ], "real user features must produce a different slate from the global fallback"

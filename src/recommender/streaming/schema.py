@@ -59,6 +59,31 @@ class InteractionEvent:
         return InteractionEvent(**payload)
 
 
+def stable_event_id(
+    event_type: EventType,
+    user_id: str,
+    item_id: str,
+    impression_id: int,
+    timestamp: str,
+    source: str,
+) -> str:
+    """A deterministic id derived from the immutable fields identifying
+    one historical interaction.
+
+    Replay is re-runnable by design, and a random id would make the same
+    historical event look like a brand new one on every run -- so the
+    consumer's duplicate detection could never recognise a repeated
+    replay, only a redelivery within a single run. Deriving the id from
+    the source record instead means replaying the same day twice is
+    idempotent for the same reason a redelivery is.
+
+    Uses `uuid5`, which is a namespaced SHA-1 of the name, so the value
+    is a real UUID and stays stable across processes and machines.
+    """
+    name = "|".join([source, event_type.value, user_id, item_id, str(impression_id), timestamp])
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+
+
 def make_event(
     event_type: EventType,
     user_id: str,
@@ -66,9 +91,16 @@ def make_event(
     impression_id: int,
     timestamp: str,
     source: str = REPLAY_SOURCE,
+    event_id: str | None = None,
 ) -> InteractionEvent:
+    """`event_id` defaults to a deterministic id derived from this
+    event's own immutable fields (`stable_event_id`). A caller
+    representing a genuinely new, live interaction -- rather than a
+    replay of a recorded one -- can pass its own id instead.
+    """
     return InteractionEvent(
-        event_id=str(uuid.uuid4()),
+        event_id=event_id
+        or stable_event_id(event_type, user_id, item_id, impression_id, timestamp, source),
         event_type=event_type,
         schema_version=SCHEMA_VERSION,
         user_id=user_id,

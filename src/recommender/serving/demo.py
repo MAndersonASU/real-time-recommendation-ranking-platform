@@ -128,12 +128,18 @@ def render_demo_html(
             f'<tr><td></td><td colspan="3">{explanation_html}</td></tr>'
         )
 
+    # A user with neither durable nor recent features gets the global
+    # popularity slate -- the same slate every featureless user gets.
+    # Labelled explicitly rather than as a vague "cold start", because
+    # the page otherwise looks like it produced something tailored to
+    # this specific user when it did not.
     personalization = (
         "Fully personalized"
         if d["durable_features_used"] and d["recent_features_used"]
         else "Partially personalized"
         if d["durable_features_used"] or d["recent_features_used"]
-        else "Cold start (no known features)"
+        else "Global cold-start popularity recommendations "
+        "&mdash; no user features are currently available"
     )
 
     return f"""<!doctype html>

@@ -23,11 +23,11 @@ from recommender.reranking.freshness import (
     compute_age_days,
     compute_first_seen,
 )
+from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
     CONTENT_DIM,
     MAX_HISTORY,
     build_catalog_arrays,
-    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.index import compute_catalog_embeddings
@@ -113,7 +113,7 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     train = load_split("train")
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, item_row_by_news_id = build_catalog_arrays(news, item_vocab)
-    item_content = build_item_content_matrix(news)
+    item_content = load_item_content(news)
 
     two_tower_model = _load_two_tower_model(len(categories) + 1, len(subcategories) + 1)
     catalog_embeddings = compute_catalog_embeddings(

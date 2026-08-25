@@ -79,7 +79,9 @@ def test_compare_diversity_cap_values_reports_real_relevance_and_diversity_per_c
         rows.append({"impression_id": impression_id, "news_id": "n5", "ranked_score": 0.6})
     scored_rows = pd.DataFrame(rows)
 
-    result = _compare_diversity_cap_values(scored_rows, CATEGORY_BY_ID, sample_impressions=5)
+    result = _compare_diversity_cap_values(
+        scored_rows, CATEGORY_BY_ID, sample_impressions=5, news=NEWS
+    )
 
     assert result["sample_impressions"] == 5
     assert set(result["by_cap_value"].keys()) == {"1", "2", "3", "5", "no_cap"}
@@ -109,9 +111,30 @@ def test_diversity_budget_rule_is_not_trivially_satisfied_by_the_smallest_cap():
     # 12 strong sports items and 8 weak items spread over other
     # categories: capping sports forces the algorithm to reach past the
     # strong items into much weaker ones, which is genuinely expensive.
-    category_by_id = pd.Series(
-        {f"s{i}": "sports" for i in range(12)} | {f"o{i}": f"cat{i}" for i in range(8)}
+    # Every title uses distinct vocabulary. build_diverse_slate also
+    # rejects near-duplicates by TF-IDF cosine, so formulaic titles
+    # ("topic 1", "topic 2", ...) get filtered as duplicates and the
+    # unconstrained fill pass then reloads the slate with high-scoring
+    # sports items -- which silently destroys the tension this fixture
+    # exists to create.
+    sports_words = [
+        "striker", "goalkeeper", "marathon", "tennis", "cycling", "boxing",
+        "swimming", "rowing", "hockey", "sprint", "archery", "surfing",
+    ]
+    other_words = [
+        "election", "vaccine", "harvest", "telescope", "currency",
+        "opera", "wildfire", "railway",
+    ]
+    news = pd.DataFrame(
+        {
+            "news_id": [f"s{i}" for i in range(12)] + [f"o{i}" for i in range(8)],
+            "category": ["sports"] * 12 + [f"cat{i}" for i in range(8)],
+            "subcategory": ["general"] * 20,
+            "title": sports_words + other_words,
+            "abstract": [""] * 20,
+        }
     )
+    category_by_id = news.set_index("news_id")["category"]
     rows = []
     for impression_id in range(5):
         for i in range(12):
@@ -120,7 +143,9 @@ def test_diversity_budget_rule_is_not_trivially_satisfied_by_the_smallest_cap():
             rows.append({"impression_id": impression_id, "news_id": f"o{i}", "ranked_score": 0.01})
     scored_rows = pd.DataFrame(rows)
 
-    result = _compare_diversity_cap_values(scored_rows, category_by_id, sample_impressions=5)
+    result = _compare_diversity_cap_values(
+        scored_rows, category_by_id, sample_impressions=5, news=news
+    )
 
     by_cap = result["by_cap_value"]
     # Reaching for other categories here is genuinely expensive.

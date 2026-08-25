@@ -8,6 +8,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.retrieval.content_artifact import save_item_content
 from recommender.retrieval.dataset import SampledNegativeDataset, TwoTowerDataset
 from recommender.retrieval.features import (
     build_catalog_arrays,
@@ -33,7 +34,11 @@ def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
+    # Fitted here and only here. Every other stage loads this exact
+    # matrix, so serving never scores against a differently-oriented
+    # SVD basis than the one the model was trained on.
     content_matrix = build_item_content_matrix(news)
+    save_item_content(news, content_matrix)
 
     cat, subcat, mask, history_item_rows, impression_row = build_history_arrays(
         train, item_vocab, row_by_news_id=row_by_news_id

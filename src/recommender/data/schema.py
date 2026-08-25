@@ -31,7 +31,10 @@ BEHAVIORS_REQUIRED_NONNULL = ["impression_id", "user_id", "time", "impressions"]
 # and a token with more than one "-" (an edge case rsplit already
 # handles correctly by splitting on the *last* one, but never checked to
 # be correct) went unverified until now.
-_IMPRESSION_TOKEN_PATTERN = r"[^\s-]+-[01]"
+# nosec B105 -- this is the regex for a MIND impression token
+# ("<news_id>-<0|1>"), not a credential. Bandit's hardcoded-password
+# heuristic matches on the variable name containing "TOKEN".
+_IMPRESSION_TOKEN_PATTERN = r"[^\s-]+-[01]"  # nosec B105
 IMPRESSIONS_FIELD_PATTERN = re.compile(rf"^{_IMPRESSION_TOKEN_PATTERN}( {_IMPRESSION_TOKEN_PATTERN})*$")
 HISTORY_FIELD_PATTERN = re.compile(r"^[^\s-]+( [^\s-]+)*$")
 

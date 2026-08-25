@@ -6,10 +6,10 @@ import numpy as np
 import torch
 
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
     build_catalog_arrays,
     build_history_arrays,
-    build_item_content_matrix,
     build_item_vocab,
 )
 from recommender.retrieval.index import (
@@ -63,7 +63,7 @@ def main() -> None:
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
-    item_content = build_item_content_matrix(news)
+    item_content = load_item_content(news)
 
     model = load_trained_model(len(categories) + 1, len(subcategories) + 1)
     catalog_embeddings = compute_catalog_embeddings(

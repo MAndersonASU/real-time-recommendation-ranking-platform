@@ -10,7 +10,21 @@ requires-python = ">=3.11,<3.12"
 dependencies = ["pandas>=2.2", "pyarrow>=17", "duckdb>=1.0", "numpy>=1.26", "scikit-learn>=1.5", "scipy>=1.13", "torch>=2.3", "faiss-cpu>=1.8", "confluent-kafka>=2.5", "redis>=5.0", "pydantic>=2.7", "psutil>=6.0", "fastapi>=0.115", "uvicorn>=0.30", "pydantic-settings>=2.4", "prometheus-client>=0.20", "transformers>=4.40", "sentencepiece>=0.2", "skops>=0.10"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "httpx2", "pytest-cov>=5", "bandit>=1.7", "pip-audit>=2.7", "pip-tools>=7.4"]
+# httpx (not httpx2): starlette.testclient.TestClient needs an HTTP
+# client, and the tests use it directly, so it is declared here rather
+# than relied on transitively. Starlette 1.6 emits a deprecation
+# warning preferring httpx2; that is left unaddressed deliberately,
+# since adding a second HTTP stack to the dependency tree to silence a
+# warning is a poor supply-chain trade.
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "httpx>=0.27",
+    "pytest-cov>=5",
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+    "pip-tools>=7.4",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
