@@ -10,8 +10,13 @@ MAX_NUM_CANDIDATES = 50
 # A conservative bound: comfortably above any real identifier, far
 # below anything that would strain a key, a log line or a page.
 MAX_USER_ID_LENGTH = 128
-# Printable, non-whitespace characters only.
-USER_ID_PATTERN = r"^[^\s\x00-\x1f\x7f]+$"
+# A positive allow-list, not a denial list. Excluding ASCII control
+# characters still admitted non-printing Unicode format characters --
+# a zero-width space, a bidirectional mark, a byte-order mark -- which
+# are invisible in a log line and in a rendered page while producing a
+# distinct Redis key. Enumerating what an identifier may contain avoids
+# chasing that category indefinitely.
+USER_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 
 
 class RecommendationRequest(BaseModel):

@@ -1,23 +1,18 @@
 import redis
 
 from recommender.features.online_features import (
-    recent_features_from_user_state,
     user_state_from_recent_features,
 )
-from recommender.features.state_store import (
-    claim_and_apply_event,
-    current_state_version,
-    load_recent_features,
-)
+from recommender.features.state_store import claim_and_apply_event, load_recent_features
 from recommender.streaming.consumer import StreamConsumer, UserState
 
 # Redis-level status codes returned by `claim_and_apply_event`.
-_APPLIED = 1
 _DUPLICATE = 0
 # Bounded: a conflict means a competing writer won, which should
 # resolve within a couple of attempts. An unbounded retry would spin
 # forever against a persistently conflicting writer.
-_MAX_VERSION_CONFLICT_RETRIES = 5
+# The recent-click window the streaming state keeps per user.
+MAX_RECENT_CLICKS = 20
 
 
 class SyncingStreamConsumer(StreamConsumer):
@@ -52,68 +47,62 @@ class SyncingStreamConsumer(StreamConsumer):
         return state
 
     def _on_state_updated(self, user_id: str, state: UserState, event_id: str) -> bool:
-        """Claims the event and writes the resulting state atomically.
+        """Not used by this consumer -- see `_apply_event`.
 
-        Two distinct failures are prevented here, and they pull in
-        opposite directions:
+        The base class calls this after mutating its own in-process
+        state, which is exactly the stale basis that must not reach
+        Redis. This subclass overrides `process` instead, so state is
+        only ever derived inside the atomic script.
+        """
+        return True
+
+    def process(self, raw) -> bool:
+        """Applies one event by handing its own fields to the atomic
+        claim-and-apply, rather than computing a state locally first.
+
+        Three failures are prevented, and they pull against each other:
 
         - A crash between the Redis write and the Kafka offset commit
-          redelivers the message. Applying it again double-counts.
+          redelivers the message; applying it again double-counts.
         - Refusing a duplicate by restoring the state stored *with* that
-          event rolls the user backwards, discarding every event applied
-          since. That is strictly worse than the double count: it loses
-          real data rather than inflating it.
+          event rolls the user backwards, discarding everything applied
+          since -- worse than the double count, because it loses data.
+        - Two consumers each deriving a complete state from their own
+          stale read overwrite one another, silently losing an event.
 
-        So a duplicate returns the user's *current* state, never a
-        historical snapshot, and the claim and the state write happen in
-        one atomic step so neither can land without the other.
-
-        A version conflict means another writer advanced this user's
-        state between the read and the write. The event is re-derived
-        against the newer state and retried rather than overwriting it.
+        Handing the event's fields to a script that loads current state
+        itself removes the third entirely: there is no local basis to go
+        stale.
         """
-        for _attempt in range(_MAX_VERSION_CONFLICT_RETRIES):
-            expected_version = current_state_version(self._redis_client, user_id)
-            features = recent_features_from_user_state(user_id, state)
-            status, stored = claim_and_apply_event(
-                self._redis_client, event_id, features, expected_version
-            )
+        event = self.parse(raw)
+        if event is None:
+            return False
+        if event.event_id in self._seen_event_ids:
+            self.counters.duplicates_skipped += 1
+            return False
+        self._seen_event_ids.add(event.event_id)
 
-            if status == _APPLIED:
-                return True
-
-            if status == _DUPLICATE:
-                # Already applied. Adopt the current state -- not the
-                # state this event originally produced -- so nothing
-                # applied since is lost.
-                if stored is not None:
-                    self.user_states[user_id] = user_state_from_recent_features(stored)
-                return False
-
-            # Version conflict: rebuild this event's effect on top of the
-            # state that actually won, then try again.
-            if stored is None:
-                break
-            self.user_states[user_id] = user_state_from_recent_features(stored)
-            state = self._reapply(self.user_states[user_id], state)
-
-        raise RuntimeError(
-            f"could not apply event {event_id} for a user after "
-            f"{_MAX_VERSION_CONFLICT_RETRIES} version conflicts"
+        status, stored = claim_and_apply_event(
+            self._redis_client,
+            event.event_id,
+            event.user_id,
+            event.event_type.value,
+            event.item_id,
+            event.timestamp,
+            MAX_RECENT_CLICKS,
         )
 
-    @staticmethod
-    def _reapply(current: UserState, attempted: UserState) -> UserState:
-        """Re-derives the attempted event's effect on top of newer state.
+        if stored is not None:
+            self.user_states[event.user_id] = user_state_from_recent_features(stored)
 
-        Only the last click and the counters the event contributed are
-        carried over; everything else comes from the state that won, so
-        a retry never resurrects stale history.
-        """
-        if attempted.recent_clicked_items:
-            current.recent_clicked_items.append(attempted.recent_clicked_items[-1])
-            current.clicks_seen += 1
-        else:
-            current.impressions_seen += 1
-        current.last_event_time = attempted.last_event_time
-        return current
+        if status == _DUPLICATE:
+            self.counters.duplicates_skipped += 1
+            return False
+
+        self.counters.events_by_type[event.event_type.value] = (
+            self.counters.events_by_type.get(event.event_type.value, 0) + 1
+        )
+        self.counters.distinct_users.add(event.user_id)
+        self.counters.distinct_items.add(event.item_id)
+        self.counters.total_processed += 1
+        return True

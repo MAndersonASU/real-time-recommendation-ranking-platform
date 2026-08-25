@@ -84,49 +84,73 @@ def _processed_key(event_id: str) -> str:
     return f"{PROCESSED_KEY_PREFIX}{event_id}"
 
 
-# Atomically: refuse an already-claimed event, reject a stale write, or
-# claim the event and store the new state together.
+# Atomically claim one event and apply its delta to whatever state is
+# current *inside the script*.
 #
-# Redis runs a script atomically, so no interleaving consumer can land
-# between the duplicate check, the version check and the write. Doing
-# these as separate commands leaves two real failure windows: a crash
-# between claim and write silently drops the event's effect, and two
-# consumers reading the same state concurrently overwrite each other.
+# The earlier version took a fully-formed state computed by the caller
+# and wrote it under a version check. That still lost updates: two
+# consumers both reading empty state each computed a complete state from
+# their own stale basis, and the version check only guarded the stored
+# value, not the basis the new value was derived from. Whichever wrote
+# second silently erased the other's event.
+#
+# Applying the delta to state loaded within the script removes the stale
+# basis entirely -- there is nothing for the caller to compute from.
 #
 # Returns {status, state_json}:
-#   0 = duplicate  -> state_json is the CURRENT state, not the state that
-#                     existed when the event was first applied. Returning
-#                     the historical snapshot is what allowed a late
-#                     duplicate to roll a user's state backwards and lose
-#                     every event applied since.
+#   0 = duplicate -> state_json is the CURRENT state. Returning the
+#       state stored with the original event would roll the user back,
+#       discarding everything applied since.
 #   1 = applied
-#   2 = version conflict -> caller reloads and retries
 _CLAIM_AND_APPLY_LUA = """
 local claim_key = KEYS[1]
 local state_key = KEYS[2]
-local new_state = ARGV[1]
-local expected_version = tonumber(ARGV[2])
-local claim_ttl = tonumber(ARGV[3])
-local state_ttl = tonumber(ARGV[4])
+local user_id = ARGV[1]
+local event_type = ARGV[2]
+local item_id = ARGV[3]
+local event_time = ARGV[4]
+local max_history = tonumber(ARGV[5])
+local claim_ttl = tonumber(ARGV[6])
+local state_ttl = tonumber(ARGV[7])
 
 if redis.call('EXISTS', claim_key) == 1 then
   return {0, redis.call('GET', state_key) or ''}
 end
 
-local current = redis.call('GET', state_key)
-local current_version = 0
-if current then
-  local ok, decoded = pcall(cjson.decode, current)
-  if ok and decoded['version'] then current_version = tonumber(decoded['version']) end
+local state
+local raw = redis.call('GET', state_key)
+if raw then
+  local ok, decoded = pcall(cjson.decode, raw)
+  if ok then state = decoded end
+end
+if not state then
+  state = {user_id = user_id, recent_clicked_items = {},
+           impressions_seen = 0, clicks_seen = 0, last_event_time = false}
+end
+if not state['recent_clicked_items'] then state['recent_clicked_items'] = {} end
+
+if event_type == 'click' then
+  state['clicks_seen'] = (tonumber(state['clicks_seen']) or 0) + 1
+  table.insert(state['recent_clicked_items'], item_id)
+  while #state['recent_clicked_items'] > max_history do
+    table.remove(state['recent_clicked_items'], 1)
+  end
+else
+  state['impressions_seen'] = (tonumber(state['impressions_seen']) or 0) + 1
+end
+state['last_event_time'] = event_time
+state['version'] = (tonumber(state['version']) or 0) + 1
+
+-- An empty Lua table encodes as {} rather than []; force array shape so
+-- the round trip stays a list.
+if #state['recent_clicked_items'] == 0 then
+  state['recent_clicked_items'] = setmetatable({}, cjson.array_mt)
 end
 
-if current_version ~= expected_version then
-  return {2, current or ''}
-end
-
+local encoded = cjson.encode(state)
 redis.call('SET', claim_key, '1', 'EX', claim_ttl)
-redis.call('SET', state_key, new_state, 'EX', state_ttl)
-return {1, new_state}
+redis.call('SET', state_key, encoded, 'EX', state_ttl)
+return {1, encoded}
 """
 
 
@@ -156,27 +180,34 @@ def current_state_version(client: redis.Redis, user_id: str) -> int:
 def claim_and_apply_event(
     client: redis.Redis,
     event_id: str,
-    features: RecentUserFeatures,
-    expected_version: int,
+    user_id: str,
+    event_type: str,
+    item_id: str,
+    event_time: str | None,
+    max_history: int,
     ttl_seconds: int = DEFAULT_PROCESSED_TTL_SECONDS,
     state_ttl_seconds: int = DEFAULT_TTL_SECONDS,
 ) -> tuple[int, RecentUserFeatures | None]:
-    """Claims one event and writes the resulting state in a single atomic
-    step, or reports why it did not.
+    """Claims one event and applies its effect to the user's current
+    state in a single atomic step.
 
-    Returns `(status, state)` where status is 1 when the event was newly
-    applied, 0 when it was already applied (and `state` is the user's
-    *current* state), and 2 when another writer advanced the state first
-    (and `state` is that newer state, for the caller to retry against).
+    Takes the event's own fields rather than a caller-computed state, so
+    there is no stale local snapshot that a concurrent writer could
+    overwrite. Returns `(status, state)` where status is 1 when newly
+    applied and 0 when already applied -- in which case `state` is the
+    user's current state, never the state stored with the original
+    delivery.
     """
-    payload = _state_payload(features, expected_version + 1)
     status, raw = client.eval(  # type: ignore[union-attr]
         _CLAIM_AND_APPLY_LUA,
         2,
         _processed_key(event_id),
-        _key(features.user_id),
-        payload,
-        str(expected_version),
+        _key(user_id),
+        user_id,
+        event_type,
+        item_id,
+        event_time or "",
+        str(max_history),
         str(ttl_seconds),
         str(state_ttl_seconds),
     )
@@ -188,8 +219,8 @@ def claim_and_apply_event(
     data = json.loads(raw)
     return status, RecentUserFeatures(
         user_id=data["user_id"],
-        recent_clicked_items=data["recent_clicked_items"],
-        impressions_seen=data["impressions_seen"],
-        clicks_seen=data["clicks_seen"],
-        last_event_time=data["last_event_time"],
+        recent_clicked_items=list(data.get("recent_clicked_items") or []),
+        impressions_seen=int(data.get("impressions_seen") or 0),
+        clicks_seen=int(data.get("clicks_seen") or 0),
+        last_event_time=data.get("last_event_time") or None,
     )

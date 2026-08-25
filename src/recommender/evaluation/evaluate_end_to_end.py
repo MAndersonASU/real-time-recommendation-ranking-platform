@@ -52,47 +52,41 @@ def _reconcile_recent_state(
     user_id: str,
     history_raw: str | None,
     in_window_clicks: list,
+    baseline_history_length: int,
 ) -> None:
     """Rebuilds a user's isolated recent-feature state from the two
-    authoritative sources for this point in time, without counting any
-    click twice.
+    authoritative sources for this point in time, counting every real
+    click exactly once.
 
     MIND records, per impression, the clicks that happened strictly
-    before it -- exactly what a live store would already hold for a
-    returning user, so using it is point-in-time correct rather than
-    leakage. That field also *advances*: a later impression's history can
-    already include a click this run observed earlier in its own window.
+    before it -- what a live store would already hold for a returning
+    user, so using it is point-in-time correct rather than leakage. That
+    field also advances, so a later impression's history can already
+    contain clicks this run observed in its own window.
 
-    Naively concatenating the two sources therefore double-counts every
-    click that appears in both, inflating `clicks_seen` and repeating
-    items in the embedding history. The fix is a multiset difference:
-    append only the in-window clicks not already represented in the
-    authoritative history, matched by occurrence count rather than by
-    membership.
+    Deciding which is which cannot be done from article ids alone.
+    History `[n1, n3]` alongside an observed click of `n3` is genuinely
+    ambiguous: either the history absorbed that click, or `n3` was
+    always a pre-window click and the user has now clicked it a second
+    time. Counting occurrences picks one reading arbitrarily, and the
+    earlier implementation picked the wrong one -- silently discarding a
+    real repeat click.
 
-    Counting occurrences matters. A user can legitimately click the same
-    article twice, and plain deduplication would silently drop the second
-    click. If history holds `n3` once and this run observed `n3` twice,
-    exactly one extra `n3` is appended.
-
-    Without any of this the store starts empty for most users, and
-    `recommend()` builds its two-tower query from an empty click list --
-    producing an exactly zero-norm user vector, against which an
-    inner-product index scores every catalog item identically.
+    `baseline_history_length` removes the ambiguity. It is the length of
+    this user's history when the run first encountered them, before any
+    in-window event. However much the history has grown since is exactly
+    how many observed clicks it has absorbed; the rest are genuinely
+    additional and are appended.
     """
     history_ids = history_ids_from_raw(history_raw) if history_raw else []
 
-    remaining = Counter(history_ids)
-    extra: list = []
-    for news_id in in_window_clicks:
-        if remaining.get(news_id, 0) > 0:
-            # Already represented in the authoritative history: the
-            # history advanced to include this click.
-            remaining[news_id] -= 1
-        else:
-            extra.append(news_id)
+    # Growth since the user was first seen, clamped: history is expected
+    # to advance monotonically, but a malformed or reordered source must
+    # not produce a negative or over-long slice.
+    absorbed = max(0, len(history_ids) - baseline_history_length)
+    absorbed = min(absorbed, len(in_window_clicks))
 
-    combined = [*history_ids, *extra]
+    combined = [*history_ids, *in_window_clicks[absorbed:]]
     if not combined:
         return
 
@@ -193,6 +187,10 @@ def evaluate_end_to_end(
     # neither source alone is complete, and reconciling them explicitly
     # avoids depending on an unverified dataset invariant.
     in_window_clicks: dict[str, list] = {}
+    # Each user's history length when this run first saw them, before
+    # any in-window event. Growth beyond it is exactly what the
+    # authoritative history has absorbed.
+    baseline_history_length: dict[str, int] = {}
 
     # Impressions sharing a timestamp are scored before *any* of that
     # group's events are applied. Processing them one at a time would let
@@ -213,8 +211,14 @@ def evaluate_end_to_end(
 
             history_raw = history_by_impression_id.get(impression_id)
             durable = _point_in_time_durable_features(user_id, history_raw, category_by_id)
+            if user_id not in baseline_history_length:
+                baseline_history_length[user_id] = len(
+                    history_ids_from_raw(history_raw) if history_raw else []
+                )
             _reconcile_recent_state(
-                isolated_redis, user_id, history_raw, in_window_clicks.get(user_id, [])
+                isolated_redis, user_id, history_raw,
+                in_window_clicks.get(user_id, []),
+                baseline_history_length[user_id],
             )
             per_impression_context = replace(
                 context,

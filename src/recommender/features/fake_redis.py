@@ -35,34 +35,48 @@ class InMemoryRedis:
         (`_CLAIM_AND_APPLY_LUA`) natively in Python.
 
         A stand-in cannot execute Lua, so it implements the same
-        *contract* instead: refuse an already-claimed event returning the
-        current state, reject a stale-version write, or claim and write
-        together. This instance is single-threaded, so those steps are
+        *contract*: refuse an already-claimed event returning the current
+        state, or claim the event and apply its delta to whatever state
+        is current. This instance is single-threaded, so those steps are
         atomic by construction rather than by locking.
 
-        Deliberately keyed to the real script's argument order, so a
-        change to the script that this stand-in does not follow shows up
-        as a test failure rather than a silent divergence.
+        Applying the delta here, rather than accepting a caller-supplied
+        state, is the point: it is what removes the stale-basis lost
+        update the previous design allowed.
         """
         import json as _json
 
         claim_key, state_key = args[0], args[1]
-        new_state, expected_version = args[2], int(args[3])
+        user_id, event_type, item_id, event_time = args[2], args[3], args[4], args[5]
+        max_history = int(args[6])
 
         if claim_key in self._data:
             return [0, self._data.get(state_key, "")]
 
-        current = self._data.get(state_key)
-        current_version = 0
-        if current:
+        raw = self._data.get(state_key)
+        state = None
+        if raw:
             try:
-                current_version = int(_json.loads(current).get("version", 0))
-            except (ValueError, TypeError):
-                current_version = 0
+                state = _json.loads(raw)
+            except ValueError:
+                state = None
+        if not state:
+            state = {
+                "user_id": user_id, "recent_clicked_items": [],
+                "impressions_seen": 0, "clicks_seen": 0, "last_event_time": None,
+            }
+        state.setdefault("recent_clicked_items", [])
 
-        if current_version != expected_version:
-            return [2, current or ""]
+        if event_type == "click":
+            state["clicks_seen"] = int(state.get("clicks_seen") or 0) + 1
+            state["recent_clicked_items"].append(item_id)
+            del state["recent_clicked_items"][:-max_history or None]
+        else:
+            state["impressions_seen"] = int(state.get("impressions_seen") or 0) + 1
+        state["last_event_time"] = event_time or None
+        state["version"] = int(state.get("version") or 0) + 1
 
+        encoded = _json.dumps(state)
         self._data[claim_key] = "1"
-        self._data[state_key] = new_state
-        return [1, new_state]
+        self._data[state_key] = encoded
+        return [1, encoded]

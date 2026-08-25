@@ -131,37 +131,91 @@ def test_syncing_consumer_restores_correct_state_for_the_user_after_a_redelivery
     assert final.recent_clicked_items == ["n1", "n2"]
 
 
-def test_prior_state_is_restored_from_redis_only_once_per_user():
-    """The restore-from-Redis path must run only on a user's first touch
-    per process, not on every event -- otherwise every event would pay a
-    full state round-trip just to rebuild what the process already holds.
+def test_a_duplicate_returns_the_users_current_state():
+    """A redelivery must report where the user actually is now, not the
+    state that existed when the event was first applied -- restoring the
+    latter is what rolled users backwards.
+    """
+    from recommender.features.state_store import claim_and_apply_event
 
-    This deliberately does not assert a total `get` count. Applying an
-    event now also reads the user's current state version, because the
-    atomic claim-and-apply is a compare-and-set and cannot check a
-    version it has not read. That per-event read is the cost of not
-    silently overwriting a concurrent writer; the restore itself still
-    happens once.
+    client = _FakeRedis()
+    claim_and_apply_event(client, "evt-1", "u1", "click", "n1", "t1", 20)
+    claim_and_apply_event(client, "evt-2", "u1", "click", "n2", "t2", 20)
+
+    status, current = claim_and_apply_event(client, "evt-1", "u1", "click", "n1", "t1", 20)
+
+    assert status == 0
+    assert current.recent_clicked_items == ["n1", "n2"]
+    assert current.clicks_seen == 2
+
+
+def test_two_consumers_that_both_read_before_writing_lose_nothing():
+    """The lost update the version check could not prevent: both
+    consumers loaded empty state, so each derived a complete state from a
+    stale basis and the second overwrote the first.
+
+    Applying the event delta inside the atomic script removes the local
+    basis entirely, so there is nothing to go stale.
     """
     client = _FakeRedis()
-    consumer = SyncingStreamConsumer(client)
-    restores = {"n": 0}
-    real_restore = consumer._get_or_create_state
+    first = SyncingStreamConsumer(client)
+    second = SyncingStreamConsumer(client)
 
-    def counting_restore(user_id):
-        if user_id not in consumer.user_states:
-            restores["n"] += 1
-        return real_restore(user_id)
+    # Both observe the user before either writes.
+    first._get_or_create_state("u1")
+    second._get_or_create_state("u1")
 
-    consumer._get_or_create_state = counting_restore
+    first.process(make_event(EventType.CLICK, "u1", "n1", 1, "t1").to_json())
+    second.process(make_event(EventType.CLICK, "u1", "n2", 2, "t2").to_json())
 
-    consumer.process(make_event(EventType.IMPRESSION, "u1", "n1", 1, "t1").to_json())
-    consumer.process(make_event(EventType.CLICK, "u1", "n2", 2, "t2").to_json())
-    consumer.process(make_event(EventType.IMPRESSION, "u1", "n3", 3, "t3").to_json())
+    final = load_recent_features(client, "u1")
+    assert final.clicks_seen == 2
+    assert set(final.recent_clicked_items) == {"n1", "n2"}
 
-    assert restores["n"] == 1
-    assert "u1" in consumer.user_states
 
+def test_an_impression_is_never_reapplied_as_a_click():
+    """The retry path inferred event type from whether the attempted
+    state carried clicked items, so an impression for a user who already
+    had click history was re-applied as a click -- duplicating the item
+    and inflating the click count.
+    """
+    client = _FakeRedis()
+    SyncingStreamConsumer(client).process(
+        make_event(EventType.CLICK, "u1", "n1", 1, "t1").to_json()
+    )
+
+    SyncingStreamConsumer(client).process(
+        make_event(EventType.IMPRESSION, "u1", "n9", 2, "t2").to_json()
+    )
+
+    final = load_recent_features(client, "u1")
+    assert final.recent_clicked_items == ["n1"]
+    assert final.clicks_seen == 1
+    assert final.impressions_seen == 1
+
+
+def test_impression_and_click_conflicts_each_apply_exactly_once():
+    """Every ordering of the two event types must land both effects."""
+    for first_type, second_type in (
+        (EventType.CLICK, EventType.CLICK),
+        (EventType.CLICK, EventType.IMPRESSION),
+        (EventType.IMPRESSION, EventType.CLICK),
+        (EventType.IMPRESSION, EventType.IMPRESSION),
+    ):
+        client = _FakeRedis()
+        a = SyncingStreamConsumer(client)
+        b = SyncingStreamConsumer(client)
+        a._get_or_create_state("u1")
+        b._get_or_create_state("u1")
+
+        a.process(make_event(first_type, "u1", "n1", 1, "t1").to_json())
+        b.process(make_event(second_type, "u1", "n2", 2, "t2").to_json())
+
+        final = load_recent_features(client, "u1")
+        expected_clicks = sum(t is EventType.CLICK for t in (first_type, second_type))
+        expected_impressions = 2 - expected_clicks
+        assert final.clicks_seen == expected_clicks, (first_type, second_type)
+        assert final.impressions_seen == expected_impressions, (first_type, second_type)
 
 def test_a_late_duplicate_does_not_roll_state_back():
     """Regression test for real data loss: an earlier fix stored each
@@ -190,60 +244,6 @@ def test_a_late_duplicate_does_not_roll_state_back():
     # The consumer's own view must match the store, or the next real
     # event would be applied on top of rolled-back state.
     assert list(restarted.user_states["u1"].recent_clicked_items) == ["n1", "n2"]
-
-
-def test_a_duplicate_returns_current_state_not_the_events_own_snapshot():
-    from recommender.features.online_features import RecentUserFeatures
-    from recommender.features.state_store import claim_and_apply_event, current_state_version
-
-    client = _FakeRedis()
-    first = RecentUserFeatures(
-        user_id="u1", recent_clicked_items=["n1"], impressions_seen=1,
-        clicks_seen=1, last_event_time="t1",
-    )
-    status, _ = claim_and_apply_event(client, "evt-1", first, current_state_version(client, "u1"))
-    assert status == 1
-
-    advanced = RecentUserFeatures(
-        user_id="u1", recent_clicked_items=["n1", "n2"], impressions_seen=2,
-        clicks_seen=2, last_event_time="t2",
-    )
-    status, _ = claim_and_apply_event(client, "evt-2", advanced, current_state_version(client, "u1"))
-    assert status == 1
-
-    # Replaying evt-1 must report the *current* state, not its own.
-    status, returned = claim_and_apply_event(
-        client, "evt-1", first, current_state_version(client, "u1")
-    )
-    assert status == 0
-    assert returned.recent_clicked_items == ["n1", "n2"]
-
-
-def test_a_stale_version_write_is_rejected_rather_than_overwriting():
-    """Two consumers reading the same state concurrently must not
-    silently overwrite one another.
-    """
-    from recommender.features.online_features import RecentUserFeatures
-    from recommender.features.state_store import claim_and_apply_event, current_state_version
-
-    client = _FakeRedis()
-    base_version = current_state_version(client, "u1")
-
-    winner = RecentUserFeatures(
-        user_id="u1", recent_clicked_items=["n1"], impressions_seen=1,
-        clicks_seen=1, last_event_time="t1",
-    )
-    assert claim_and_apply_event(client, "evt-a", winner, base_version)[0] == 1
-
-    # A second consumer still holding the pre-write version.
-    loser = RecentUserFeatures(
-        user_id="u1", recent_clicked_items=["n9"], impressions_seen=1,
-        clicks_seen=1, last_event_time="t9",
-    )
-    status, current = claim_and_apply_event(client, "evt-b", loser, base_version)
-
-    assert status == 2, "a stale-version write must be refused"
-    assert current.recent_clicked_items == ["n1"], "the winner's state must survive"
 
 
 def test_concurrent_consumers_both_land_their_events():

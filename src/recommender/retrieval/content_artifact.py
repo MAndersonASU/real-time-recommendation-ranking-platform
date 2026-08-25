@@ -160,8 +160,17 @@ def load_item_content(
     except Exception as exc:
         raise ContentArtifactError(f"content artifact at {path} is unreadable: {exc}") from exc
 
-    stored_width = int(data_width) if (data_width := _stored_width) is not None else None
-    _validate_matrix(np.asarray(content), expected_width=stored_width or CONTENT_DIM)
+    # The artifact's own declared width is checked against the
+    # application's expectation, not merely against the payload. Trusting
+    # the declaration alone let a self-consistent artifact -- correct
+    # checksum, matching metadata -- load with a feature width this build
+    # cannot use.
+    if _stored_width is not None and int(_stored_width) != CONTENT_DIM:
+        raise ContentArtifactError(
+            f"content artifact declares feature width {int(_stored_width)}, but this "
+            f"build expects {CONTENT_DIM}"
+        )
+    _validate_matrix(np.asarray(content), expected_width=CONTENT_DIM)
     _validate_ids(np.asarray(stored_ids))
 
     if _stored_checksum is not None and _matrix_checksum(content) != _stored_checksum:

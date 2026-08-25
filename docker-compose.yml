@@ -57,8 +57,12 @@ services:
         "--appendfsync", "everysec",
       ]
     volumes:
-      # A named volume, so every recent-feature record written to Redis
-      # (Phase 7) survives a container restart, not just a process one.
+      # A named volume, so recent-feature records survive container
+      # replacement rather than only a process restart. Combined with
+      # AOF above this gives bounded durability -- up to about a second
+      # of writes can still be lost on an abrupt kill, per the
+      # appendfsync policy. Not per-write durability, and a volume
+      # alone would not provide it.
       - redis_data:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD:-}\" --no-auth-warning ping || exit 1"]
