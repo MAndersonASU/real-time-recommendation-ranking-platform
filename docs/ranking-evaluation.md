@@ -53,7 +53,7 @@ Phase 3).
 
 `retrieval_score` alone performs respectably here (0.6689 hit rate) —
 noticeably better than it did in Phase 3's own full-catalog retrieval
-evaluation (0.0044 hit rate at N=100, `docs/retrieval-evaluation.md`). That
+evaluation as it then stood (0.0044 hit rate at N=100; now 0.0336 after the item-tower fix, `docs/retrieval-evaluation.md`). That
 is not a contradiction; it's exactly what the tied-vector limitation
 already found in Phase 3 (`docs/faiss-index.md`) predicts. Searching the
 full 51,282-item catalog, that limitation is severe — the model can only

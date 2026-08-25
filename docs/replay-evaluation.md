@@ -38,9 +38,9 @@ project converging on this one sample, not a new bug:
   every cold user gets an identical, entirely generic retrieval result.
 - Even the 38 users who *did* have durable features scored **0 of 38**
   as well. A durable-only signal is just a dominant category match, and
-  the item tower's own vector collapse (`docs/faiss-index.md`) already
-  found it produces only 284 distinct vectors across the whole
-  ~51,000-item catalog — roughly 180 items
+  the item tower's own vector collapse (`docs/faiss-index.md`) had at
+  the time reduced the whole ~51,000-item catalog to only 284 distinct
+  vectors — roughly 180 items
   tied within a category. Landing on the one specific article a real
   user clicked, among that many ties, remains close to chance even with
   partial personalization.

@@ -39,12 +39,27 @@ from Phase 0, so the gap was never surfaced until a genuinely fresh
 environment was checked). Fixed by adding the explicit version
 requirement to the README's quickstart.
 
-## Real result: 215/215 tests pass, zero licensed data required
+## Real result: the suite passes with no licensed data
+
+The full suite runs from a clean clone with no `data/` directory
+present, which is what a public clone actually receives. Verified in a
+`python:3.11-slim` container installing only from the hash-verified
+lock.
+
+Exact counts are deliberately not written into prose here -- they go
+stale on the next commit and then quietly misreport. The authoritative
+figures are the CI run itself (the badge in `README.md`) and the
+machine-readable reports under `reports/`.
 
 ```
-215 passed in 29.91s
-All checks passed! (ruff)
+pytest -q
+pytest -q --cov=recommender --cov-report=term-missing --cov-fail-under=60
+ruff check .
 ```
+
+Three tests previously required the licensed dataset, which contradicted
+this claim. They now use temporary synthetic artifacts and injected
+catalog data instead.
 
 Every dependency `pyproject.toml` declares was sufficient on its own —
 nothing "worked" only because it happened to already be present from

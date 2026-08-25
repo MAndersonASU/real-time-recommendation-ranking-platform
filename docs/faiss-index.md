@@ -37,13 +37,16 @@ behavior of an index degenerating toward brute force as `nprobe` grows.
 
 `nprobe = 256` (every cluster probed) should, in principle, match exact
 search exactly — and it doesn't: recall caps at 0.904, not 1.0. Checked
-directly rather than assumed to be a tuning issue: the 51,282 catalog
-items produce only **284 distinct embedding vectors**. The current item
-tower (`docs/retrieval-model.md`) encodes each item purely from category
-and subcategory, and there are only 283 distinct category/subcategory
-pairs in the catalog — every article sharing a category and subcategory
-gets an identical vector, roughly 180 items per distinct vector on
-average.
+directly rather than assumed to be a tuning issue: at the time of this
+measurement the 51,282 catalog items produced only **284 distinct
+embedding vectors**. The item tower then encoded each item purely from
+category and subcategory, and there are only 283 distinct
+category/subcategory pairs in the catalog — every article sharing a
+category and subcategory got an identical vector, roughly 180 items per
+distinct vector on average.
+
+> **Historical result (superseded).** The measurement above dates from the category/subcategory-only item tower. That limitation was subsequently fixed by giving each article a content vector from its own title and abstract: distinct catalog embeddings rose from 284 to 50,704 and retrieval metrics improved 7.6x-13.5x. See `docs/retrieval-evaluation.md` for the current numbers and `docs/retrieval-model.md` for the change. The original figures are kept here rather than rewritten, so the record of what was measured when stays intact.
+
 
 With that many items tied at the exact same score, "the correct top-50"
 isn't a uniquely defined answer to begin with — exact and approximate

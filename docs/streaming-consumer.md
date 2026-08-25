@@ -36,7 +36,7 @@ the offset unmoved, and a restarted consumer picks the same message back
 up rather than silently skipping it. This is what makes the recovery
 testing that follows this step meaningful.
 
-## Restart idempotency: a redelivered event is repaired, not re-applied
+## Restart idempotency: bounded, not absolute
 
 The Redis state mutation and the Kafka offset commit are two separate
 operations. A crash between them redelivers the message after restart,
@@ -70,6 +70,28 @@ processed-event set stays bounded on its own. That TTL is the real,
 remaining bound on the guarantee: a redelivery arriving after it expires
 would be treated as new. It is set to a day, far longer than any
 realistic restart-and-redelivery window.
+
+### The bound, stated plainly
+
+Atomic event claims provide **bounded** restart and redelivery
+idempotency within the configured retention window. Two limits define
+that bound, and neither is hidden:
+
+- **The claim expires after 24 hours.** A redelivery arriving later than
+  that is treated as new. The window has to exceed the Kafka retention
+  and any realistic restart gap to be meaningful; at a day it comfortably
+  does for this project's replay-driven workload, but it is a
+  configuration value, not a proof.
+- **It protects the recent-feature state, not arbitrary side effects.**
+  What the claim makes idempotent is the Redis state write. Anything
+  else a future consumer might do on an event would need its own
+  treatment.
+
+Replay events carry ids derived from their own immutable fields
+(`stable_event_id`), so re-running the same historical replay is
+idempotent too -- previously those ids were random, and a second replay
+of the same day looked like entirely new traffic that no duplicate
+detection could recognise.
 
 `tests/test_live_sync.py` covers both halves — that a redelivery does
 not double-count, and that the consumer's in-process state is left

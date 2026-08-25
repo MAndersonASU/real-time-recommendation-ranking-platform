@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-08-25 — Reproducibility, evaluation reports, and constrained explanations
+
+- Retrieval quality: the item tower now derives a per-article content
+  vector from each article's title and abstract, replacing a
+  representation that reduced 51,282 articles to 284 distinct vectors.
+  Retrieval depth raised from 50 to 1,000 candidates on tuning-fold
+  evidence.
+- Persisted the fitted article-content transformation to ensure
+  identical feature coordinates across training, index construction,
+  evaluation and serving, with article ordering and dimensions
+  validated on load.
+- Dependency lock rebuilt for Linux against CPU-only PyTorch and
+  installed with hash verification in CI and in the container image;
+  the container previously resolved its own dependencies independently
+  of the tested set. Base image pinned by digest.
+- Removed the unused `httpx2` dependency and declared `httpx`
+  explicitly.
+- The default test suite no longer requires the licensed dataset.
+- Serving-artifact manifest extended to cover the content artifact,
+  retrieval and reranking configuration, feature dimensions, transform
+  seeds, the dependency-lock digest and the source commit. The
+  explanation model is no longer labelled an embedding model.
+- Explanations are produced from structured facts and approved
+  templates; generative rewriting is opt-in and off by default, because
+  the available automated check is lexical and cannot validate meaning.
+  The reported metric is renamed to a lexical-policy pass rate.
+- Serving-path evaluation orders impressions deterministically, scores
+  all impressions sharing a timestamp before applying any of their
+  events, and reconciles point-in-time state from authoritative history.
+- Replay events carry ids derived from their own immutable fields, so a
+  repeated replay is idempotent; the idempotency window is documented as
+  bounded by claim retention.
+- Published machine-readable evaluation reports under `reports/` with
+  source commit, artifact hashes, configuration, seeds, denominators,
+  metric definitions and limitations, plus schema validation.
+- The demo states explicitly when a user is receiving global
+  cold-start popularity recommendations rather than personalized ones.
+- Timezone handling gained real DST-boundary tests covering ambiguous
+  and nonexistent local times; the previous test was renamed to
+  describe what it actually verified.
+
 ## 2026-08-24 — Retrieval quality, restart idempotency, and supply-chain verification
 
 Closes the substantive items left open by the engineering review below.
@@ -24,7 +65,8 @@ Full detail: `docs/engineering-review-and-hardening.md`.
   such user got the same arbitrary slate with identical scores. It now
   draws from training-set popularity.
 - Retrieval, ranking, reranking, ablation, and end-to-end evaluations
-  were all re-run; every published number was updated from those runs.
+  were re-run, and the figures published at that time came from those
+  runs.
 
 ### Serving-path evaluation
 
@@ -41,7 +83,8 @@ Full detail: `docs/engineering-review-and-hardening.md`.
 
 ### Streaming
 
-- **Restart idempotency is now guaranteed, not merely disclosed.**
+- **Atomic event claims provide bounded restart and redelivery
+  idempotency within the configured retention window.**
   `claim_event` stores the resulting state inside a single atomic
   `SET NX` claim, so a message redelivered after a crash between the
   Redis write and the Kafka offset commit is repaired rather than

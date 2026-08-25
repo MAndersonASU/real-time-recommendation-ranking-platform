@@ -19,7 +19,7 @@ the five research questions this project set out to answer;
 `docs/conclusions.md` answers all five from the evidence gathered
 across every phase.
 
-## Real, verified results
+## Measured results
 
 Same frozen K=10 protocol, 30,270 validation impressions throughout
 (`docs/evaluation-protocol.md`):
@@ -70,10 +70,13 @@ recommendation pipeline, using a small local model
 recommendation already made. The layer's structural boundary (it can
 only ever describe a decision already made elsewhere, never feed back
 into ranking) is enforced by the request type itself
-(`docs/explanation-boundary.md`); its wording is checked against a
-closed-vocabulary faithfulness gate before use and falls back to a
-deterministic, evidence-only template on any failure
-(`docs/explanation-generation.md`, `docs/explanation-evaluation.md`).
+(`docs/explanation-boundary.md`). The factual relationship is stated
+by one of a small set of approved templates filled from validated
+values — a generative model never states it. Generative rewriting
+exists but is opt-in and off by default, because the only automated
+check available for generated wording is lexical, and a lexical check
+cannot validate meaning (`docs/explanation-generation.md`,
+`docs/explanation-evaluation.md`).
 
 ## What CI actually runs, and what's verified locally instead
 
@@ -120,7 +123,7 @@ git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platf
 cd real-time-recommendation-ranking-platform
 py -3.11 -m venv .venv && source .venv/Scripts/activate  # Windows; use .venv/bin/activate elsewhere
 pip install -e ".[dev]"
-pytest -q            # no licensed data required
+pytest -q            # runs from a clean clone; the licensed dataset is not needed
 ruff check .
 docker compose up    # starts Kafka, Redis, and the API (needs the real dataset mounted at ./data)
 ```

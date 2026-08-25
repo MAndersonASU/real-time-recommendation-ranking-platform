@@ -12,10 +12,11 @@ The ranking model here is evaluated against the same frozen candidate-set
 definition Phase 2's baselines used (`docs/evaluation-protocol.md`) — MIND's
 own impression list, K=10 — rather than against Phase 3's own top-N
 retrieval output. This is a disclosed methodological choice, not an
-oversight: `docs/retrieval-evaluation.md` already found and explained a
-severe, specific limitation in the current retrieval implementation (the
-item tower's category/subcategory-only features collapse the catalog into
-284 distinct vectors). Ranking those same candidates would only re-surface
+oversight: `docs/retrieval-evaluation.md` had already found and explained a
+severe, specific limitation in the retrieval implementation as it stood
+(the item tower's category/subcategory-only features collapsed the
+catalog into 284 distinct vectors; that cause has since been fixed, and
+distinct embeddings now number 50,704). Ranking those same candidates would only re-surface
 an already-diagnosed problem, not answer anything new. Isolating "does a
 dedicated ranking model improve quality" from "is the current retrieval
 implementation's candidate generation good enough" keeps those two

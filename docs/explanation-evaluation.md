@@ -11,7 +11,7 @@ Implementation: `src/recommender/evaluation/evaluate_explanations.py`.
 
 - **Refusal rate** — how often the system correctly declines to
   explain a recommendation for lack of real supporting evidence.
-- **Faithfulness rate** — of the explanations actually shown, how many
+- **Lexical-policy pass rate** — of the explanations actually shown, how many
   pass an independent check for containing the evidence they claim and
   no unsupported entity, actor, causal claim, guarantee, or
   personalization claim. "Independent" means a genuinely different
@@ -37,7 +37,7 @@ of grammatical connectives, not just avoid unfamiliar capitalized words.
 | Total recommendations evaluated | 180 |
 | Refused (no supporting evidence) | 15 (8.3%) |
 | Attempted explanations | 165 |
-| Faithfulness rate | 100% (165/165) |
+| Lexical-policy pass rate | 100% (165/165) |
 | Model rewrite used | 12 (7.3% of attempted) |
 | Template fallback used | 153 (92.7% of attempted) |
 | Mean explanation length | 55.1 characters |
@@ -74,3 +74,25 @@ coarse category level the ranking model itself uses for
 `category_match` — not to any finer-grained signal. A model
 contribution rate this low means most of that repetition isn't broken
 up by genuine model-authored variation either.
+
+
+## What this metric is, and what it is not
+
+The number above is a **lexical-policy pass rate**: the share of
+produced explanations containing no vocabulary outside the approved
+template plus a small set of grammatical connectives. It was previously
+called a "faithfulness rate", which overstated it.
+
+A lexical check cannot establish semantic faithfulness. Approved words
+can be reordered into a different claim, a subject and object can be
+swapped, and an unsupported assertion can be constructed entirely from
+permitted vocabulary. Those are not hypothetical:
+`tests/test_explanation_generation.py` contains four such sentences and
+asserts that the gate passes each one.
+
+That limitation is why the factual relationship is no longer produced
+by a model at all. Facts are extracted into a structured value, one of
+three approved templates is selected by which evidence is present, and
+only a validated category is substituted. Generative rewriting remains
+available behind an explicit opt-in, where the lexical gate is a
+backstop rather than a guarantee.

@@ -10,14 +10,25 @@ logged in `data/processed/mind_small/experiment_log.jsonl`
 
 ## RQ1: Do learned embeddings help retrieval?
 
-Weak on their own. Full-catalog retrieval evaluation (N=100) scored a
-0.0044 hit rate — barely above the ~0.2% random-chance floor for this
-catalog size (`docs/retrieval-evaluation.md`). This traces to a
-specific, diagnosed cause, not a general failure of learned embeddings:
-the item tower encodes each catalog item purely from category and
-subcategory, producing only 284 distinct embedding vectors across
-51,282 items (`docs/faiss-index.md`) — the model has no way to
-distinguish two articles that share a category. **Answer: not
+A real, measured improvement over the original architecture, still
+short of competitive retrieval quality.
+
+The first answer recorded here was "not demonstrated": full-catalog
+retrieval (N=100) scored a 0.0044 hit rate, barely above the ~0.2%
+random-chance floor, because the item tower encoded each article purely
+from category and subcategory and so produced only 284 distinct
+embedding vectors across 51,282 items — it had no way to tell two
+articles in the same category apart.
+
+That diagnosis was specific and testable, and fixing the diagnosed
+cause moved every retrieval metric by 7.6x to 13.5x (hit rate@100
+0.0044 → 0.0336; distinct embeddings 284 → 50,704). Each article now
+carries a content vector derived from its own title and abstract
+(`docs/retrieval-model.md`, `docs/retrieval-evaluation.md`).
+
+It is still not a working retriever in a deployable sense: the user's
+real next click is absent from a 100-item candidate set roughly 97% of
+the time. **Answer: not
 demonstrated by this architecture, for a diagnosed and fixable reason
 (item-tower feature richness), not a verdict on learned embeddings in
 general.**
