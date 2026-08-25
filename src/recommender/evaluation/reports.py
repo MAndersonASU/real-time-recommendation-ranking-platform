@@ -85,13 +85,23 @@ def source_commit() -> str | None:
 
 
 def working_tree_is_clean() -> bool:
-    """True when nothing is modified, staged or untracked.
+    """True when nothing outside `reports/` is modified, staged or
+    untracked.
 
-    Untracked files count: a report produced with an uncommitted
-    evaluation script sitting in the tree is not reproducible from the
-    recorded commit.
+    Untracked files count, not just modified ones: a report produced with
+    an uncommitted evaluation script sitting in the tree is not
+    reproducible from the recorded commit, and an untracked script is
+    exactly as absent from that commit as an edited one.
+
+    `reports/` is excluded because it is this run's own output. A full
+    evaluation pass publishes several reports, and without the exclusion
+    the first one written would dirty the tree and make every later one
+    refuse -- the check would be blocking correct behaviour rather than
+    incorrect code. Nothing else is exempt; the question the rule exists
+    to answer is whether the recorded commit describes the code that ran,
+    and writing results does not change that answer.
     """
-    status = _git("status", "--porcelain")
+    status = _git("status", "--porcelain", "--", ".", ":(exclude)reports")
     if status is None:
         return False
     return status == ""

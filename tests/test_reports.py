@@ -84,6 +84,39 @@ def test_building_from_a_dirty_tree_is_refused():
         reports_module.working_tree_is_clean = original
 
 
+def test_the_clean_tree_check_ignores_the_reports_directory(monkeypatch):
+    """A full evaluation pass publishes four reports. If writing the
+    first one dirtied the tree, the second would refuse -- the check
+    would be blocking correct behaviour instead of stale code. Only
+    `reports/` is exempt, and the exemption is expressed to git rather
+    than by filtering afterwards, so a path that merely mentions
+    "reports" elsewhere is not accidentally covered.
+    """
+    import recommender.evaluation.reports as reports_module
+
+    seen = {}
+
+    def fake_git(*args):
+        seen["args"] = args
+        return ""
+
+    monkeypatch.setattr(reports_module, "_git", fake_git)
+
+    assert reports_module.working_tree_is_clean() is True
+    assert ":(exclude)reports" in seen["args"]
+
+
+def test_an_unavailable_git_is_treated_as_dirty(monkeypatch):
+    """Failing closed. If the tree's state cannot be established, a
+    report claiming a clean one would be an unverified assertion.
+    """
+    import recommender.evaluation.reports as reports_module
+
+    monkeypatch.setattr(reports_module, "_git", lambda *_a: None)
+
+    assert reports_module.working_tree_is_clean() is False
+
+
 def test_validate_accepts_a_well_formed_report():
     validate_report(_report())  # must not raise
 
