@@ -17,15 +17,24 @@ infrastructural kind of failure actually happens.
 
 ## Deliberately narrow exception handling
 
-`DEPENDENCY_FAILURE_EXCEPTIONS` is `(redis.exceptions.RedisError,
-RuntimeError, OSError)` — not a bare `except Exception`. The same
-discipline already applied to malformed streaming messages
-(`docs/streaming-consumer.md`): catching everything would risk quietly
-hiding a real logic bug behind a "safe" fallback response that looks
-fine on the surface. `RedisError` covers the feature store being
-unreachable; `RuntimeError` is the common base both PyTorch and Faiss
-raise for an unusable model or index; `OSError` covers a missing or
-unreadable model file on disk.
+`safe_recommend` catches exactly one exception type:
+`DependencyUnavailableError` (`recommender.serving.errors`). That type
+is raised only at the three real per-request dependency boundaries --
+the Redis lookup, the two-tower forward pass, and the Faiss search --
+where the underlying library's own exception is caught and translated,
+carrying the reason with it.
+
+An earlier version caught `(redis.exceptions.RedisError, RuntimeError,
+OSError)` directly. That was too broad to be safe: `RuntimeError` and
+`OSError` are raised by plenty of code that is not a failing
+dependency, so a genuine logic bug anywhere in feature construction,
+ranking or reranking could surface as a "successful" popularity
+response that looked fine from the outside.
+
+Translating at the boundary keeps the catch narrow without losing
+coverage: an unreachable feature store, an unusable model and an
+unreadable index still degrade gracefully, while a programming error
+propagates to the API's own error handling and is visible.
 
 ## The fallback itself: Phase 2's first baseline, one more time
 

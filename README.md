@@ -131,7 +131,9 @@ docker compose up    # starts Kafka, Redis, and the API (needs the real dataset 
 Verified end to end from a genuinely fresh clone, including a real
 reproducibility bug this exact check found and fixed:
 `docs/reproducibility.md`. For an exact, fully-pinned dependency
-install instead of `pyproject.toml`'s own lower-bound-only versions,
+install instead of the flexible resolution `pyproject.toml`'s lower
+bounds allow (which resolves to the latest compatible versions, not to
+the lower bounds themselves),
 see `requirements-lock.txt`.
 
 ## Documentation index
