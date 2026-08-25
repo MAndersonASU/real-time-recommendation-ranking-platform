@@ -1,0 +1,86 @@
+{
+  "artifacts": {
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "19e6370dc4c2",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "5966c148a8f3",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "37690c7333d6",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "ddca90b9ad0776c3ff77b1d5b0b650e096ab97e3"
+  },
+  "configuration": {
+    "k": 10,
+    "ordering": "chronological by (time, impression_id)",
+    "state": "isolated per-run store, reconciled from point-in-time history"
+  },
+  "dataset": {
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "source": "docs/dataset-source.md",
+    "split": "validation"
+  },
+  "denominators": {
+    "impressions_evaluated": 2000,
+    "impressions_in_sample": 2000,
+    "impressions_skipped": {}
+  },
+  "generated_at": "2026-08-25T05:08:23.029495+00:00",
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Retrieval is the binding constraint: no ranking improvement can lift the end-to-end result above retrieval_contained_a_click_rate.",
+    "Post-selection development evaluation, not an untouched final estimate.",
+    "Does not reproduce production traffic, concurrency, or infrastructure latency."
+  ],
+  "metric_definitions": {
+    "catalog_coverage": "share of the catalog appearing across all served slates",
+    "durable_feature_coverage": "share of requests served with durable features present",
+    "hit_rate_at_k": "share of impressions whose clicked item is in the served top K",
+    "mrr": "mean reciprocal rank of the first clicked item",
+    "ndcg_at_k": "normalised discounted cumulative gain over the served top K",
+    "recall_at_k": "share of an impression's clicked items in the served top K",
+    "recent_feature_coverage": "share of requests served with recent features present",
+    "retrieval_contained_a_click_rate": "share of impressions where the clicked item was among the retrieved candidates -- a ceiling on every metric below it"
+  },
+  "report_name": "end-to-end-evaluation",
+  "results": {
+    "catalog_coverage": 0.08057408057408058,
+    "durable_feature_coverage": 1.0,
+    "fallback_count": 0,
+    "hit_rate_at_k": 0.0145,
+    "mrr": 0.007415873015873017,
+    "ndcg_at_k": 0.006095751815472829,
+    "recall_at_k": 0.009216666666666666,
+    "recent_feature_coverage": 0.9775,
+    "retrieval_contained_a_click_rate": 0.1215
+  },
+  "schema_version": 1,
+  "source_commit": "ddca90b9ad0776c3ff77b1d5b0b650e096ab97e3"
+}

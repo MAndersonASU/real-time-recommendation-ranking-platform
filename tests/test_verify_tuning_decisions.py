@@ -154,3 +154,61 @@ def test_diversity_budget_rule_is_not_trivially_satisfied_by_the_smallest_cap():
     # A strict budget must therefore reject the most aggressive cap,
     # which the old monotonic rule could never do.
     assert result["cap_selected_by_relevance_budget"]["0.99"] != 1
+
+
+def test_min_fresh_comparison_reports_the_real_relevance_freshness_tradeoff():
+    """The minimum-fresh quota was previously never compared against
+    alternatives. A larger quota forces more swaps and costs relevance,
+    so the comparison must show both sides of that trade.
+    """
+    from recommender.evaluation.verify_tuning_decisions import _compare_min_fresh_values
+
+    news = pd.DataFrame(
+        {
+            "news_id": [f"n{i}" for i in range(12)],
+            "category": ["sports"] * 6 + ["tech"] * 6,
+            "subcategory": ["general"] * 12,
+            "title": [
+                "striker", "goalkeeper", "marathon", "tennis", "cycling", "boxing",
+                "telescope", "currency", "opera", "wildfire", "railway", "vaccine",
+            ],
+            "abstract": [""] * 12,
+        }
+    )
+    category_by_id = news.set_index("news_id")["category"]
+
+    # High-scoring stale items and low-scoring fresh ones, so meeting a
+    # quota genuinely costs relevance.
+    rows = []
+    for impression_id in range(4):
+        for i in range(6):
+            rows.append({"impression_id": impression_id, "news_id": f"n{i}", "ranked_score": 0.9})
+        for i in range(6, 12):
+            rows.append({"impression_id": impression_id, "news_id": f"n{i}", "ranked_score": 0.05})
+    scored_rows = pd.DataFrame(rows)
+
+    impression_time = pd.Series({i: pd.Timestamp("2019-11-12") for i in range(4)})
+    first_seen = pd.Series(
+        # n0-n5 are old; n6-n11 are fresh.
+        {f"n{i}": pd.Timestamp("2019-11-01") for i in range(6)}
+        | {f"n{i}": pd.Timestamp("2019-11-12") for i in range(6, 12)}
+    )
+
+    result = _compare_min_fresh_values(
+        scored_rows, category_by_id, first_seen, impression_time, news=news, sample_impressions=4
+    )
+
+    by_value = result["by_min_fresh_value"]
+    assert set(by_value) == {"0", "1", "2", "3", "5"}
+
+    # Freshness delivered must not fall as the quota rises...
+    fresh_counts = [by_value[str(v)]["mean_fresh_items_in_slate"] for v in (0, 1, 2, 3, 5)]
+    assert fresh_counts == sorted(fresh_counts)
+
+    # ...and buying it must cost relevance, which is what makes a
+    # relevance-budget rule able to discriminate at all.
+    assert by_value["5"]["mean_slate_relevance"] < by_value["0"]["mean_slate_relevance"]
+
+    budgets = result["value_selected_by_relevance_budget"]
+    assert set(budgets) == {"0.90", "0.95", "0.99"}
+    assert all(v in {0, 1, 2, 3, 5, None} for v in budgets.values())

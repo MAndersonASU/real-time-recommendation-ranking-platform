@@ -23,6 +23,7 @@ from recommender.reranking.diversity import DEFAULT_MAX_PER_CATEGORY, build_dive
 from recommender.reranking.freshness import (
     DEFAULT_FRESH_THRESHOLD_DAYS,
     DEFAULT_MIN_FRESH_IN_SLATE,
+    apply_freshness_quota,
     compute_age_days,
     compute_first_seen,
 )
@@ -149,6 +150,19 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
         "fit_rows": len(fit_rows),
         "tune_rows": len(tune_rows),
     }
+
+
+def _score_with_held_out_model(tune_rows: pd.DataFrame, fit_rows: pd.DataFrame) -> pd.DataFrame:
+    """Scores tune-fold rows with a model fitted on the fit half only.
+
+    Reusing the production model would score these rows with a model
+    that had already seen them, which is not the held-out check it
+    would appear to be.
+    """
+    model = train_ranking_model(fit_rows)
+    return tune_rows.assign(
+        ranked_score=model.predict_proba(tune_rows[MODEL_FEATURE_COLUMNS].to_numpy())[:, 1]
+    )
 
 
 def _compare_diversity_cap_values(
@@ -358,6 +372,100 @@ def _compare_freshness_threshold_values(
     }
 
 
+MIN_FRESH_CANDIDATE_VALUES = (0, 1, 2, 3, 5)
+
+
+def _compare_min_fresh_values(
+    scored_rows: pd.DataFrame,
+    category_by_id: pd.Series,
+    first_seen: pd.Series,
+    impression_time: pd.Series,
+    news: pd.DataFrame | None = None,
+    sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS,
+) -> dict:
+    """Compares real alternatives for the minimum-fresh-items quota,
+    the one reranking parameter never previously checked against
+    anything but itself.
+
+    Rule, stated before the numbers below were produced: take the
+    largest quota whose mean slate relevance stays within a stated
+    budget of the unconstrained (quota 0) slate.
+
+    Bounding the *cost* rather than the benefit, deliberately. Fresh
+    items delivered rises monotonically with the quota, so any rule
+    phrased in freshness terms would be cleared by every candidate and
+    would collapse into "pick the largest value tried" -- the defect
+    that made the first diversity-cap rule meaningless
+    (docs/evaluation-integrity.md). Relevance is what a quota actually
+    spends, so that is what the rule constrains.
+    """
+    news = news if news is not None else load_catalog()
+    tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
+
+    sample_ids = scored_rows["impression_id"].drop_duplicates().head(sample_impressions)
+    sample = scored_rows[scored_rows["impression_id"].isin(sample_ids)]
+
+    by_value: dict[str, dict] = {}
+    for min_fresh in MIN_FRESH_CANDIDATE_VALUES:
+        total_relevance = 0.0
+        total_fresh = 0
+        quota_met = 0
+        n = 0
+        for impression_id, group in sample.groupby("impression_id", sort=False):
+            if impression_id not in impression_time.index:
+                continue
+            aged = group.assign(
+                age_days=compute_age_days(
+                    group, pd.Timestamp(impression_time.loc[impression_id]), first_seen
+                )
+            )
+            slate = build_diverse_slate(
+                aged, "ranked_score", TOP_K, category_by_id, tfidf_vectors, tfidf_row_by_id
+            )
+            if min_fresh > 0:
+                slate = apply_freshness_quota(
+                    slate, aged, "ranked_score", min_fresh_in_slate=min_fresh
+                )
+            fresh_count = int((slate["age_days"] <= DEFAULT_FRESH_THRESHOLD_DAYS).sum())
+            total_relevance += float(slate["ranked_score"].sum())
+            total_fresh += fresh_count
+            quota_met += int(fresh_count >= min_fresh)
+            n += 1
+        by_value[str(min_fresh)] = {
+            "mean_slate_relevance": total_relevance / n if n else None,
+            "mean_fresh_items_in_slate": total_fresh / n if n else None,
+            "share_of_slates_meeting_quota": quota_met / n if n else None,
+        }
+
+    unconstrained = by_value["0"]["mean_slate_relevance"]
+
+    def _select(budget: float):
+        if not unconstrained:
+            return None
+        floor = budget * unconstrained
+        affordable = [
+            v for v in MIN_FRESH_CANDIDATE_VALUES
+            if (by_value[str(v)]["mean_slate_relevance"] or 0.0) >= floor
+        ]
+        return max(affordable) if affordable else None
+
+    by_budget = {f"{b:.2f}": _select(b) for b in (0.90, 0.95, 0.99)}
+
+    return {
+        "sample_impressions": len(sample_ids),
+        "by_min_fresh_value": by_value,
+        "selection_rule": (
+            "largest minimum-fresh quota whose mean slate relevance stays within a "
+            "given budget of the unconstrained slate"
+        ),
+        "value_selected_by_relevance_budget": by_budget,
+        "currently_configured_min_fresh_in_slate": DEFAULT_MIN_FRESH_IN_SLATE,
+        "budgets_supporting_current_configuration": [
+            b for b, v in by_budget.items() if v == DEFAULT_MIN_FRESH_IN_SLATE
+        ],
+    }
+
+
 def verify_freshness_threshold() -> dict:
     """Redoes the freshness-candidate-coverage measurement that
     originally justified a 12-hour threshold and a minimum of 2 fresh
@@ -370,7 +478,8 @@ def verify_freshness_threshold() -> dict:
     impression_time = train_behaviors.set_index("impression_id")["time"]
 
     train_rows = pd.read_parquet(TRAIN_PATH)
-    _fit_rows, tune_rows = split_train_for_tuning(train_rows)
+    fit_rows, tune_rows = split_train_for_tuning(train_rows)
+    _fit_rows = fit_rows
 
     at_configured_threshold = _coverage_at_threshold(
         tune_rows, impression_time, first_seen, DEFAULT_FRESH_THRESHOLD_DAYS
@@ -386,6 +495,12 @@ def verify_freshness_threshold() -> dict:
         "currently_configured_min_fresh_in_slate": DEFAULT_MIN_FRESH_IN_SLATE,
         "threshold_value_comparison": _compare_freshness_threshold_values(
             tune_rows, impression_time, first_seen
+        ),
+        "min_fresh_value_comparison": _compare_min_fresh_values(
+            _score_with_held_out_model(tune_rows, _fit_rows),
+            load_catalog().set_index("news_id")["category"],
+            first_seen,
+            impression_time,
         ),
     }
 

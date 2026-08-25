@@ -1,0 +1,75 @@
+{
+  "artifacts": {
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "19e6370dc4c2",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "5966c148a8f3",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "37690c7333d6",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "ddca90b9ad0776c3ff77b1d5b0b650e096ab97e3"
+  },
+  "configuration": {
+    "mode": "deterministic templates; generative rewriting off by default"
+  },
+  "dataset": {
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "source": "docs/dataset-source.md",
+    "split": "validation"
+  },
+  "denominators": {
+    "explanations_evaluated": null
+  },
+  "generated_at": "2026-08-25T05:08:23.160523+00:00",
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "A lexical pass rate is not a semantic guarantee: approved words can be reordered into unsupported claims, as tests/test_explanation_generation.py demonstrates directly."
+  ],
+  "metric_definitions": {
+    "lexical_policy_pass_rate": "share of produced explanations containing no vocabulary outside the approved template plus grammatical scaffolding. A lexical property only -- it does not establish semantic faithfulness."
+  },
+  "report_name": "explanation-evaluation",
+  "results": {
+    "attempted": 165,
+    "distinct_explanations": 9,
+    "faithful": 165,
+    "faithfulness_rate": 1.0,
+    "mean_explanation_length_chars": 55.06666666666667,
+    "model_contribution_rate": 0.07272727272727272,
+    "model_rewrite_used": 12,
+    "refusal_rate": 0.08333333333333333,
+    "refused": 15,
+    "template_fallback_used": 153,
+    "total_recommendations_evaluated": 180
+  },
+  "schema_version": 1,
+  "source_commit": "ddca90b9ad0776c3ff77b1d5b0b650e096ab97e3"
+}
