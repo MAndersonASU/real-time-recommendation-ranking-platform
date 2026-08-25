@@ -31,7 +31,7 @@ licensed-data evaluation from a clean commit.
 
 ## EVAL-RECONCILIATION-02 — End-to-end reconciliation mis-counts repeated clicks
 **Severity** High · **Status** partially closed
-**Fix commits** `1de8dff` (initial), pending completion
+**Fix commits** `1de8dff`, `ec53440`
 
 The original `[n1,n2,n3] + [n3]` duplication is fixed by multiset
 difference. **Residual, reproduced:** multiset subtraction cannot tell a
@@ -61,7 +61,7 @@ rerun under EVAL-PROVENANCE-01 from a clean commit.
 
 ## STREAM-IDEMPOTENCY-03 — Duplicate and concurrent events corrupt user state
 **Severity** High · **Status** partially closed
-**Fix commits** `1de8dff` (rollback), pending completion
+**Fix commits** `1de8dff` (rollback), `ec53440` (lost update, type inference)
 
 Rollback on late duplicate delivery is fixed: a duplicate now returns
 current state rather than the event's historical snapshot.
@@ -76,17 +76,24 @@ reporting success.
 the attempted state contains clicked items, so an impression retried for
 a user with existing click history is re-applied as a click.
 
-**Remaining** Pass the event delta (type, item, timestamp, event id) into
-the atomic script and apply it to state loaded *inside* the script;
-remove state-based inference; add true interleaving tests and
-click/impression conflict combinations; exercise against real Redis in
-CI.
+**Resolved** by passing the event's own fields into the atomic script,
+which loads current state itself and applies the delta. There is no
+caller-computed state to go stale and no event type to infer;
+`_reapply` and the version-conflict retry are removed. Verified: two
+consumers that both read before writing now retain both events, an
+impression stays an impression, and the original rollback case still
+holds.
+
+**Remaining** Exercised only against `InMemoryRedis`. The fake
+implements the script's contract in Python, so real Lua semantics
+(notably `cjson` array encoding) are not covered. Status stays
+`partially closed` until this runs against a real Redis in CI.
 
 ---
 
 ## STREAM-COMMIT-04 — Kafka commit failures handled too weakly
 **Severity** Medium · **Status** partially closed
-**Fix commit** pending · **Tests** `tests/test_consumer.py`
+**Fix commit** `1ddd1a1` · **Tests** `tests/test_consumer.py`
 
 Processing continued after an offset commit failure. Because Kafka
 offsets are cumulative, the next successful commit would also commit the
@@ -106,7 +113,7 @@ broker with consecutive commit failures.
 
 ## ARTIFACT-VALIDATION-05 — Content artifact validation incomplete
 **Severity** High · **Status** partially closed
-**Fix commit** `ccc1106`
+**Fix commits** `ccc1106`, `ec53440`
 
 Rejected now: one-dimensional arrays, wrong save width, NaN/Inf,
 non-floating save dtype, wrong stored dtype, empty and duplicate ids.
@@ -117,9 +124,11 @@ Artifacts carry a payload checksum, and tampering is detected.
 `CONTENT_DIM`. An artifact declaring width 3, with a matching checksum,
 loads successfully.
 
-**Remaining** Require `stored_width == CONTENT_DIM`; extend the checksum
-to cover shape, dtype and ids; decide whether legacy artifacts without
-metadata are still acceptable.
+**Resolved** the declared width is now checked against `CONTENT_DIM`
+rather than trusted.
+
+**Remaining** The checksum covers matrix bytes only, not shape, dtype or
+ids; artifacts predating the metadata fields are still accepted.
 
 ---
 
@@ -240,9 +249,12 @@ characters rejected; applied to both the JSON body and the `/demo` path.
 characters. `U1​2` (zero-width space), `‎` and `﻿` are
 accepted despite `str.isprintable()` reporting False.
 
-**Remaining** Positive allow-list `^[A-Za-z0-9._:-]{1,128}$`, or an
-additional `isprintable()` validator, plus tests for zero-width,
-bidirectional and separator characters.
+**Resolved** replaced with the positive allow-list
+`^[A-Za-z0-9._:-]{1,128}$`. Zero-width space, bidirectional marks and
+byte-order marks are now rejected.
+
+**Remaining** Status stays `partially closed` pending explicit
+regression tests for each Unicode category.
 
 ## FEATURE-TIMEZONE-20 — `hour_of_day` semantics may differ offline vs online
 **Severity** Medium · **Status** open
