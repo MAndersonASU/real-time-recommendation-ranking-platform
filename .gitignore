@@ -22,3 +22,8 @@ models/
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage output, produced by the test run rather than authored.
+.coverage
+.coverage.*
+htmlcov/
