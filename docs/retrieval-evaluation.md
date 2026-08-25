@@ -26,7 +26,7 @@ content features (`docs/retrieval-model.md`).
 | NDCG@100 | 0.0006 | **0.0060** | 10x |
 | MRR | 0.0002 | **0.0027** | 13.5x |
 | Catalog coverage@100 | 0.2194 | **0.3313** | 1.5x |
-| Distinct items recommended | — | 16,990 | — |
+| Distinct items recommended | â€” | 16,990 | â€” |
 
 The architecture limitation that produced the "before" column is gone:
 the item tower now emits **50,704 distinct embedding vectors** across
@@ -43,7 +43,7 @@ problem.
 
 ## Why the original result happened, and what changed
 
-The original result was not a mystery — it followed directly from a
+The original result was not a mystery â€” it followed directly from a
 limitation documented in `docs/faiss-index.md`: the item tower encoded
 every catalog item purely from category and subcategory, collapsing
 51,282 items into 284 distinct embedding vectors. Retrieval was

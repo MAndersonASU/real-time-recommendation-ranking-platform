@@ -46,29 +46,62 @@ list the original protocol scores).
 
 ## Real result
 
-Chronologically-earliest validation impressions, K=10. "Before" is the
-state this evaluation first reported; "after" is the same measurement
-following the fixes described below and the item-tower change in
-`docs/retrieval-evaluation.md`.
+K=10, 5,000 impressions drawn by seeded uniform sampling from the
+30,270-impression validation split
+(`reports/end-to-end-evaluation.json`).
 
-| Metric | Before (2,000) | After (2,000) | Change |
-|---|---|---|---|
-| Impressions evaluated | 2,000 (0 skipped) | 2,000 (0 skipped) | — |
-| Durable-feature coverage | 100% | 100% | — |
-| Recent-feature coverage | 8.2% | **97.8%** | 11.9x |
-| Fallback count | 0 | 0 | — |
-| Catalog coverage | 3.9% | **8.1%** | 2.1x |
-| **Retrieval contained a click** | **0.2%** | **12.2%** | **61x** |
-| Hit rate@10 | 0.0005 | **0.0145** | 29x |
-| Recall@10 | 0.00025 | **0.0092** | 37x |
-| NDCG@10 | 0.00013 | **0.0061** | 46x |
-| MRR | 0.000125 | **0.0074** | 59x |
+| Metric | Result |
+|---|---|
+| Impressions evaluated | 5,000 (0 skipped) |
+| Distinct users | 4,612 |
+| Durable-feature coverage | 100% |
+| Recent-feature coverage | 97.6% |
+| Fallback count | 0 |
+| Catalog coverage | 12.5% |
+| **Retrieval contained a click** | **14.1%** |
+| Hit rate@10 | **0.0084** |
+| Recall@10 | **0.0054** |
+| NDCG@10 | **0.0042** |
+| MRR | **0.0048** |
+
+### The sample used to be a prefix, and that mattered
+
+Earlier versions of this table reported the chronologically *earliest*
+2,000 impressions, selected with `head(2000)`. That is not a sample of
+the split: it covers roughly the first hour of a single day and
+whichever users happened to be active in it. Selection is now a seeded
+uniform draw across the whole split, which spans 00:02 to 23:58 and
+4,612 distinct users.
+
+The correction was not cosmetic. Against the old prefix the same system
+measured:
+
+| Metric | Prefix, n=2,000 | Representative, n=5,000 |
+|---|---|---|
+| Retrieval contained a click | 12.2% | **14.1%** |
+| Hit rate@10 | 0.0145 | **0.0084** |
+| NDCG@10 | 0.0061 | **0.0042** |
+| MRR | 0.0074 | **0.0048** |
+
+The prefix **overstated end-to-end hit rate by about 1.7x**. Note that
+the two directions disagree: retrieval looks *better* on the
+representative sample while every downstream metric drops. So the
+earliest impressions were not uniformly easier — they were harder to
+retrieve for and easier to rank within, and a prefix cannot show that
+because it holds the confound fixed. The published figures above are
+the representative ones.
+
+A further caveat on precision, now that it is visible: at a hit rate
+near 1%, the metric rests on a few dozen hits even at n=5,000. Sample
+size was raised from 500 for exactly this reason. Variance across
+several seeds has not been measured, so these figures are reproducible
+— the seed is recorded — but their sampling error is not quantified.
 
 `retrieval_contained_a_click` is the row that explains the rest: it
 reports how often the item the user actually clicked was among the
 candidates retrieval handed to the ranker. It is a hard ceiling, since
 ranking cannot promote an item it never received. Raising it from 0.2%
-to 12.2% is what moved every metric below it.
+to 14.1% is what moved every metric below it.
 
 Three separate changes produced this, and they are worth keeping
 distinct rather than credited as one:
@@ -81,8 +114,8 @@ distinct rather than credited as one:
 3. **Two zero-vector defects were fixed**, described immediately below.
 
 Absolute quality remains low and should be read as such: a hit rate of
-1.45% means this system puts the user's real next click in a ten-item
-slate about once in every seventy impressions. That is a large relative
+0.84% means this system puts the user's real next click in a ten-item
+slate about once in every 119 impressions. That is a large relative
 improvement on a genuinely hard task (ten items chosen from 51,282), not
 a competitive recommender.
 
@@ -134,11 +167,11 @@ That cause has since been fixed rather than restated, and the numbers
 above are the result. What remains true, and should not be smoothed
 over:
 
-- **This is still not a competitive recommender.** Hit rate@10 of 1.45%
+- **This is still not a competitive recommender.** Hit rate@10 of 0.84%
   means the user's real next click reaches their slate roughly once in
-  seventy impressions.
+  119 impressions.
 - **Retrieval is still the binding constraint.** The clicked item
-  reaches the ranker 12.2% of the time, so no ranking or reranking work
+  reaches the ranker 14.1% of the time, so no ranking or reranking work
   can lift the end-to-end result past that ceiling. Further gains have
   to come from retrieval quality, not from the stages after it.
 - **Coverage numbers mean something specific here.** Durable- and

@@ -80,8 +80,14 @@ from a local machine. The authoritative source is the run itself.
   Deliberately not transcribed into prose here, because a hardcoded
   count goes stale on the next commit and then quietly misreports.
 - **Ruff**: passes.
-- **Bandit**: no medium- or high-severity findings. Six low-severity
-  findings remain and were reviewed — see below.
+- **Bandit**: no medium- or high-severity findings, which is what the
+  `lint-and-test` job enforces (`bandit -ll`). Low-severity findings
+  remain and were reviewed by category — see below. The count is
+  deliberately not transcribed here, for the same reason the test counts
+  above are not: it changes with every commit that adds a `subprocess`
+  import, and a stale number in prose misreports with more authority
+  than no number at all. An earlier version of this document said "six"
+  and was wrong within a few commits.
 - **pip-audit**: runs as a blocking CI step against the hash-verified
   lock. See the caveat below regarding `torch`.
 - **Container test**: the `api-container-test` job builds the real
@@ -98,8 +104,8 @@ from a local machine. The authoritative source is the run itself.
 
 | ID | Location | Assessment |
 |---|---|---|
-| B105 | `data/schema.py` | False positive — the matched value is a regex for a MIND impression token (`<news_id>-<0\|1>`), not a credential. Suppressed narrowly at that line with justification. |
-| B404, B603, B607 ×2 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py` | Real category, low risk. Both call `git rev-parse HEAD` with a fully static argument list and no user input. Left unsuppressed rather than silenced, since the category is legitimate even where this instance is safe. |
+| B105 | `data/schema.py`, `evaluation/publish.py` | False positives — Bandit matches identifiers containing "pass". One is a regex for a MIND impression token (`<news_id>-<0\|1>`); the other is the metric key `lexical_policy_pass_rate`. Neither is a credential. |
+| B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py` | Real category, low risk. Each calls `git` with a fully static argument list and no user input, to record the commit a result came from. Left unsuppressed rather than silenced, since the category is legitimate even where these instances are safe. |
 
 ### pip-audit caveat
 
@@ -132,9 +138,9 @@ generalization estimates.
 |---|---|---|
 | Retrieval hit rate@100 (30,270 impressions, full 51,282-item catalog) | 0.0044 | **0.0336** |
 | Distinct catalog embeddings | 284 | **50,704** |
-| End-to-end retrieval-contains-click@10 (2,000 impressions) | 0.002 | **0.1215** |
-| End-to-end hit rate@10 | 0.0005 | **0.0145** |
-| End-to-end MRR | 0.000125 | **0.0074** |
+| End-to-end retrieval-contains-click@10 (5,000 impressions) | 0.002 | **0.1414** |
+| End-to-end hit rate@10 | 0.0005 | **0.0084** |
+| End-to-end MRR | 0.000125 | **0.0048** |
 
 Protocol: K=10, frozen evaluation contract (`docs/evaluation-protocol.md`).
 Full metric definitions and denominators: `reports/`.
@@ -144,6 +150,27 @@ Full metric definitions and denominators: `reports/`.
 Diversity cap, freshness threshold, minimum-fresh quota and retrieval
 depth were compared against alternatives on a fold carved from `train`,
 never on `validation` (`docs/evaluation-integrity.md`).
+
+These comparisons are now run against a feature table built from a
+retrieval model trained on the fit half alone
+(`recommender.retrieval.train_fit_only`). Previously the ranking model
+was refit on the fit half but `retrieval_score` came from a retrieval
+model trained on all of `train`, tuning fold included — the fold was
+held out from one model and not the other. The published report records
+which feature table produced it (`tune_fold_leakage: false`), so a run
+that fell back to the leaked table cannot be mistaken for a clean one.
+
+**One decision is not supported by its own evidence.** The
+minimum-fresh quota is configured at 2. The selection rule — the
+largest quota whose mean slate relevance stays within a given budget of
+the unconstrained slate — chooses 5 at the 0.90 and 0.95 budgets and 3
+at 0.99. No budget tried selects 2, so
+`budgets_supporting_current_configuration` is empty. The configured
+value is more conservative than the rule would pick, which is a
+defensible product choice but is *not* what the tuning evidence
+recommends, and it should not be described as validated by it. The
+diversity cap, by contrast, is configured at 3 and is selected by the
+0.90 budget.
 
 ### Untouched final evaluation
 
@@ -167,11 +194,11 @@ These are understood engineering boundaries and future work, not
 concealed failures.
 
 - **Recommendation quality remains low.** End-to-end hit rate@10 is
-  approximately 1.45%. This is a production-oriented reference
+  approximately 0.84%. This is a production-oriented reference
   implementation with measured limitations, not a competitive
   recommender.
 - **Retrieval is the primary ceiling.** The clicked item reaches the
-  ranker in about 12% of impressions, so no ranking or reranking work
+  ranker in about 14% of impressions, so no ranking or reranking work
   can lift the end-to-end result past that.
 - **Cold-start recommendations are global popularity.** Every user
   without features receives the same slate. This is deliberate;
@@ -184,6 +211,9 @@ concealed failures.
   the data can settle — the diversity relevance budget, the
   minimum-fresh budget, and retrieval depth, whose predefined latency
   budget did not bind at any depth tried.
+- **The deployed minimum-fresh quota (2) is not the value its own
+  selection rule picks** at any budget tested (see above). It is a
+  deliberately conservative choice, not a measured one.
 - **Public CI cannot reproduce licensed-data quality metrics.**
 - **Kafka idempotency is bounded by claim retention** (24 hours) and
   covers the recent-feature state write, not arbitrary side effects.

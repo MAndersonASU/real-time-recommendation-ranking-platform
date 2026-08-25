@@ -147,29 +147,44 @@ ids; artifacts predating the metadata fields are still accepted.
 ---
 
 ## ARTIFACT-BUNDLE-06 — Model and content artifacts are not one atomic bundle
-**Severity** High · **Status** open
+**Severity** High · **Status** verified closed
+**Fix commit** `5a3ea8e` · **Tests** `tests/test_bundle.py`
 
-A newly written content artifact can coexist with an older retrieval
-model if training fails between writes, so a model can interpret vectors
-from a different fitted basis.
+A newly written content artifact could coexist with an older retrieval
+model if training failed between writes, so a model could interpret
+vectors from a different fitted basis.
 
-**Remaining** Write to a versioned temporary directory; record content
-hash, catalog hash, dimensions and transformer version in model
-metadata; validate on load; switch an active pointer only after all
-artifacts are written; simulate partial training failure.
+**Fixed** `recommender.retrieval.bundle` records the retrieval model
+hash, content artifact hash, catalog hash, both dimensions and the
+catalog item count in a single manifest, written atomically via
+`os.replace` only after every artifact it covers exists. `validate_bundle`
+raises `BundleError` on any mismatch at load. If training fails partway,
+the previous manifest stays in place and serving refuses the mismatched
+set rather than loading a new content matrix against an old model.
+
+The fit-half bundle exercises this a second time: it writes its own
+manifest to its own path, and the two bundles cannot overwrite each
+other (`tests/test_fit_only_bundle.py`).
 
 ---
 
 ## ARTIFACT-TRANSFORMERS-07 — Fitted transformers unavailable for new articles
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** accepted limitation
 
 The persisted matrix covers the fixed catalog; the fitted TF-IDF/SVD
 transformers are not available to project a genuinely new article into
 the same basis.
 
-**Remaining** Either persist and validate the fitted transformers, or
-state explicitly that this is a fixed-catalog demonstration without
-online item onboarding.
+**Decision** Accepted as a scope boundary rather than closed. This is a
+fixed-catalog research platform evaluated against a frozen MIND
+snapshot; it has no online item-onboarding path, so there is no
+production flow in which a genuinely new article would need projecting.
+Persisting the transformers would add an artifact whose correctness
+nothing in this system exercises.
+
+Stated explicitly rather than left implicit: **a new article cannot be
+served by the content-aware retrieval path without refitting.**
+Recorded in `docs/limitations.md`.
 
 ---
 
@@ -254,10 +269,18 @@ hashing as `absent`. Paths now resolve through `recommender.paths`,
 anchored to the repository root or an explicit `RECOMMENDER_DATA_ROOT`.
 
 ## MANIFEST-COVERAGE-12 — Manifest omits response-affecting inputs
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `0945f55` · **Tests** `tests/test_artifact_manifest.py`
 
-Popularity, first-seen and durable-feature snapshots are not hashed, so
-recommendations can change without the serving version changing.
+Popularity, first-seen and durable-feature snapshots were not hashed, so
+recommendations could change without the serving version changing.
+
+**Fixed** The manifest now carries `behaviour_splits`, fingerprinting the
+train and validation behaviour files those snapshots are derived from.
+The derivation is deterministic given the code, whose commit is already
+in the manifest, so inputs plus code identify the outputs — hashing the
+derived frames themselves would add startup cost without adding
+information.
 
 ## FEATURE-FRESHNESS-13 — Durable-feature freshness is not operational
 **Severity** Medium · **Status** verified closed (scope decision)
@@ -275,7 +298,16 @@ Automated atomic refresh is future work by agreed scope decision, not
 a missing production feature.
 
 ## FEATURE-DETERMINISM-14 — Durable features nondeterministic on tied timestamps
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `5a3ea8e` · **Tests** `tests/test_ranking_features.py`
+
+Two impressions sharing a timestamp were resolved in whatever order the
+source supplied, so the same data could produce different durable
+features.
+
+**Fixed** `compute_durable_features` sorts on `("time", "impression_id")`
+with a stable mergesort before taking each user's last row, making
+`impression_id` the deterministic tiebreak.
 
 ## SUPPLY-RUNTIME-LOCK-15 — Production image installs dev and audit tooling
 **Severity** Medium · **Status** verified closed
@@ -316,7 +348,14 @@ recovery test exists, and CI checks connectivity rather than AOF
 recovery.
 
 ## SCHEMA-EVENT-18 — Event schema validation too permissive
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `5a3ea8e` · **Tests** `tests/test_streaming_schema.py`
+
+**Fixed** `InteractionEvent.validate()` enforces an allow-list of
+sources, a 128-character identifier bound, a character pattern, RFC 3339
+timestamps and a fixed field set. Event ids are uuid5-derived from the
+event's own content, so the same real event produces the same id across
+producers rather than a fresh one per send.
 
 ## API-USERID-19 — User ids insufficiently bounded
 **Severity** Medium · **Status** partially closed
@@ -337,10 +376,27 @@ byte-order marks are now rejected.
 regression tests for each Unicode category.
 
 ## FEATURE-TIMEZONE-20 — `hour_of_day` semantics may differ offline vs online
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `0945f55` · **Tests** `tests/test_ranking_features.py`
+
+Two definitions of `hour_of_day` existed, one for training and one for
+serving, so a model trained on one convention could be served under the
+other.
+
+**Fixed** A single `hour_of_day(timestamp)` definition, used by both
+paths.
 
 ## SUPPLY-IMAGE-PINS-21 — Redis, Kafka and Actions use mutable tags
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `5a3ea8e`
+
+A tag is mutable: whoever controls the image or action repository can
+repoint it, and every later run silently executes different code.
+
+**Fixed** `docker-compose.yml` pins Redis and Kafka by image digest;
+every GitHub Action is pinned by commit SHA, with a trailing comment
+recording which release each SHA was so an intentional upgrade stays
+readable.
 
 ## API-EXPOSURE-22 — API bound to all interfaces
 **Severity** Medium · **Status** verified closed
@@ -354,17 +410,49 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 
 | ID | Title | Status |
 |---|---|---|
-| DOC-METRIC-PROMINENCE-23 | Candidate-list metrics more prominent than end-to-end | open |
-| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | open |
-| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | open |
-| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | open |
-| DOC-MINFRESH-EVIDENCE-27 | Minimum-fresh comparison claimed but absent from committed report | open |
-| DOC-BANDIT-COUNTS-28 | Hardcoded Bandit counts go stale | open |
-| DOC-OVERCLAIM-29 | Claims stronger than implementation | open |
-| DOC-SETUP-ENCODING-30 | POSIX activation on Windows; replacement characters | open |
-| DOC-LOCKGEN-31 | Lock-regeneration instructions incomplete | open |
+| DOC-METRIC-PROMINENCE-23 | Candidate-list metrics more prominent than end-to-end | verified closed |
+| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | verified closed |
+| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | verified closed |
+| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | verified closed |
+| DOC-MINFRESH-EVIDENCE-27 | Minimum-fresh comparison claimed but absent from committed report | verified closed |
+| DOC-BANDIT-COUNTS-28 | Hardcoded Bandit counts go stale | verified closed |
+| DOC-OVERCLAIM-29 | Claims stronger than implementation | verified closed |
+| DOC-SETUP-ENCODING-30 | POSIX activation on Windows; replacement characters | verified closed |
+| DOC-LOCKGEN-31 | Lock-regeneration instructions incomplete | verified closed |
 | TEST-STARLETTE-32 | TestClient deprecation warning | accepted limitation |
-| TEST-SVD-WARNING-33 | Degenerate SVD warning in a test | open |
+| TEST-SVD-WARNING-33 | Degenerate SVD warning in a test | verified closed |
+
+**DOC-METRIC-PROMINENCE-23** — the README led with hit rate@10 = 0.6828,
+which is the candidate-list protocol (rank a few dozen supplied items
+that already contain the click), while the end-to-end figure sat in a
+linked document. Both protocols are now shown, the end-to-end one first
+and labelled as the number to judge the system by.
+
+**DOC-MINFRESH-EVIDENCE-27** — the comparison now runs and is published.
+It shows the deployed minimum-fresh quota of 2 is **not** selected by
+its own rule at any budget tested (the rule picks 5, 5 and 3). Recorded
+as a conservative product choice rather than a measured one.
+
+**DOC-BANDIT-COUNTS-28** — the transcribed count ("six low-severity
+findings") had already gone stale; the real count was ten. The count is
+no longer transcribed, matching how the same document already treats
+test counts.
+
+**DOC-SETUP-ENCODING-30** — worse than described. `docs/retrieval-evaluation.md`
+contained three raw `0x97` bytes (cp1252 em-dashes written without
+encoding) in an otherwise UTF-8 file, making the whole document
+undecodable by any strict UTF-8 reader. Repaired. The README's
+virtualenv activation line also assumed one platform and now covers
+PowerShell, Git Bash and POSIX separately.
+
+**DOC-LOCKGEN-31** — the documented `pip-compile` command produced a
+single combined lock and omitted the PyTorch CPU index, so following it
+would have pulled the multi-gigabyte CUDA wheel into the runtime set.
+Both commands are now documented.
+
+**TEST-SVD-WARNING-33** — caused by a single-user fixture leaving the
+interaction matrix with no between-user variance. Fixed by making the
+fixture non-degenerate, not by silencing the warning.
 
 ## Accepted limitations
 
@@ -385,10 +473,28 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 
 ## Status summary
 
-Remediation and evaluation regeneration are in progress. Current
-machine-readable evaluation reports should be treated as development
-evidence until the provenance and leakage corrections
-(EVAL-PROVENANCE-01, EVAL-RETRIEVAL-LEAKAGE-09, EVAL-SAMPLING-10) are
-complete and the affected evaluations have been rerun.
+All four published reports have been regenerated from clean commits of
+the corrected code, with provenance recorded by the run that measured
+them. The tuning comparisons ran against the leakage-free fit-half
+feature table (`tune_fold_leakage: false`).
+
+**Not closed**, and each is recorded above with what remains:
+
+- STREAM-IDEMPOTENCY-03 — the Lua path is proven against the in-process
+  Redis stand-in, not a real Redis in CI.
+- STREAM-COMMIT-04 — commit-failure behaviour is tested against a fake
+  broker, not a real one.
+- STREAM-DURABILITY-17 — the AOF bound is configured and documented but
+  not demonstrated by an abrupt-kill recovery test.
+- API-USERID-19 — the identifier pattern is enforced; Unicode category
+  behaviour is not separately tested.
+- ARTIFACT-VALIDATION-05 — the content checksum covers the matrix bytes;
+  shape, dtype and id ordering are validated separately rather than
+  folded into one fingerprint.
+- EVAL-SAMPLING-10 — sampling is representative, seeded and recorded,
+  but variance across several seeds is not measured, so the published
+  figures' sampling error is unquantified.
+
+Accepted limitations are listed above and are not counted as closed.
 
 This project is **not** in a state where all audit findings are closed.

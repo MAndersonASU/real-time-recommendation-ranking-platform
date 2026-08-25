@@ -21,8 +21,36 @@ across every phase.
 
 ## Measured results
 
-Same frozen K=10 protocol, 30,270 validation impressions throughout
-(`docs/evaluation-protocol.md`):
+Two different protocols are reported below, and the difference between
+them is larger than the difference between any two rows inside either
+one. Reading either number without the other will mislead.
+
+### End to end: what the assembled system actually does
+
+The real `/recommend` path — retrieval over the full 51,282-item
+catalog, then ranking, then reranking — replayed against 5,000
+chronologically ordered validation impressions with point-in-time
+state (`reports/end-to-end-evaluation.json`):
+
+| Metric | Result |
+|---|---|
+| Retrieval contained the click (ceiling) | 0.1414 |
+| **Hit rate@10** | **0.0084** |
+| NDCG@10 | 0.0042 |
+| MRR | 0.0048 |
+
+A hit rate of 0.84% means the user's real next click lands in the
+ten-item slate roughly once in every 119 impressions. Retrieval is the
+binding constraint: no ranking improvement can lift the result above
+the 14.1% ceiling, because ranking cannot promote an item it never
+received. **This is the number to judge the system by.**
+
+### Candidate-list protocol: what the ranking model contributes
+
+The frozen research protocol scores MIND's own supplied impression
+candidate list — a few dozen items per impression, already containing
+the click — to isolate ranking quality from retrieval quality
+(`docs/evaluation-protocol.md`, 30,270 impressions, K=10):
 
 | Stage | Hit rate@10 | NDCG@10 |
 |---|---|---|
@@ -31,11 +59,14 @@ Same frozen K=10 protocol, 30,270 validation impressions throughout
 | + Learned ranking model | **0.6828** | **0.3671** |
 | + Diversity/freshness reranking | 0.6675 | 0.3610 |
 
-The learned ranking model is the clearest, largest gain in the
-pipeline; reranking trades a small amount of relevance for a real,
-measured diversity and freshness improvement (mean distinct categories
-per slate +15.1%, slates below the freshness quota −9.8% relative,
-`docs/reranking-evaluation.md`).
+These figures are high because the task is easy by construction: pick
+from a short list that already contains the answer. They measure
+ranking, and nothing here should be read as end-to-end quality — the
+section above is that. The learned ranking model is the clearest gain
+within this protocol; reranking trades a small, measured amount of
+relevance (−2.2% hit rate) for a diversity and freshness improvement
+(mean distinct categories per slate +15.1%, slates below the freshness
+quota −9.8% relative, `docs/reranking-evaluation.md`).
 
 Retrieval was originally diagnosed as weak in isolation and traced to a
 specific, quantified cause: the item tower represented every article by
@@ -121,7 +152,10 @@ Windows) if your default `python` resolves to something newer.
 ```bash
 git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platform.git
 cd real-time-recommendation-ranking-platform
-py -3.11 -m venv .venv && source .venv/Scripts/activate  # Windows; use .venv/bin/activate elsewhere
+py -3.11 -m venv .venv
+# Windows (PowerShell):   .venv\Scripts\Activate.ps1
+# Windows (Git Bash):     source .venv/Scripts/activate
+# macOS / Linux:          source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q            # runs from a clean clone; the licensed dataset is not needed
 ruff check .

@@ -160,6 +160,40 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
 
 
 
+def collect_sampling(report: dict) -> dict:
+    """Gathers every comparison's own sampling description.
+
+    Each comparison draws its own sample, so there is no single one to
+    report. Walking for them rather than reaching into a fixed key path
+    is deliberate: an earlier version indexed
+    `report["diversity_cap"]["sampling"]`, which sits one level above
+    where the description actually is, and the mistake only surfaced as
+    a KeyError after a twenty-minute run had already finished
+    measuring. A publishing step must not be able to discard completed
+    work over a key path.
+    """
+    found: dict = {}
+
+    def walk(node, path):
+        if not isinstance(node, dict):
+            return
+        for key, value in node.items():
+            if key == "sampling" and isinstance(value, dict):
+                found[path.lstrip(".")] = value
+            elif isinstance(value, dict):
+                walk(value, f"{path}.{key}")
+
+    walk(report, "")
+    return {
+        "method": (
+            "seeded uniform random without replacement, drawn independently for each "
+            "comparison"
+        ),
+        "seed": DEFAULT_SAMPLE_SEED,
+        "by_comparison": found,
+    }
+
+
 def _load_tuning_rows() -> tuple[pd.DataFrame, dict]:
     """Loads the feature table the tuning comparisons run on.
 
@@ -695,9 +729,7 @@ def main() -> None:
     # Every section here draws its own sample; the diversity-cap section's
     # description stands for the run, and each section carries its own
     # alongside its numbers.
-    published = publish_tuning_report(
-        report, sampling=report["diversity_cap"]["sampling"]
-    )
+    published = publish_tuning_report(report, sampling=collect_sampling(report))
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 

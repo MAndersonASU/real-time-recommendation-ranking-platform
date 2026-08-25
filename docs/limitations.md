@@ -83,3 +83,41 @@ A/B test) that this project's frozen research scope (`docs/research-
 scenario.md`) explicitly does not attempt, and the replay-based
 evaluation (`docs/replay-evaluation.md`) was equally
 explicit about not pretending to be one.
+
+## New articles cannot be served without a refit
+
+The persisted content artifact is a matrix covering the catalog it was
+fitted on. The fitted TF-IDF vocabulary and SVD basis that produced it
+are not persisted, so there is no way to project a genuinely new article
+into the same coordinate system at serving time. A new article can only
+enter the content-aware retrieval path by refitting the transformation
+and retraining the item tower against it.
+
+This is a scope boundary rather than an oversight: the platform is
+evaluated against a frozen MIND snapshot and has no online
+item-onboarding flow, so persisting the transformers would add an
+artifact that nothing in this system exercises. It is stated here
+because "content-aware retrieval" otherwise implies an ability this
+does not have (ARTIFACT-TRANSFORMERS-07 in `docs/audit-register.md`).
+
+## Retrieval queries ignore durable history
+
+`recommend()` builds its two-tower query vector from the user's recent
+in-session clicks held in Redis, and from nothing else. A returning user
+with a long durable click history but no activity in the current window
+therefore produces an empty query and is retrieved for as though they
+were a cold start — they receive the global popularity-shaped slate
+while their own history sits unused in the durable feature store.
+
+This was found by running the API against real users rather than by
+reading the code, and it is a genuine gap between what the offline
+evaluation measures and what the live path does: the end-to-end
+evaluation seeds its isolated store from each impression's own
+point-in-time `history` field, so it exercises a query the live service
+would not construct for the same user. The reported
+`recent_feature_coverage` of 97.6% reflects that seeding, not live
+behaviour.
+
+Fixing it means building the retrieval query from durable history when
+recent state is empty. That is a serving-path change with its own
+evaluation requirements and is not attempted here.

@@ -54,14 +54,22 @@ def test_rank_by_collaborative_filtering_recovers_a_clean_two_group_pattern():
 
 
 def test_falls_back_to_popularity_for_a_user_never_seen_in_training():
+    # Two distinct users, not one. With a single user the interaction
+    # matrix has no between-user variance, so TruncatedSVD divides by a
+    # zero total and emits a RuntimeWarning while computing
+    # explained_variance_ratio_. That warning said nothing about the
+    # behaviour under test -- it was an artifact of a degenerate
+    # fixture. A second real user removes it without weakening the
+    # assertion, which is about an entirely *unseen* user either way.
     train = _behaviors(
         [
             (1, "U1", "2019-11-09 10:00:00", "A-1 B-0"),
             (2, "U1", "2019-11-09 11:00:00", "A-1 B-0"),
             (3, "U1", "2019-11-09 12:00:00", "B-1 A-0"),
+            (4, "U2", "2019-11-09 13:00:00", "A-1 B-0"),
         ]
     )
-    popularity = compute_popularity(train)  # A=2, B=1
+    popularity = compute_popularity(train)  # A=3, B=1
     user_factors, item_factors, user_row_by_id, item_row_by_id = build_collaborative_factors(
         train, n_components=1
     )
