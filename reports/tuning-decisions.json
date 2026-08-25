@@ -1,0 +1,332 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "aabf1e851c2e",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "37690c7333d6",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "c59b199a8741392a8a31c4bbdf9361b69be39293"
+  },
+  "configuration": {
+    "selection_rules": "cost-bounded (relevance or latency budgets)",
+    "split": "fit/tune fold from train; validation is never used here"
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "tuning fold carved from train",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "comparisons_reported": 5,
+    "tune_fold_impressions": 25140
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Budget values are product judgments, not results this data can settle.",
+    "The retrieval-depth latency budget did not bind at any depth tried, so that comparison is reported as a tradeoff table rather than a rule-selected value.",
+    "The chronological-split popularity check is confounded by user composition."
+  ],
+  "metric_definitions": {
+    "diversity_cap": "compares real slates built at several per-category cap values and reports, for each relevance budget, the cap the selection rule picks against the cap currently configured",
+    "freshness_threshold": "the same treatment for the freshness age threshold and the minimum-fresh-items quota, each against its own alternatives",
+    "popularity_exclusion": "re-checks, on the tuning fold, the original decision to drop `popularity` from the ranking model. Reports the fold's out-of-sample AUC for the feature against the original validation-measured AUC",
+    "popularity_exclusion_temporal_split_diagnostic": "the same check against a chronologically split fold rather than a random one, testing whether short-term popularity recency leaks across a same-window random split. A diagnostic, not a decision",
+    "retrieval_depth": "measures what retrieval depth buys against a predefined latency budget. Reported as a tradeoff table rather than a rule-selected value, because the budget did not bind at any depth tried"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.evaluation.verify_tuning_decisions",
+    "generated_at": "2026-08-25T19:45:24.700293+00:00",
+    "source_commit": "c59b199a8741392a8a31c4bbdf9361b69be39293",
+    "working_tree_clean": true
+  },
+  "report_name": "tuning-decisions",
+  "results": {
+    "diversity_cap": {
+      "cap_value_comparison": {
+        "budgets_supporting_current_configuration": [
+          "0.90"
+        ],
+        "by_cap_value": {
+          "1": {
+            "mean_distinct_categories": 7.521333333333334,
+            "mean_slate_relevance": 0.49827532471198105
+          },
+          "2": {
+            "mean_distinct_categories": 5.692666666666667,
+            "mean_slate_relevance": 0.5523522931864056
+          },
+          "3": {
+            "mean_distinct_categories": 5.074,
+            "mean_slate_relevance": 0.5790895201195819
+          },
+          "5": {
+            "mean_distinct_categories": 4.567333333333333,
+            "mean_slate_relevance": 0.6021126222948148
+          },
+          "no_cap": {
+            "mean_distinct_categories": 4.241333333333333,
+            "mean_slate_relevance": 0.6140892952085343
+          }
+        },
+        "cap_selected_by_relevance_budget": {
+          "0.85": 2,
+          "0.90": 3,
+          "0.95": 5,
+          "0.99": null
+        },
+        "currently_configured_cap": 3,
+        "sample_impressions": 1500,
+        "sampling": {
+          "eligible_impressions": 25140,
+          "method": "seeded uniform random without replacement",
+          "seed": 20260825,
+          "selected_fraction": 0.059665871121718374,
+          "selected_ids_sha256": "6c33f764e4782dd0",
+          "selected_impressions": 1500
+        },
+        "selection_rule": "highest mean distinct-category count among caps whose mean slate relevance stays within a given budget of the uncapped mean"
+      },
+      "decision_confirmed": true,
+      "feature_provenance": {
+        "feature_context_fitted_on": "fit half only",
+        "feature_table": "fit_half_only",
+        "retrieval_model_trained_on": "fit half only",
+        "tune_fold_leakage": false
+      },
+      "impressions_checked": 25140,
+      "original_validation_four_plus_same_category_rate": 0.531,
+      "original_validation_single_category_rate": 0.046,
+      "ranking_model_excludes_tuning_rows": true,
+      "tune_fold_four_plus_same_category_rate": 0.5655926809864757,
+      "tune_fold_single_category_rate": 0.05222752585521082
+    },
+    "freshness_threshold": {
+      "currently_configured_min_fresh_in_slate": 2,
+      "decision_confirmed": true,
+      "feature_provenance": {
+        "feature_context_fitted_on": "fit half only",
+        "feature_table": "fit_half_only",
+        "retrieval_model_trained_on": "fit half only",
+        "tune_fold_leakage": false
+      },
+      "impressions_checked": 25140,
+      "min_fresh_value_comparison": {
+        "budgets_supporting_current_configuration": [],
+        "by_min_fresh_value": {
+          "0": {
+            "mean_fresh_items_in_slate": 3.1586666666666665,
+            "mean_slate_relevance": 0.5790895201195819,
+            "share_of_slates_meeting_quota": 1.0
+          },
+          "1": {
+            "mean_fresh_items_in_slate": 3.203333333333333,
+            "mean_slate_relevance": 0.5792752569792897,
+            "share_of_slates_meeting_quota": 0.9746666666666667
+          },
+          "2": {
+            "mean_fresh_items_in_slate": 3.3493333333333335,
+            "mean_slate_relevance": 0.5792270407106189,
+            "share_of_slates_meeting_quota": 0.8826666666666667
+          },
+          "3": {
+            "mean_fresh_items_in_slate": 3.6093333333333333,
+            "mean_slate_relevance": 0.5783734052966661,
+            "share_of_slates_meeting_quota": 0.7793333333333333
+          },
+          "5": {
+            "mean_fresh_items_in_slate": 4.366666666666666,
+            "mean_slate_relevance": 0.5728270599460675,
+            "share_of_slates_meeting_quota": 0.612
+          }
+        },
+        "currently_configured_min_fresh_in_slate": 2,
+        "sample_impressions": 1500,
+        "sampling": {
+          "eligible_impressions": 25140,
+          "method": "seeded uniform random without replacement",
+          "seed": 20260825,
+          "selected_fraction": 0.059665871121718374,
+          "selected_ids_sha256": "6c33f764e4782dd0",
+          "selected_impressions": 1500
+        },
+        "selection_rule": "largest minimum-fresh quota whose mean slate relevance stays within a given budget of the unconstrained slate",
+        "value_selected_by_relevance_budget": {
+          "0.90": 5,
+          "0.95": 5,
+          "0.99": 3
+        }
+      },
+      "original_validation_fresh_row_rate": 0.363,
+      "original_validation_zero_fresh_impression_rate": 0.007,
+      "threshold_value_comparison": {
+        "by_threshold_days": {
+          "0.25": {
+            "fresh_row_rate": 0.12203479119793667,
+            "impressions_checked": 25140,
+            "zero_fresh_impression_rate": 0.23460620525059667
+          },
+          "0.5": {
+            "fresh_row_rate": 0.3230357240849476,
+            "impressions_checked": 25140,
+            "zero_fresh_impression_rate": 0.03381066030230708
+          },
+          "1.0": {
+            "fresh_row_rate": 0.729662514404873,
+            "impressions_checked": 25140,
+            "zero_fresh_impression_rate": 0.0010739856801909309
+          },
+          "2.0": {
+            "fresh_row_rate": 0.884925643417659,
+            "impressions_checked": 25140,
+            "zero_fresh_impression_rate": 3.977724741447892e-05
+          },
+          "7.0": {
+            "fresh_row_rate": 1.0,
+            "impressions_checked": 25140,
+            "zero_fresh_impression_rate": 0.0
+          }
+        },
+        "currently_configured_threshold_days": 0.5,
+        "rule_supports_current_configuration": true,
+        "selection_rule": "smallest threshold with a zero-fresh-impression rate under 5%",
+        "threshold_selected_by_rule": 0.5
+      },
+      "tune_fold_fresh_row_rate": 0.3230357240849476,
+      "tune_fold_zero_fresh_impression_rate": 0.03381066030230708
+    },
+    "popularity_exclusion": {
+      "decision_confirmed": false,
+      "feature_provenance": {
+        "feature_context_fitted_on": "fit half only",
+        "feature_table": "fit_half_only",
+        "retrieval_model_trained_on": "fit half only",
+        "tune_fold_leakage": false
+      },
+      "fit_rows": 3709865,
+      "original_validation_auc": 0.47,
+      "tune_fold_auc_out_of_sample_popularity": 0.6649492057713272,
+      "tune_rows": 911150
+    },
+    "popularity_exclusion_temporal_split_diagnostic": {
+      "chronological_split_tune_fold_auc": 0.4890107762440614,
+      "feature_provenance": {
+        "feature_context_fitted_on": "fit half only",
+        "feature_table": "fit_half_only",
+        "retrieval_model_trained_on": "fit half only",
+        "tune_fold_leakage": false
+      },
+      "fit_rows": 3654624,
+      "original_validation_auc": 0.47,
+      "recency_leakage_explanation_supported": true,
+      "tune_rows": 966391
+    },
+    "retrieval_depth": {
+      "by_depth": {
+        "100": {
+          "retrieval_contained_a_click_rate": 0.09326424870466321,
+          "search_p50_ms": 0.16275000234600157,
+          "search_p99_ms": 0.3225799948268104
+        },
+        "1000": {
+          "retrieval_contained_a_click_rate": 0.21502590673575128,
+          "search_p50_ms": 0.5808999994769692,
+          "search_p99_ms": 0.8618349973403383
+        },
+        "200": {
+          "retrieval_contained_a_click_rate": 0.11917098445595854,
+          "search_p50_ms": 0.21440000273287296,
+          "search_p99_ms": 0.3749850002350282
+        },
+        "50": {
+          "retrieval_contained_a_click_rate": 0.06217616580310881,
+          "search_p50_ms": 0.14039999223314226,
+          "search_p99_ms": 0.29367000097408785
+        },
+        "500": {
+          "retrieval_contained_a_click_rate": 0.15803108808290156,
+          "search_p50_ms": 0.360250000085216,
+          "search_p99_ms": 0.5499700004293115
+        }
+      },
+      "currently_configured_depth": 1000,
+      "depths_within_search_budget": [
+        50,
+        100,
+        200,
+        500,
+        1000
+      ],
+      "feature_provenance": {
+        "feature_context_fitted_on": "fit half only",
+        "feature_table": "fit_half_only",
+        "retrieval_model_trained_on": "fit half only",
+        "tune_fold_leakage": false
+      },
+      "impressions_measured": 386,
+      "search_p99_budget_ms": 5.0,
+      "selection_rule": "none -- reported as a recall/latency tradeoff for a judgment call, because the search-latency budget did not bind at any depth tried",
+      "split": "tuning fold carved from train (never validation)"
+    }
+  },
+  "sampling": {
+    "by_comparison": {
+      "diversity_cap.cap_value_comparison": {
+        "eligible_impressions": 25140,
+        "method": "seeded uniform random without replacement",
+        "seed": 20260825,
+        "selected_fraction": 0.059665871121718374,
+        "selected_ids_sha256": "6c33f764e4782dd0",
+        "selected_impressions": 1500
+      },
+      "freshness_threshold.min_fresh_value_comparison": {
+        "eligible_impressions": 25140,
+        "method": "seeded uniform random without replacement",
+        "seed": 20260825,
+        "selected_fraction": 0.059665871121718374,
+        "selected_ids_sha256": "6c33f764e4782dd0",
+        "selected_impressions": 1500
+      }
+    },
+    "method": "seeded uniform random without replacement, drawn independently for each comparison",
+    "seed": 20260825
+  },
+  "schema_version": 2
+}
