@@ -162,17 +162,42 @@ def publish_tuning_report(raw: dict, sampling: dict):
             "split": "fit/tune fold from train; validation is never used here",
             "selection_rules": "cost-bounded (relevance or latency budgets)",
         },
+        # This report's sections each carry their own counts, because each
+        # comparison samples independently. The top-level denominators
+        # are the ones common to all of them.
         "denominators": {
-            "sampled_impressions": raw.get("sampled_impressions"),
-            "see_individual_sections": True,
+            "tune_fold_impressions": raw.get("diversity_cap", {}).get("impressions_checked"),
+            "comparisons_reported": len(raw),
         },
+        # Unlike the other reports, this one's results are decision
+        # objects rather than scalar metrics -- each section states what
+        # was compared, what the rule selected, and what is configured.
+        # Every top-level key is defined, so no section is published as
+        # an unexplained blob.
         "metric_definitions": {
-            "cap_selected_by_relevance_budget": (
-                "diversity cap chosen by the highest distinct-category count whose mean "
-                "slate relevance stays within a given budget of the uncapped slate"
+            "popularity_exclusion": (
+                "re-checks, on the tuning fold, the original decision to drop "
+                "`popularity` from the ranking model. Reports the fold's out-of-sample "
+                "AUC for the feature against the original validation-measured AUC"
             ),
-            "value_selected_by_relevance_budget": (
-                "minimum-fresh quota chosen the same way, against the unconstrained slate"
+            "popularity_exclusion_temporal_split_diagnostic": (
+                "the same check against a chronologically split fold rather than a "
+                "random one, testing whether short-term popularity recency leaks "
+                "across a same-window random split. A diagnostic, not a decision"
+            ),
+            "diversity_cap": (
+                "compares real slates built at several per-category cap values and "
+                "reports, for each relevance budget, the cap the selection rule picks "
+                "against the cap currently configured"
+            ),
+            "freshness_threshold": (
+                "the same treatment for the freshness age threshold and the "
+                "minimum-fresh-items quota, each against its own alternatives"
+            ),
+            "retrieval_depth": (
+                "measures what retrieval depth buys against a predefined latency "
+                "budget. Reported as a tradeoff table rather than a rule-selected "
+                "value, because the budget did not bind at any depth tried"
             ),
         },
         "results": raw,

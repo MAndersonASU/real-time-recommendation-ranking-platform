@@ -111,3 +111,35 @@ def test_the_collected_description_satisfies_the_report_contract(report):
     }
 
     validate_report(built)  # must not raise
+
+
+def test_every_section_of_a_tuning_report_is_defined_before_publishing(report, tmp_path,
+                                                                       monkeypatch):
+    """The second failure this file exists to prevent.
+
+    The tuning report's results are decision objects, not scalar
+    metrics, and the publisher passed all five sections through with two
+    definitions between them. `validate_report` rejected it -- correctly
+    -- but only after the twenty-minute measurement had finished. This
+    exercises the real publisher against a report shaped like the real
+    one, so a newly added section fails here in milliseconds instead.
+    """
+    import json
+
+    import recommender.evaluation.publish as publish_module
+    import recommender.evaluation.reports as reports_module
+
+    monkeypatch.setattr(reports_module, "working_tree_is_clean", lambda: True)
+    original_write = publish_module.write_report
+    monkeypatch.setattr(
+        publish_module, "write_report", lambda rep: original_write(rep, directory=tmp_path)
+    )
+
+    report["diversity_cap"]["impressions_checked"] = 25140
+
+    path = publish_module.publish_tuning_report(report, sampling=collect_sampling(report))
+    published = json.loads(path.read_text(encoding="utf-8"))
+
+    undefined = set(published["results"]) - set(published["metric_definitions"])
+    assert not undefined, f"published sections with no definition: {sorted(undefined)}"
+    assert None not in published["denominators"].values()
