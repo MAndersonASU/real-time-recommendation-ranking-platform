@@ -1,15 +1,15 @@
 import json
-from pathlib import Path
 
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.paths import mind_small_path
 from recommender.ranking.features import FEATURE_COLUMNS, build_feature_context, build_ranking_rows
 from recommender.retrieval.build_index import load_trained_model
 from recommender.retrieval.features import build_item_vocab
 
-RANKING_DIR = Path("data/processed/mind_small/ranking")
+RANKING_DIR = mind_small_path("ranking")
 TRAIN_PATH = RANKING_DIR / "train.parquet"
 VALIDATION_PATH = RANKING_DIR / "validation.parquet"
-DATASET_REPORT_PATH = Path("data/processed/mind_small/ranking_dataset_report.json")
+DATASET_REPORT_PATH = mind_small_path("ranking_dataset_report.json")
 
 
 def build_and_save() -> dict:

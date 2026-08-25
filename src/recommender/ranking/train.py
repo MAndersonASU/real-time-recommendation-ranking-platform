@@ -8,6 +8,7 @@ from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from recommender.paths import mind_small_path
 from recommender.ranking.build_dataset import TRAIN_PATH, VALIDATION_PATH
 from recommender.ranking.features import FEATURE_COLUMNS
 
@@ -18,8 +19,8 @@ from recommender.ranking.features import FEATURE_COLUMNS
 # StandardScaler + LogisticRegression, confirmed against this project's
 # own real trained model -- zero untrusted types reported), raising
 # instead of silently proceeding on anything else.
-MODEL_PATH = Path("data/processed/mind_small/ranking_model.skops")
-TRAIN_REPORT_PATH = Path("data/processed/mind_small/ranking_train_report.json")
+MODEL_PATH = mind_small_path("ranking_model.skops")
+TRAIN_REPORT_PATH = mind_small_path("ranking_train_report.json")
 
 # `popularity` is deliberately excluded from the trained model, not just
 # left in and hoped to wash out. A direct check found it scores *worse

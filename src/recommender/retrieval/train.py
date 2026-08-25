@@ -1,6 +1,5 @@
 import json
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -8,6 +7,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.paths import mind_small_path
 from recommender.retrieval.content_artifact import save_item_content
 from recommender.retrieval.dataset import SampledNegativeDataset, TwoTowerDataset
 from recommender.retrieval.features import (
@@ -21,8 +21,8 @@ from recommender.retrieval.model import TwoTowerModel
 from recommender.retrieval.negatives import sample_negatives_for_positives
 from recommender.seed import set_seed
 
-MODEL_PATH = Path("data/processed/mind_small/two_tower_model.pt")
-TRAIN_REPORT_PATH = Path("data/processed/mind_small/two_tower_train_report.json")
+MODEL_PATH = mind_small_path("two_tower_model.pt")
+TRAIN_REPORT_PATH = mind_small_path("two_tower_train_report.json")
 EMBEDDING_DIM = 32
 BATCH_SIZE = 2048
 NUM_SAMPLED_NEGATIVES = 4

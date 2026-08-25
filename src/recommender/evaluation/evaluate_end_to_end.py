@@ -1,6 +1,7 @@
 import json
 from collections import Counter
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -223,7 +224,12 @@ def evaluate_end_to_end(
             per_impression_context = replace(
                 context,
                 durable_cache=DurableFeatureCache(
-                    features_by_user={user_id: durable}, computed_at=request_time
+                    features_by_user={user_id: durable},
+                    built_at=datetime.now(UTC),
+                    # The impression's own time is what these features are
+                    # as-of, which is exactly the point-in-time property
+                    # this evaluation exists to preserve.
+                    data_as_of=pd.Timestamp(request_time).to_pydatetime().replace(tzinfo=UTC),
                 ),
                 redis_client=isolated_redis,
             )

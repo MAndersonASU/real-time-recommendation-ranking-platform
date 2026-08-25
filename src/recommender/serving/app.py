@@ -13,6 +13,7 @@ from recommender.monitoring.artifact_manifest import (
 )
 from recommender.monitoring.dashboard import render_dashboard_html
 from recommender.monitoring.metrics import (
+    DURABLE_FEATURE_DATA_AGE,
     MODEL_VERSION,
     record_error,
     record_feature_lookup_latency,
@@ -222,9 +223,18 @@ def ready() -> dict:
     except Exception:  # noqa: BLE001 -- any real connection failure means "degraded", not a crash
         redis_status = "degraded (falls back to popularity ranking)"
 
+    # Feature-snapshot metadata is surfaced here rather than left
+    # implicit. Readiness is deliberately not failed on staleness: this
+    # project serves a frozen historical snapshot, so a stale-by-design
+    # dataset is the expected state, not an outage. An operator sees the
+    # real data age instead of having to infer it from a restart time.
+    snapshot = context.durable_cache.describe()
+    DURABLE_FEATURE_DATA_AGE.set(snapshot["data_age_seconds"] or 0.0)
+
     return {
         "ready": True,
         "dependencies": {"model_index_ranking": "ok", "redis": redis_status},
+        "durable_features": snapshot,
     }
 
 

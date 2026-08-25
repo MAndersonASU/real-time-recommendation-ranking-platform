@@ -178,3 +178,47 @@ def test_manifest_contains_no_obvious_secret_material():
 
     for forbidden in ("password", "secret", "token", "api_key", "apikey"):
         assert forbidden not in flat
+
+
+def test_serving_version_is_independent_of_the_working_directory(tmp_path, monkeypatch):
+    """Regression test for a real defect: every data path was relative to
+    the process working directory, so the same deployment reported one
+    serving version from the repository root and a different one from
+    anywhere else -- with every artifact hashing as `absent`. A version
+    identifier that changes with the caller's shell is not an identifier.
+    """
+    from_root = build_serving_artifact_manifest()
+
+    monkeypatch.chdir(tmp_path)
+    from_elsewhere = build_serving_artifact_manifest()
+
+    assert from_root == from_elsewhere
+    assert compute_serving_version(from_root) == compute_serving_version(from_elsewhere)
+
+
+def test_paths_are_absolute_and_anchored_outside_the_working_directory(tmp_path, monkeypatch):
+    from recommender.evaluation.contract import CATALOG_PATH
+    from recommender.retrieval.content_artifact import CONTENT_ARTIFACT_PATH
+
+    monkeypatch.chdir(tmp_path)
+
+    for path in (CATALOG_PATH, CONTENT_ARTIFACT_PATH):
+        assert path.is_absolute(), path
+        assert tmp_path not in path.parents, path
+
+
+def test_an_explicit_data_root_overrides_the_repository_layout(monkeypatch, tmp_path):
+    """A deployment that bind-mounts its artifacts elsewhere must not
+    need the repository layout.
+    """
+    import importlib
+
+    monkeypatch.setenv("RECOMMENDER_DATA_ROOT", str(tmp_path))
+    from recommender import paths
+
+    importlib.reload(paths)
+    assert paths.data_root() == tmp_path.resolve()
+    assert paths.mind_small_path("x.parquet").is_absolute()
+
+    monkeypatch.delenv("RECOMMENDER_DATA_ROOT")
+    importlib.reload(paths)

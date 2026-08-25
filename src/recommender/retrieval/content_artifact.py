@@ -26,9 +26,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from recommender.paths import mind_small_path
 from recommender.retrieval.features import CONTENT_DIM
 
-CONTENT_ARTIFACT_PATH = Path("data/processed/mind_small/item_content.npz")
+CONTENT_ARTIFACT_PATH = mind_small_path("item_content.npz")
 
 
 class ContentArtifactError(RuntimeError):

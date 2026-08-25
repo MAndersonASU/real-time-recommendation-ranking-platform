@@ -133,3 +133,14 @@ COMMIT_FAILURES = Counter(
     "stream_commit_failures_total",
     "Kafka offset commit failures in the streaming consumer",
 )
+
+
+# Age of the *data* behind the durable-feature snapshot, not of the
+# process's copy of it. Exposed because the two diverge: restarting the
+# service rebuilds the snapshot but does not make a frozen historical
+# dataset any newer, and an operator needs the former reported rather
+# than the latter.
+DURABLE_FEATURE_DATA_AGE = Gauge(
+    "durable_feature_data_age_seconds",
+    "Seconds between now and the newest event in the durable-feature snapshot",
+)

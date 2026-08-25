@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -5,43 +6,119 @@ import pandas as pd
 
 from recommender.features.online_features import DurableUserFeatures, compute_durable_features
 
-DEFAULT_MAX_AGE_SECONDS = 24 * 60 * 60.0  # matches Phase 7's stated "refreshed daily" design intent
+# Matches the "refreshed daily" design intent for a system with live
+# data. This project's data are a frozen 2019 snapshot, so this
+# threshold is always exceeded by design -- see the note on `is_stale`.
+DEFAULT_MAX_AGE_SECONDS = 24 * 60 * 60.0
 
 
 @dataclass
 class DurableFeatureCache:
-    """Durable features (docs/online-features.md) are computed offline and
-    meant to be refreshed occasionally, not per request -- but "loaded
-    once at service start and never checked again" has no actual
-    freshness rule behind it, just an accident of when the process last
-    restarted. This wraps the lookup dict with an explicit timestamp and
-    a named staleness threshold, so "is this still fresh enough" is a
-    real, checkable question instead of an assumption.
+    """Durable features (`docs/online-features.md`) are computed offline
+    and refreshed occasionally, not per request.
 
-    Deliberately does not refresh itself inside a request: recomputing
-    durable features means re-reading a real offline split and rebuilding
-    the whole dict, which is exactly the kind of expensive, batch-shaped
-    work a live request path should never trigger inline. `is_stale`
-    exists so a caller (a scheduled job, an operator, a monitoring check)
-    can decide when to call `refresh` -- this cache reports staleness, it
-    does not silently fix it.
+    Two different times matter here, and conflating them is what made an
+    earlier version misleading:
+
+    - `built_at` is when this process constructed the snapshot. It moves
+      every restart.
+    - `data_as_of` is the newest event in the data the snapshot was
+      built from. It does not move on restart, because restarting does
+      not make the underlying data any newer.
+
+    The earlier version had only one timestamp, set to `now()` at build
+    time, so restarting the service relabelled a frozen 2019 snapshot as
+    freshly computed. Staleness is therefore measured against
+    `data_as_of`.
+
+    This cache reports staleness; it never refreshes itself inside a
+    request. Recomputing means re-reading an offline split and
+    rebuilding the whole dict -- batch-shaped work a live request path
+    should not trigger.
     """
 
     features_by_user: dict[str, DurableUserFeatures]
-    computed_at: datetime
+    built_at: datetime
+    data_as_of: datetime | None
     max_age_seconds: float = DEFAULT_MAX_AGE_SECONDS
 
     def get(self, user_id: str) -> DurableUserFeatures | None:
         return self.features_by_user.get(user_id)
 
-    def is_stale(self, now: datetime | None = None) -> bool:
-        # Genuinely tz-aware UTC, not naive local wall-clock time: this
-        # only ever compares against `computed_at`, set the same way
-        # below, so both sides are consistent -- never compared against
-        # any of the naive-but-UTC-by-convention timestamps derived from
-        # the dataset elsewhere in this project.
+    def data_age_seconds(self, now: datetime | None = None) -> float | None:
+        """Age of the underlying *data*, not of this process's copy of
+        it. None when the source carried no usable timestamp.
+        """
+        if self.data_as_of is None:
+            return None
         now = now if now is not None else datetime.now(UTC)
-        return (now - self.computed_at).total_seconds() > self.max_age_seconds
+        return (now - self.data_as_of).total_seconds()
+
+    def is_stale(self, now: datetime | None = None) -> bool:
+        """True when the underlying data are older than the threshold.
+
+        For this project that is always true: the MIND snapshot is from
+        November 2019 and is never refreshed. That is the honest answer
+        rather than a bug -- the alternative, measuring against
+        `built_at`, would report a years-old snapshot as fresh purely
+        because the process restarted.
+        """
+        age = self.data_age_seconds(now)
+        if age is None:
+            return True
+        return age > self.max_age_seconds
+
+    def snapshot_id(self) -> str:
+        """A stable identifier for *which* snapshot this is.
+
+        Derived from the data it contains, not from when it was loaded,
+        so two processes that built the same snapshot report the same id
+        and a genuinely different snapshot reports a different one.
+        """
+        payload = "|".join(
+            [
+                str(self.data_as_of),
+                str(len(self.features_by_user)),
+                # A bounded, order-independent digest of the user set --
+                # cheap to compute and sufficient to distinguish
+                # snapshots without hashing every feature value.
+                str(sum(hash(user_id) % 1_000_003 for user_id in self.features_by_user)),
+            ]
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()[:12]
+
+    def describe(self, now: datetime | None = None) -> dict:
+        """Operator-visible metadata, surfaced through `/ready`.
+
+        Deliberately labels the snapshot as historical rather than
+        implying a refresh pipeline exists.
+        """
+        age = self.data_age_seconds(now)
+        return {
+            "snapshot_id": self.snapshot_id(),
+            "built_at": self.built_at.isoformat(),
+            "data_as_of": self.data_as_of.isoformat() if self.data_as_of else None,
+            "data_age_seconds": age,
+            "users": len(self.features_by_user),
+            "is_stale": self.is_stale(now),
+            "refresh_policy": (
+                "frozen historical snapshot; not refreshed. Restarting the service "
+                "reloads the same data and does not make it newer."
+            ),
+        }
+
+
+def _latest_event_time(behaviors: pd.DataFrame) -> datetime | None:
+    if "time" not in behaviors.columns or behaviors.empty:
+        return None
+    latest = pd.to_datetime(behaviors["time"], errors="coerce").max()
+    if pd.isna(latest):
+        return None
+    stamp = latest.to_pydatetime()
+    # Dataset timestamps are naive-but-UTC by this project's convention
+    # (`docs/evaluation-protocol.md`); attach UTC so comparisons against
+    # a real clock are between two aware values.
+    return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
 def build_durable_feature_cache(
@@ -49,15 +126,20 @@ def build_durable_feature_cache(
 ) -> DurableFeatureCache:
     return DurableFeatureCache(
         features_by_user=compute_durable_features(behaviors, news),
-        computed_at=datetime.now(UTC),
+        built_at=datetime.now(UTC),
+        data_as_of=_latest_event_time(behaviors),
         max_age_seconds=max_age_seconds,
     )
 
 
 def refresh(cache: DurableFeatureCache, behaviors: pd.DataFrame, news: pd.DataFrame) -> DurableFeatureCache:
-    """Recomputes the cache from fresh data and stamps a new
-    `computed_at` -- returns a new cache rather than mutating in place,
-    so a caller holding a reference to the old one still sees a
-    consistent snapshot rather than values changing under it mid-read.
+    """Recomputes the cache from the given data and returns a new one
+    rather than mutating in place, so a caller holding the old reference
+    still sees a consistent snapshot.
+
+    No scheduler calls this. Automated atomic refresh is future work,
+    not a missing production feature: this project serves a frozen
+    historical dataset, and pretending otherwise would be the misleading
+    claim.
     """
     return build_durable_feature_cache(behaviors, news, max_age_seconds=cache.max_age_seconds)
