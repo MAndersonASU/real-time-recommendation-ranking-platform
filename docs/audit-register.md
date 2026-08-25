@@ -15,8 +15,9 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 ---
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
-**Severity** Critical · **Status** code complete, awaiting rerun
-**Tests** `tests/test_reports.py`
+**Severity** Critical · **Status** verified closed
+**Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199` · **Reports** `5f19d65`
+**Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py` · **CI** run 32892449514 (green)
 
 Reports were generated after the fact from previously produced raw JSON,
 attaching the *current* commit and manifest without establishing that
@@ -38,8 +39,8 @@ The four schema-version-1 reports were removed rather than re-stamped:
 re-labelling them under the new contract is exactly the defect this
 closes.
 
-**Remaining** Republish all four reports from a clean commit of this
-code, on a machine holding the licensed dataset.
+**Done** All four reports republished from clean commit `c59b199`,
+each recording that commit and a verified-clean tree.
 
 ---
 
@@ -200,8 +201,9 @@ and fraction drift.
 ---
 
 ## EVAL-RETRIEVAL-LEAKAGE-09 — Tuning features leak tuning-fold labels
-**Severity** High · **Status** code complete, awaiting rerun
-**Tests** `tests/test_fit_only_bundle.py`
+**Severity** High · **Status** verified closed
+**Fix commit** `d70f1df` · **Reports** `5f19d65`
+**Tests** `tests/test_fit_only_bundle.py` · **CI** run 32892449514 (green)
 
 The ranking model was refit on the fit half, but the retrieval model
 producing `retrieval_score` was trained on the whole training split
@@ -226,16 +228,23 @@ fold, which makes it a worse model to serve; substituting it would trade
 real serving quality for an evaluation property. A test asserts the two
 bundles' paths stay distinct.
 
-**Remaining** Build the fit-half bundle and rerun the diversity,
-freshness and retrieval-depth comparisons from a clean commit. Until
-that rerun lands, the published tuning results remain development
-evidence with residual feature leakage.
+**Done** The fit-half bundle was built (101,555 of 126,695 training
+impressions, matching the fold) and the comparisons rerun against it.
+The published report records `tune_fold_leakage: false`.
+
+The rerun changed a conclusion: the deployed minimum-fresh quota of 2 is
+selected by no budget tested — the rule picks 5, 5 and 3. Recorded in
+`docs/engineering-review-and-hardening.md` as a conservative product
+choice rather than a measured one. **The deployed value was not
+changed**; that is a serving-behaviour decision, not a documentation
+one.
 
 ---
 
 ## EVAL-SAMPLING-10 — Tuning experiments use biased first-N samples
-**Severity** Medium · **Status** code complete, awaiting rerun
-**Tests** `tests/test_sampling.py`
+**Severity** Medium · **Status** verified closed
+**Fix commits** `d70f1df`, `42aed02` · **Reports** `5f19d65`
+**Tests** `tests/test_sampling.py` · **CI** run 32892449514 (green)
 
 `head(1500)` and `head(400)` selected the earliest qualifying
 impressions rather than a representative sample. Because a user's
@@ -252,10 +261,15 @@ a rerun drew the same sample without publishing licensed ids. The
 end-to-end replay still sorts chronologically after selection, so its
 point-in-time guarantees are unchanged.
 
-**Remaining** Republish the affected reports from a clean commit.
-Sampling variance across several seeds is not yet measured; the single
-seed is recorded, so the figures are reproducible but their sampling
-error is unquantified.
+**Done** Reports republished. The correction was material: the old
+`head(2000)` prefix reported end-to-end hit rate@10 of 0.0145 against
+0.0084 on a representative 5,000-impression sample — an overstatement of
+roughly 1.7x. Retrieval and ranking moved in opposite directions between
+the two samples, which a fixed prefix cannot reveal.
+
+**Still open within this finding:** sampling variance across several
+seeds is not measured. The seed is recorded, so the figures are
+reproducible, but their sampling error is unquantified.
 
 ---
 
@@ -473,10 +487,17 @@ fixture non-degenerate, not by silencing the warning.
 
 ## Status summary
 
-All four published reports have been regenerated from clean commits of
-the corrected code, with provenance recorded by the run that measured
-them. The tuning comparisons ran against the leakage-free fit-half
+All four published reports were regenerated from clean commit
+`c59b199`, each recording that commit and a verified-clean working
+tree. The tuning comparisons ran against the leakage-free fit-half
 feature table (`tune_fold_leakage: false`).
+
+CI is green on all four jobs as of commit `053ddd6` (run 32892449514):
+`lint-and-test`, `locked-install-test`, `api-container-test` and
+`integration-smoke-test`. This is stated because it had not been true
+for the three preceding commits: the path-anchoring fix for
+MANIFEST-PATHS-11 broke artifact resolution inside the container, and
+the container job caught it after the change had already shipped.
 
 **Not closed**, and each is recorded above with what remains:
 
