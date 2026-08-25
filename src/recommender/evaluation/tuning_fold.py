@@ -64,11 +64,67 @@ def chronological_tuning_split_impression_ids(
     from `fit` that `validation` has from `train`, directly testing that
     explanation rather than leaving it a hypothesis.
     """
-    ordered = behaviors.sort_values("time")["impression_id"]
-    split_index = int(len(ordered) * (1 - fraction))
-    fit_impression_ids = set(ordered.iloc[:split_index])
-    tune_impression_ids = set(ordered.iloc[split_index:])
+    ordered = behaviors.sort_values(["time", "impression_id"], kind="mergesort")
+    target_index = int(len(ordered) * (1 - fraction))
+    if target_index <= 0 or target_index >= len(ordered):
+        raise ValueError(
+            f"fraction {fraction} leaves one side of the chronological split empty "
+            f"for {len(ordered)} impressions"
+        )
+
+    # Cut on a timestamp, not a row position. Splitting positionally puts
+    # impressions that share a timestamp on opposite sides of the
+    # boundary, which destroys the very property this split exists to
+    # create: `tune` must be strictly later than `fit`, or the temporal
+    # gap being tested is not actually there.
+    #
+    # The whole equal-timestamp group moves to the tune side, so the
+    # realised fraction can differ slightly from the requested one. That
+    # is the correct trade -- an exact ratio is worth less than a clean
+    # boundary -- and the realised counts are returned by
+    # `chronological_split_report` for inspection.
+    cutoff_time = ordered["time"].iloc[target_index]
+    is_fit = ordered["time"] < cutoff_time
+
+    fit_impression_ids = set(ordered.loc[is_fit, "impression_id"])
+    tune_impression_ids = set(ordered.loc[~is_fit, "impression_id"])
+
+    if not fit_impression_ids or not tune_impression_ids:
+        raise ValueError(
+            "chronological split produced an empty side; every impression shares "
+            "the cutoff timestamp, so no strict temporal boundary exists"
+        )
     return fit_impression_ids, tune_impression_ids
+
+
+def chronological_split_report(
+    behaviors: pd.DataFrame, fraction: float = 0.2
+) -> dict:
+    """Describes the realised chronological split: the boundary, the gap
+    across it, and the resulting sizes.
+
+    Reported rather than assumed, because the equal-timestamp handling
+    above deliberately lets the realised fraction drift from the
+    requested one, and because `max(fit) < min(tune)` is the property
+    the recency analysis depends on -- it should be visible, not taken
+    on trust.
+    """
+    fit_ids, tune_ids = chronological_tuning_split_impression_ids(behaviors, fraction)
+    fit_rows = behaviors[behaviors["impression_id"].isin(fit_ids)]
+    tune_rows = behaviors[behaviors["impression_id"].isin(tune_ids)]
+
+    max_fit = fit_rows["time"].max()
+    min_tune = tune_rows["time"].min()
+    return {
+        "requested_tune_fraction": fraction,
+        "realised_tune_fraction": len(tune_ids) / (len(fit_ids) + len(tune_ids)),
+        "fit_impressions": len(fit_ids),
+        "tune_impressions": len(tune_ids),
+        "max_fit_time": str(max_fit),
+        "min_tune_time": str(min_tune),
+        "gap_seconds": (min_tune - max_fit).total_seconds(),
+        "strictly_ordered": bool(max_fit < min_tune),
+    }
 
 
 def split_rows_by_impression_ids(

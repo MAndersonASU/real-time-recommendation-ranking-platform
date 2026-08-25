@@ -5,11 +5,19 @@ from recommender.features.online_features import (
     user_state_from_recent_features,
 )
 from recommender.features.state_store import (
-    claim_event,
+    claim_and_apply_event,
+    current_state_version,
     load_recent_features,
-    save_recent_features,
 )
 from recommender.streaming.consumer import StreamConsumer, UserState
+
+# Redis-level status codes returned by `claim_and_apply_event`.
+_APPLIED = 1
+_DUPLICATE = 0
+# Bounded: a conflict means a competing writer won, which should
+# resolve within a couple of attempts. An unbounded retry would spin
+# forever against a persistently conflicting writer.
+_MAX_VERSION_CONFLICT_RETRIES = 5
 
 
 class SyncingStreamConsumer(StreamConsumer):
@@ -44,23 +52,68 @@ class SyncingStreamConsumer(StreamConsumer):
         return state
 
     def _on_state_updated(self, user_id: str, state: UserState, event_id: str) -> bool:
-        """Claims the event before writing, so a message redelivered
-        after a restart cannot be applied twice.
+        """Claims the event and writes the resulting state atomically.
 
-        The Redis mutation and the Kafka offset commit are separate
-        operations, and a crash between them redelivers the message.
-        `claim_event` stores the resulting state inside the claim under
-        a single atomic `SET NX`, so a redelivery gets the state that
-        event already produced instead of applying it again. Restoring
-        that state here (rather than keeping the local mutation) is what
-        makes reprocessing a repair rather than a double count.
+        Two distinct failures are prevented here, and they pull in
+        opposite directions:
+
+        - A crash between the Redis write and the Kafka offset commit
+          redelivers the message. Applying it again double-counts.
+        - Refusing a duplicate by restoring the state stored *with* that
+          event rolls the user backwards, discarding every event applied
+          since. That is strictly worse than the double count: it loses
+          real data rather than inflating it.
+
+        So a duplicate returns the user's *current* state, never a
+        historical snapshot, and the claim and the state write happen in
+        one atomic step so neither can land without the other.
+
+        A version conflict means another writer advanced this user's
+        state between the read and the write. The event is re-derived
+        against the newer state and retried rather than overwriting it.
         """
-        features = recent_features_from_user_state(user_id, state)
-        already_applied = claim_event(self._redis_client, event_id, features)
-        if already_applied is not None:
-            self.user_states[user_id] = user_state_from_recent_features(already_applied)
-            save_recent_features(self._redis_client, already_applied)
-            return False
+        for _attempt in range(_MAX_VERSION_CONFLICT_RETRIES):
+            expected_version = current_state_version(self._redis_client, user_id)
+            features = recent_features_from_user_state(user_id, state)
+            status, stored = claim_and_apply_event(
+                self._redis_client, event_id, features, expected_version
+            )
 
-        save_recent_features(self._redis_client, features)
-        return True
+            if status == _APPLIED:
+                return True
+
+            if status == _DUPLICATE:
+                # Already applied. Adopt the current state -- not the
+                # state this event originally produced -- so nothing
+                # applied since is lost.
+                if stored is not None:
+                    self.user_states[user_id] = user_state_from_recent_features(stored)
+                return False
+
+            # Version conflict: rebuild this event's effect on top of the
+            # state that actually won, then try again.
+            if stored is None:
+                break
+            self.user_states[user_id] = user_state_from_recent_features(stored)
+            state = self._reapply(self.user_states[user_id], state)
+
+        raise RuntimeError(
+            f"could not apply event {event_id} for a user after "
+            f"{_MAX_VERSION_CONFLICT_RETRIES} version conflicts"
+        )
+
+    @staticmethod
+    def _reapply(current: UserState, attempted: UserState) -> UserState:
+        """Re-derives the attempted event's effect on top of newer state.
+
+        Only the last click and the counters the event contributed are
+        carried over; everything else comes from the state that won, so
+        a retry never resurrects stale history.
+        """
+        if attempted.recent_clicked_items:
+            current.recent_clicked_items.append(attempted.recent_clicked_items[-1])
+            current.clicks_seen += 1
+        else:
+            current.impressions_seen += 1
+        current.last_event_time = attempted.last_event_time
+        return current

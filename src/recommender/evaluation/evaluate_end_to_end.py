@@ -54,36 +54,45 @@ def _reconcile_recent_state(
     in_window_clicks: list,
 ) -> None:
     """Rebuilds a user's isolated recent-feature state from the two
-    authoritative sources for this point in time, rather than trusting
-    either alone.
+    authoritative sources for this point in time, without counting any
+    click twice.
 
     MIND records, per impression, the clicks that happened strictly
     before it -- exactly what a live store would already hold for a
     returning user, so using it is point-in-time correct rather than
-    leakage. But that field is not guaranteed to be re-stated as the run
-    progresses, so it can miss clicks this evaluation has already
-    observed within its own window. Accumulating only in-window clicks
-    has the opposite gap: it starts empty and misses everything the user
-    did before the window opened.
+    leakage. That field also *advances*: a later impression's history can
+    already include a click this run observed earlier in its own window.
 
-    An earlier version seeded from `history` once and then accumulated,
-    which silently depended on an unverified dataset invariant about how
-    `history` evolves. Recomputing the union each time removes that
-    dependency: the state is a deterministic function of this
-    impression's own authoritative history plus the clicks strictly
-    earlier in this run.
+    Naively concatenating the two sources therefore double-counts every
+    click that appears in both, inflating `clicks_seen` and repeating
+    items in the embedding history. The fix is a multiset difference:
+    append only the in-window clicks not already represented in the
+    authoritative history, matched by occurrence count rather than by
+    membership.
+
+    Counting occurrences matters. A user can legitimately click the same
+    article twice, and plain deduplication would silently drop the second
+    click. If history holds `n3` once and this run observed `n3` twice,
+    exactly one extra `n3` is appended.
 
     Without any of this the store starts empty for most users, and
     `recommend()` builds its two-tower query from an empty click list --
-    which produces an exactly zero-norm user vector. An inner-product
-    Faiss index scores every catalog item identically against a zero
-    vector, so every such user receives the same arbitrary candidate
-    list. Measured directly: 60 impressions produced 1 distinct
-    candidate set with an empty store, versus 50 once real history was
-    supplied.
+    producing an exactly zero-norm user vector, against which an
+    inner-product index scores every catalog item identically.
     """
     history_ids = history_ids_from_raw(history_raw) if history_raw else []
-    combined = [*history_ids, *in_window_clicks]
+
+    remaining = Counter(history_ids)
+    extra: list = []
+    for news_id in in_window_clicks:
+        if remaining.get(news_id, 0) > 0:
+            # Already represented in the authoritative history: the
+            # history advanced to include this click.
+            remaining[news_id] -= 1
+        else:
+            extra.append(news_id)
+
+    combined = [*history_ids, *extra]
     if not combined:
         return
 

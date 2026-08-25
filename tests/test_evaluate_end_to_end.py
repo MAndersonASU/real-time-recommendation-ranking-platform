@@ -464,3 +464,68 @@ def test_out_of_order_source_rows_are_sorted_deterministically():
     out_of_order = evaluate_end_to_end(context, num_impressions=3, k=3, validation=shuffled, news=NEWS)
 
     assert in_order == out_of_order
+
+
+def test_reconciliation_does_not_double_count_a_click_already_in_history():
+    """MIND's `history` field advances: a later impression's history can
+    already contain a click this run observed earlier in its own window.
+    Concatenating both sources counted such a click twice, inflating
+    clicks_seen and repeating the item in the embedding history.
+    """
+    from recommender.evaluation.evaluate_end_to_end import _reconcile_recent_state
+    from recommender.features.state_store import load_recent_features
+
+    client = InMemoryRedis()
+    _reconcile_recent_state(client, "u1", "n1 n2 n3", ["n3"])
+
+    recent = load_recent_features(client, "u1")
+    assert recent.recent_clicked_items == ["n1", "n2", "n3"]
+    assert recent.clicks_seen == 3
+
+
+def test_reconciliation_preserves_a_genuinely_repeated_click():
+    """Plain deduplication would be wrong: a user can click the same
+    article twice. History holding `n3` once and the run observing it
+    twice means exactly one additional occurrence.
+    """
+    from recommender.evaluation.evaluate_end_to_end import _reconcile_recent_state
+    from recommender.features.state_store import load_recent_features
+
+    client = InMemoryRedis()
+    _reconcile_recent_state(client, "u1", "n1 n3", ["n3", "n3"])
+
+    recent = load_recent_features(client, "u1")
+    assert recent.recent_clicked_items == ["n1", "n3", "n3"]
+    assert recent.clicks_seen == 3
+
+
+def test_reconciliation_appends_a_click_history_has_not_caught_up_to():
+    from recommender.evaluation.evaluate_end_to_end import _reconcile_recent_state
+    from recommender.features.state_store import load_recent_features
+
+    client = InMemoryRedis()
+    _reconcile_recent_state(client, "u1", "n1 n2", ["n3"])
+
+    recent = load_recent_features(client, "u1")
+    assert recent.recent_clicked_items == ["n1", "n2", "n3"]
+    assert recent.clicks_seen == 3
+
+
+def test_reconciliation_handles_history_advancing_between_impressions():
+    """Simulates the real progression: impression 1 has no history and a
+    click; impression 2's history has caught up and now contains it.
+    Neither state may count that click twice.
+    """
+    from recommender.evaluation.evaluate_end_to_end import _reconcile_recent_state
+    from recommender.features.state_store import load_recent_features
+
+    client = InMemoryRedis()
+
+    _reconcile_recent_state(client, "u1", "", ["n1"])
+    assert load_recent_features(client, "u1").clicks_seen == 1
+
+    # History has now advanced to include n1.
+    _reconcile_recent_state(client, "u1", "n1", ["n1"])
+    recent = load_recent_features(client, "u1")
+    assert recent.recent_clicked_items == ["n1"]
+    assert recent.clicks_seen == 1

@@ -121,3 +121,75 @@ def test_split_rows_by_impression_ids_applies_the_given_partition():
     assert set(fit_rows["impression_id"]) == fit_ids
     assert set(tune_rows["impression_id"]) == tune_ids
     assert len(fit_rows) + len(tune_rows) == len(rows)
+
+
+def test_chronological_split_never_puts_equal_timestamps_on_both_sides():
+    """Splitting by row position placed impressions sharing a timestamp
+    on opposite sides of the boundary, destroying the strict temporal
+    ordering the recency analysis depends on. The cut is on a timestamp,
+    so an equal-timestamp group moves together.
+    """
+    import pandas as pd
+
+    from recommender.evaluation.tuning_fold import chronological_tuning_split_impression_ids
+
+    behaviors = pd.DataFrame(
+        {
+            "impression_id": range(10),
+            # Four impressions share the timestamp a positional split
+            # would cut straight through.
+            "time": pd.to_datetime(
+                ["2019-11-09 08:00"] * 3 + ["2019-11-09 09:00"] * 4 + ["2019-11-09 10:00"] * 3
+            ),
+        }
+    )
+
+    fit_ids, tune_ids = chronological_tuning_split_impression_ids(behaviors, fraction=0.3)
+
+    fit_times = set(behaviors[behaviors["impression_id"].isin(fit_ids)]["time"])
+    tune_times = set(behaviors[behaviors["impression_id"].isin(tune_ids)]["time"])
+    assert not (fit_times & tune_times), "a timestamp appears on both sides of the split"
+    assert max(fit_times) < min(tune_times)
+
+
+def test_chronological_split_report_exposes_the_real_boundary_and_gap():
+    import pandas as pd
+
+    from recommender.evaluation.tuning_fold import chronological_split_report
+
+    behaviors = pd.DataFrame(
+        {
+            "impression_id": range(10),
+            "time": pd.to_datetime(
+                ["2019-11-09 08:00"] * 4 + ["2019-11-09 09:00"] * 3 + ["2019-11-09 10:00"] * 3
+            ),
+        }
+    )
+
+    report = chronological_split_report(behaviors, fraction=0.2)
+
+    assert report["strictly_ordered"] is True
+    assert report["gap_seconds"] > 0
+    assert report["fit_impressions"] + report["tune_impressions"] == 10
+    # The realised fraction is allowed to drift from the requested one --
+    # a whole timestamp group moving is worth more than an exact ratio --
+    # but it must be reported rather than silently differing.
+    assert report["realised_tune_fraction"] != report["requested_tune_fraction"]
+
+
+def test_chronological_split_refuses_when_no_temporal_boundary_exists():
+    """If every impression shares one timestamp there is no strict
+    boundary to cut on, and silently returning an arbitrary one would
+    misrepresent the split as temporal when it is not.
+    """
+    import pandas as pd
+    import pytest
+
+    from recommender.evaluation.tuning_fold import chronological_tuning_split_impression_ids
+
+    behaviors = pd.DataFrame(
+        {"impression_id": range(6), "time": pd.to_datetime(["2019-11-09 08:00"] * 6)}
+    )
+
+    with pytest.raises(ValueError, match="empty side|no strict temporal boundary"):
+        chronological_tuning_split_impression_ids(behaviors, fraction=0.3)
