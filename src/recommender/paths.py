@@ -20,17 +20,39 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+class DataRootError(RuntimeError):
+    """`RECOMMENDER_DATA_ROOT` is set to something unusable."""
+
+
 def data_root() -> Path:
     """The directory holding processed data and trained artifacts.
 
     `RECOMMENDER_DATA_ROOT` wins when set, so a deployment that mounts
-    its artifacts elsewhere does not need the repository layout. Its
-    value is resolved, so a relative override still yields an absolute
-    path and cannot drift with the working directory either.
+    its artifacts elsewhere does not need the repository layout. The
+    container relies on exactly this: the package is installed into
+    site-packages there, so the repository-root walk below would resolve
+    under a directory that has never held any data.
+
+    A **relative** override is refused rather than resolved. An earlier
+    version called `.resolve()` on it and claimed that made it
+    stable; it did not. `Path("some/data").resolve()` resolves against
+    the current working directory *at the moment of the call*, so a
+    relative override reintroduces precisely the drift this module
+    exists to eliminate -- and silently, since each call still returns a
+    confident absolute path. Refusing is the only behaviour that keeps
+    the guarantee true.
     """
     override = os.environ.get("RECOMMENDER_DATA_ROOT")
     if override:
-        return Path(override).resolve()
+        path = Path(override)
+        if not path.is_absolute():
+            raise DataRootError(
+                f"RECOMMENDER_DATA_ROOT must be an absolute path, got {override!r}. "
+                "A relative value is resolved against the working directory on every "
+                "lookup, so the same deployment would read different artifacts "
+                "depending on where it was started."
+            )
+        return path
     return PROJECT_ROOT / "data"
 
 

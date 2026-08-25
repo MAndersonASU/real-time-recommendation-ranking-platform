@@ -37,6 +37,21 @@ RUN pip install --no-cache-dir --no-deps .
 ARG GIT_COMMIT_SHA=""
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
+# Where the data actually live in this image. Required, not optional.
+#
+# recommender.paths anchors data to the repository root so a serving
+# version cannot change with the caller's working directory. That
+# anchor is computed from the package's own location, which is correct
+# for a source checkout and wrong here: the package is installed into
+# site-packages, so the repository-root walk lands on
+# /usr/local/lib/python3.11 and every artifact resolves under a
+# directory that has never held any data.
+#
+# This is the override recommender.paths.data_root() exists for. It
+# also decouples the image from wherever pip happens to install the
+# package, which a relative path from WORKDIR would not.
+ENV RECOMMENDER_DATA_ROOT=/app/data
+
 # Runs as a real, unprivileged user rather than root -- no part of this
 # process (serving live HTTP traffic) needs root, so it doesn't run as
 # root. /app/data is where the model/index/ranking-pipeline volume gets
