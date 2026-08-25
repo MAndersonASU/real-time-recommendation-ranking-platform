@@ -122,3 +122,14 @@ def update_quality_gauges(snapshot: dict) -> None:
         value = snapshot.get(key)
         if value is not None:
             gauge.set(value)
+
+
+# Offset-commit failures in the streaming consumer. Exposed because a
+# failed commit is not a benign retry: Kafka offsets are cumulative, so
+# a later successful commit would bury the failed one, and the consumer
+# stops rather than risk that. An operator needs to see this rather than
+# infer it from a stalled consumer.
+COMMIT_FAILURES = Counter(
+    "stream_commit_failures_total",
+    "Kafka offset commit failures in the streaming consumer",
+)

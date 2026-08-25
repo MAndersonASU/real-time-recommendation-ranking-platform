@@ -1,8 +1,10 @@
+import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from confluent_kafka import KafkaException
 
+from recommender.monitoring.metrics import COMMIT_FAILURES
 from recommender.streaming.kafka_client import DEFAULT_BOOTSTRAP_SERVERS, build_consumer
 from recommender.streaming.replay_producer import TOPIC
 from recommender.streaming.schema import SCHEMA_VERSION, EventType, InteractionEvent
@@ -25,6 +27,14 @@ MAX_RECENT_ITEMS = 20
 # this only fixes the unbounded in-process memory growth.
 MAX_SEEN_EVENT_IDS = 100_000
 MAX_DISTINCT_TRACKED = 100_000
+
+# Bounded retry for an offset commit. A commit failure is usually
+# transient (a rebalance, a briefly unreachable broker), so a few
+# backed-off attempts are worth making -- but not indefinitely, since
+# an unbounded retry would hang the consumer instead of surfacing the
+# problem.
+COMMIT_RETRY_ATTEMPTS = 3
+COMMIT_RETRY_BASE_SECONDS = 0.2
 
 
 class BoundedSet:
@@ -193,7 +203,16 @@ def run_consumer(
     committing the offset only after it's been processed -- so a crash
     between poll and commit leaves the offset unmoved and that message
     gets redelivered on restart, not silently lost (verified directly in
-    the recovery testing that follows this step). Stops once no message
+    the recovery testing that follows this step).
+
+    That redelivery guarantee holds only while offsets are actually
+    committed in order. A commit failure is therefore retried with
+    bounded backoff, and consumption stops if the retries are exhausted:
+    Kafka offsets are cumulative, so continuing would let the next
+    successful commit also commit the failed message, and it would never
+    be redelivered. The returned `stopped_on_commit_failure` reports
+    whether the run ended that way rather than by reaching the end of
+    the stream. Stops once no message
     arrives within `idle_timeout` seconds -- a real consumer polls
     forever, but a bounded run is what a finite verification pass needs.
 
@@ -211,6 +230,7 @@ def run_consumer(
     polled = 0
     processed = 0
     commit_failures = 0
+    stopped_on_commit_failure = False
     received_any = False
     empty_polls_before_first_message = 0
     try:
@@ -229,24 +249,42 @@ def run_consumer(
             polled += 1
             if stream_consumer.process(msg.value()):
                 processed += 1
-            # `asynchronous=False` makes this call block and actually
-            # raise on failure -- the previous default (`asynchronous=True`)
-            # fires and forgets, so a real commit failure (the broker
-            # briefly unreachable, a rebalance in progress) was silently
-            # invisible, contradicting this function's own documented
-            # redelivery guarantee. Counted, not re-raised: one failed
-            # commit must not be able to kill the whole consumer loop --
-            # the message will simply be redelivered on the next poll or
-            # after a restart, the same safety net a real crash already
-            # relies on.
-            try:
-                consumer.commit(msg, asynchronous=False)
-            except KafkaException:
-                commit_failures += 1
+            # `asynchronous=False` blocks and raises on failure; the
+            # default fire-and-forget made a real commit failure
+            # invisible.
+            #
+            # Retried with bounded backoff, and consumption stops if the
+            # retries are exhausted. Continuing past a failed commit is
+            # not safe: Kafka offsets are cumulative, so committing a
+            # later message also commits this one. The earlier claim that
+            # a failed commit simply means redelivery was therefore wrong
+            # -- the very next successful commit would silently bury it,
+            # and the message would never be redelivered at all.
+            committed = False
+            for attempt in range(COMMIT_RETRY_ATTEMPTS):
+                try:
+                    consumer.commit(msg, asynchronous=False)
+                    committed = True
+                    break
+                except KafkaException:
+                    commit_failures += 1
+                    COMMIT_FAILURES.inc()
+                    if attempt < COMMIT_RETRY_ATTEMPTS - 1:
+                        time.sleep(COMMIT_RETRY_BASE_SECONDS * (2**attempt))
+
+            if not committed:
+                # Stopping is the conservative choice: this message has
+                # been applied but its offset is unconfirmed, so a
+                # restart will redeliver it -- which the state store
+                # handles idempotently. Carrying on would instead risk
+                # burying it under a later commit and losing it outright.
+                stopped_on_commit_failure = True
+                break
     finally:
         consumer.close()
     return {
         "messages_polled": polled,
         "messages_processed": processed,
         "commit_failures": commit_failures,
+        "stopped_on_commit_failure": stopped_on_commit_failure,
     }

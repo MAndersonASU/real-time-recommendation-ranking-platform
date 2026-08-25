@@ -40,10 +40,22 @@ history `[n1,n3]` plus a genuine new in-window click of `n3`, with
 history not yet advanced, yields `[n1,n3]` where `[n1,n3,n3]` is correct
 — a real click is dropped.
 
-**Remaining** Track pre-window history and ordered in-window events
-separately; determine which prefix of in-window events the advancing
-history has absorbed; align on event identity rather than article
-counts. Rerun end-to-end afterwards.
+**Resolved** by anchoring on each user's history length at first
+encounter: growth since that baseline is exactly what the history
+absorbed, and the remainder is genuinely additional. The auditor's case
+now yields `[n1,n3,n3]`.
+
+**Measured impact on published numbers.** Across the 2,000-impression
+window: 160 impressions had prior in-window clicks, the authoritative
+history grew in **0** of them -- MIND's `history` does not advance within
+the validation split -- and old and new logic disagree on exactly **1**
+impression. End-to-end metrics are therefore unchanged to four decimal
+places. The defect was real; its effect on this particular evidence is
+negligible, and that is stated rather than either exaggerated or used to
+dismiss the fix.
+
+**Remaining** Status stays `partially closed` until the evaluation is
+rerun under EVAL-PROVENANCE-01 from a clean commit.
 
 ---
 
@@ -73,14 +85,22 @@ CI.
 ---
 
 ## STREAM-COMMIT-04 — Kafka commit failures handled too weakly
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** partially closed
+**Fix commit** pending · **Tests** `tests/test_consumer.py`
 
-Processing continues after an offset commit failure, and a later commit
-may cover earlier offsets.
+Processing continued after an offset commit failure. Because Kafka
+offsets are cumulative, the next successful commit would also commit the
+failed message, so the previous claim that a failed commit "simply means
+redelivery" was wrong -- the message would never be redelivered.
 
-**Remaining** Pause and retry with bounded backoff; expose commit
-failures as metrics; define a termination condition; integration tests
-for consecutive failures; document the exact guarantee.
+Commits are now retried with bounded exponential backoff
+(`COMMIT_RETRY_ATTEMPTS`), failures increment
+`stream_commit_failures_total`, and the consumer stops rather than
+continue past an unconfirmed offset. The run reports
+`stopped_on_commit_failure`.
+
+**Remaining** Only covered by fakes; no integration test against a real
+broker with consecutive commit failures.
 
 ---
 
