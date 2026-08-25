@@ -43,11 +43,28 @@ def compute_durable_features(
     rather than recomputing the same logic a second way.
     """
     category_by_id = news.set_index("news_id")["category"]
-    latest = behaviors.sort_values("time").groupby("user_id").last()
+
+    # Two defects this ordering fixes, both reproduced before changing:
+    #
+    # 1. Sorting on `time` alone left impressions sharing a timestamp in
+    #    source order, so shuffling the input changed a user's features --
+    #    the same data produced dominant_category 'news' or 'sports'
+    #    depending on row order. impression_id is an immutable secondary
+    #    key, so the choice is now deterministic.
+    #
+    # 2. `.last()` operates column-wise, taking the last *non-null* value
+    #    in each column independently. A user whose latest impression had
+    #    no history inherited the history from an earlier row, reporting
+    #    3 lifetime clicks where the point-in-time answer was 0. Selecting
+    #    whole rows by position keeps every field from one impression.
+    sort_keys = ["time", "impression_id"] if "impression_id" in behaviors.columns else ["time"]
+    ordered = behaviors.sort_values(sort_keys, kind="mergesort")
+    latest = ordered.groupby("user_id", sort=False).tail(1).set_index("user_id")
 
     result = {}
     for user_id, row in latest.iterrows():
-        history_ids = history_ids_from_raw(row["history"])
+        raw_history = row["history"]
+        history_ids = history_ids_from_raw(raw_history) if isinstance(raw_history, str) else []
         result[user_id] = DurableUserFeatures(
             user_id=user_id,
             dominant_category=dominant_category(history_ids, category_by_id),

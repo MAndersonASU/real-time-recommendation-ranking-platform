@@ -10,7 +10,7 @@ import skops.io as sio
 import torch
 
 from recommender.data.mind import explode_impressions
-from recommender.evaluation.contract import load_catalog, load_split
+from recommender.evaluation.contract import CATALOG_PATH, load_catalog, load_split
 from recommender.features.cold_start import get_online_features
 from recommender.features.state_store import build_client
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
@@ -23,7 +23,8 @@ from recommender.reranking.freshness import (
     compute_age_days,
     compute_first_seen,
 )
-from recommender.retrieval.content_artifact import load_item_content
+from recommender.retrieval.bundle import validate_bundle
+from recommender.retrieval.content_artifact import CONTENT_ARTIFACT_PATH, load_item_content
 from recommender.retrieval.features import (
     CONTENT_DIM,
     MAX_HISTORY,
@@ -113,6 +114,16 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     train = load_split("train")
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, item_row_by_news_id = build_catalog_arrays(news, item_vocab)
+    # Refuses a set of artifacts that were not published together: a
+    # content matrix from one training run alongside a model from
+    # another would be interpreted in a basis the model never saw,
+    # with no error and plausible-looking output.
+    validate_bundle(
+        retrieval_model_path=RETRIEVAL_MODEL_PATH,
+        content_artifact_path=CONTENT_ARTIFACT_PATH,
+        catalog_path=CATALOG_PATH,
+        catalog_items=len(news),
+    )
     item_content = load_item_content(news)
 
     two_tower_model = _load_two_tower_model(len(categories) + 1, len(subcategories) + 1)

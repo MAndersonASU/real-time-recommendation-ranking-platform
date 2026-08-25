@@ -1,6 +1,8 @@
 import json
+import re
 import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from enum import Enum
 
 SCHEMA_VERSION = 1
@@ -10,6 +12,37 @@ SCHEMA_VERSION = 1
 # feed -- every event this system ever produces carries that fact directly
 # in its `source` field, rather than leaving it implicit.
 REPLAY_SOURCE = "mind_historical_replay"
+
+# Enumerated rather than free-form: `source` is written to logs and used
+# to reason about provenance, so an arbitrary caller-supplied string is
+# both a storage and an interpretation hazard.
+ALLOWED_SOURCES = frozenset({REPLAY_SOURCE, "synthetic_test"})
+
+# Bounded and restricted for the same reasons as the API's user id: these
+# reach Redis keys and log lines.
+MAX_IDENTIFIER_LENGTH = 128
+IDENTIFIER_PATTERN = re.compile(rf"^[A-Za-z0-9._:-]{{1,{MAX_IDENTIFIER_LENGTH}}}$")
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
+
+
+def _is_rfc3339(value: str) -> bool:
+    """MIND's own timestamps are space-separated rather than RFC3339, so
+    both forms are accepted; what is rejected is a string that is not a
+    datetime at all.
+    """
+    try:
+        # Python 3.11's fromisoformat accepts a trailing Z directly.
+        datetime.fromisoformat(value)
+    except (ValueError, AttributeError):
+        return False
+    return True
 
 
 class EventType(str, Enum):
@@ -52,11 +85,64 @@ class InteractionEvent:
         payload["event_type"] = self.event_type.value
         return json.dumps(payload)
 
+    def validate(self) -> None:
+        """Rejects a structurally valid message whose fields are not
+        usable.
+
+        Parsing previously accepted anything JSON-shaped: an empty or
+        arbitrarily long identifier, a boolean where an integer was
+        expected, a free-form source, and any string at all as a
+        timestamp. Every one of those reaches a Redis key, a log line or
+        a downstream assumption, so they are checked at the boundary
+        rather than surfacing later as a corrupted key or an unbounded
+        write.
+        """
+        for label, value in (("user_id", self.user_id), ("item_id", self.item_id)):
+            if not isinstance(value, str) or not IDENTIFIER_PATTERN.match(value):
+                raise ValueError(
+                    f"{label} must be 1-{MAX_IDENTIFIER_LENGTH} characters of "
+                    f"[A-Za-z0-9._:-], got {value!r}"
+                )
+
+        if not isinstance(self.event_id, str) or not _is_uuid(self.event_id):
+            raise ValueError(f"event_id must be a UUID, got {self.event_id!r}")
+
+        # bool is a subclass of int in Python, so `isinstance(True, int)`
+        # is True and a boolean would otherwise pass as a version or an
+        # impression id.
+        if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int):
+            raise TypeError(f"schema_version must be an integer, got {self.schema_version!r}")
+        if isinstance(self.impression_id, bool) or not isinstance(self.impression_id, int):
+            raise TypeError(f"impression_id must be an integer, got {self.impression_id!r}")
+        if self.impression_id < 0:
+            raise ValueError(f"impression_id must be non-negative, got {self.impression_id}")
+
+        if self.source not in ALLOWED_SOURCES:
+            raise ValueError(
+                f"source must be one of {sorted(ALLOWED_SOURCES)}, got {self.source!r}"
+            )
+
+        if not isinstance(self.timestamp, str) or not _is_rfc3339(self.timestamp):
+            raise ValueError(f"timestamp must be an RFC3339 datetime, got {self.timestamp!r}")
+
     @staticmethod
     def from_json(raw: str) -> "InteractionEvent":
         payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise TypeError("event payload must be a JSON object")
+        unexpected = set(payload) - _EVENT_FIELDS
+        if unexpected:
+            raise ValueError(f"unexpected event fields: {sorted(unexpected)}")
         payload["event_type"] = EventType(payload["event_type"])
-        return InteractionEvent(**payload)
+        event = InteractionEvent(**payload)
+        event.validate()
+        return event
+
+
+_EVENT_FIELDS = {
+    "event_id", "event_type", "schema_version", "user_id",
+    "item_id", "impression_id", "timestamp", "source",
+}
 
 
 def stable_event_id(

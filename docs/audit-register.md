@@ -198,7 +198,13 @@ across several samples; report sampling variance.
 ---
 
 ## MANIFEST-PATHS-11 — Manifest depends on the caller's working directory
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Fix commit** `efe29be` · **Tests** `tests/test_artifact_manifest.py`
+
+The same deployment reported serving version `9714f1cdc920` from the
+repository root and `935041132c2d` from elsewhere, with every artifact
+hashing as `absent`. Paths now resolve through `recommender.paths`,
+anchored to the repository root or an explicit `RECOMMENDER_DATA_ROOT`.
 
 ## MANIFEST-COVERAGE-12 — Manifest omits response-affecting inputs
 **Severity** Medium · **Status** open
@@ -207,7 +213,19 @@ Popularity, first-seen and durable-feature snapshots are not hashed, so
 recommendations can change without the serving version changing.
 
 ## FEATURE-FRESHNESS-13 — Durable-feature freshness is not operational
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed (scope decision)
+**Fix commit** `efe29be` · **Tests** `tests/test_serving_cache.py`
+
+Staleness was measured against the time the process built the
+snapshot, so restarting relabelled a frozen 2019 dataset as freshly
+computed. `built_at` and `data_as_of` are now separate, staleness is
+measured against the data, a content-derived `snapshot_id` is stable
+across restarts, and `/ready` reports age, staleness and an explicit
+policy stating the data are frozen and restarting does not refresh
+them. `durable_feature_data_age_seconds` exposes the data age.
+
+Automated atomic refresh is future work by agreed scope decision, not
+a missing production feature.
 
 ## FEATURE-DETERMINISM-14 — Durable features nondeterministic on tied timestamps
 **Severity** Medium · **Status** open

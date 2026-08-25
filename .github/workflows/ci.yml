@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+# Actions are pinned by commit SHA, not by tag. A tag is mutable:
+# whoever controls the action repository can repoint v7 at
+# different code, and every run afterwards silently executes it.
+# The trailing comment records which release each SHA was, so an
+# intentional upgrade stays readable.
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
       - name: Install package with dev dependencies (flexible, lower-bound versions)
@@ -40,8 +45,8 @@ jobs:
     # install path in CI ever catching it -- lint-and-test's flexible
     # install always resolves a working set on its own, so it can't.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
       # --require-hashes makes pip refuse any artifact whose SHA-256
@@ -102,8 +107,8 @@ jobs:
     # and returns a contract-valid response. The synthetic model's
     # scores are meaningless and no published result comes from them.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
       - name: Install package with dev dependencies
@@ -155,8 +160,8 @@ jobs:
     # container job above: a bounded, real round-trip against the two
     # services the serving path depends on.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
       - name: Install package with dev dependencies

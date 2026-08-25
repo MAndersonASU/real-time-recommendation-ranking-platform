@@ -1,16 +1,19 @@
 import json
 import time
+from datetime import UTC, datetime
 
 import numpy as np
 import torch
 from torch.utils.data import ConcatDataset, DataLoader
 
 from recommender.data.mind import explode_impressions
-from recommender.evaluation.contract import load_catalog, load_split
+from recommender.evaluation.contract import CATALOG_PATH, load_catalog, load_split
 from recommender.paths import mind_small_path
-from recommender.retrieval.content_artifact import save_item_content
+from recommender.retrieval.bundle import build_manifest, write_manifest
+from recommender.retrieval.content_artifact import CONTENT_ARTIFACT_PATH, save_item_content
 from recommender.retrieval.dataset import SampledNegativeDataset, TwoTowerDataset
 from recommender.retrieval.features import (
+    CONTENT_DIM,
     build_catalog_arrays,
     build_history_arrays,
     build_item_content_matrix,
@@ -127,6 +130,24 @@ def main(max_steps: int = 6000) -> None:
     elapsed = time.time() - start
 
     torch.save(model.state_dict(), MODEL_PATH)
+
+    # Published only now, after every artifact this bundle covers has
+    # been written. If training fails earlier, the previous bundle
+    # manifest stays in place and serving keeps refusing the mismatched
+    # set rather than loading a new content matrix against an old model.
+    news = load_catalog()
+    write_manifest(
+        build_manifest(
+            retrieval_model_path=MODEL_PATH,
+            content_artifact_path=CONTENT_ARTIFACT_PATH,
+            catalog_path=CATALOG_PATH,
+            content_dim=CONTENT_DIM,
+            embedding_dim=EMBEDDING_DIM,
+            catalog_items=len(news),
+            built_at=datetime.now(UTC).isoformat(),
+        )
+    )
+
     report = {
         "dataset_size": len(dataset),
         "num_sampled_negatives_per_positive": NUM_SAMPLED_NEGATIVES,

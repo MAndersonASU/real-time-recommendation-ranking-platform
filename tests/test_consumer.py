@@ -26,9 +26,9 @@ def test_process_updates_user_state_for_a_click():
 
 def test_process_counts_impressions_separately_from_clicks():
     consumer = StreamConsumer()
-    consumer.process(make_event(EventType.IMPRESSION, "U1", "N1", 1, "t").to_json())
-    consumer.process(make_event(EventType.IMPRESSION, "U1", "N2", 1, "t").to_json())
-    consumer.process(make_event(EventType.CLICK, "U1", "N2", 1, "t").to_json())
+    consumer.process(make_event(EventType.IMPRESSION, "U1", "N1", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.IMPRESSION, "U1", "N2", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.CLICK, "U1", "N2", 1, "2019-11-14T08:00:00").to_json())
 
     state = consumer.user_states["U1"]
     assert state.impressions_seen == 2
@@ -47,7 +47,7 @@ def test_malformed_json_is_rejected_not_raised():
 
 def test_wrong_schema_version_is_rejected():
     consumer = StreamConsumer()
-    event = make_event(EventType.CLICK, "U1", "N1", 1, "t")
+    event = make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00")
     payload = json.loads(event.to_json())
     payload["schema_version"] = 999
     tampered = json.dumps(payload)
@@ -60,7 +60,7 @@ def test_wrong_schema_version_is_rejected():
 
 def test_duplicate_event_id_is_skipped_on_second_delivery():
     consumer = StreamConsumer()
-    event = make_event(EventType.CLICK, "U1", "N1", 1, "t")
+    event = make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00")
     raw = event.to_json()
 
     first = consumer.process(raw)
@@ -75,7 +75,7 @@ def test_duplicate_event_id_is_skipped_on_second_delivery():
 def test_recent_clicked_items_is_bounded_to_max_recent_items():
     consumer = StreamConsumer()
     for i in range(MAX_RECENT_ITEMS + 5):
-        event = make_event(EventType.CLICK, "U1", f"N{i}", 1, "t")
+        event = make_event(EventType.CLICK, "U1", f"N{i}", 1, "2019-11-14T08:00:00")
         consumer.process(event.to_json())
 
     state = consumer.user_states["U1"]
@@ -97,7 +97,7 @@ def test_seen_event_ids_and_distinct_counters_stay_bounded_under_sustained_traff
     consumer = StreamConsumer(max_seen_event_ids=max_size, max_distinct_tracked=max_size)
 
     for i in range(max_size + 10):
-        event = make_event(EventType.CLICK, f"U{i}", f"N{i}", 1, "t")
+        event = make_event(EventType.CLICK, f"U{i}", f"N{i}", 1, "2019-11-14T08:00:00")
         consumer.process(event.to_json())
 
     assert len(consumer._seen_event_ids) == max_size
@@ -109,8 +109,8 @@ def test_seen_event_ids_and_distinct_counters_stay_bounded_under_sustained_traff
 
 def test_different_users_are_tracked_independently():
     consumer = StreamConsumer()
-    consumer.process(make_event(EventType.CLICK, "U1", "N1", 1, "t").to_json())
-    consumer.process(make_event(EventType.CLICK, "U2", "N2", 2, "t").to_json())
+    consumer.process(make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.CLICK, "U2", "N2", 2, "2019-11-14T08:00:00").to_json())
 
     assert consumer.user_states["U1"].clicks_seen == 1
     assert consumer.user_states["U2"].clicks_seen == 1
@@ -120,9 +120,9 @@ def test_different_users_are_tracked_independently():
 
 def test_monitoring_counters_track_events_by_type():
     consumer = StreamConsumer()
-    consumer.process(make_event(EventType.IMPRESSION, "U1", "N1", 1, "t").to_json())
-    consumer.process(make_event(EventType.CLICK, "U1", "N1", 1, "t").to_json())
-    consumer.process(make_event(EventType.SKIP, "U1", "N2", 1, "t").to_json())
+    consumer.process(make_event(EventType.IMPRESSION, "U1", "N1", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.SKIP, "U1", "N2", 1, "2019-11-14T08:00:00").to_json())
 
     assert consumer.counters.events_by_type == {"impression": 1, "click": 1, "skip": 1}
     assert consumer.counters.total_processed == 3
@@ -199,7 +199,7 @@ def test_run_consumer_retries_a_failed_commit_then_stops():
     leaves the offset unconfirmed, so a restart redelivers it -- which
     the state store handles idempotently.
     """
-    event = make_event(EventType.CLICK, "U1", "N1", 1, "t")
+    event = make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00")
     fake_consumer = _FailingCommitConsumer(
         [_FakeMessage(event.to_json().encode()) for _ in range(3)]
     )
@@ -215,7 +215,7 @@ def test_run_consumer_retries_a_failed_commit_then_stops():
 
 
 def test_run_consumer_reports_no_commit_failure_on_a_clean_run():
-    event = make_event(EventType.CLICK, "U1", "N1", 1, "t")
+    event = make_event(EventType.CLICK, "U1", "N1", 1, "2019-11-14T08:00:00")
     fake_consumer = _RecordingConsumer([_FakeMessage(event.to_json().encode())])
 
     with patch("recommender.streaming.consumer.build_consumer", return_value=fake_consumer):
