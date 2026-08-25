@@ -37,28 +37,64 @@ jobs:
 
   locked-install-test:
     runs-on: ubuntu-latest
-    # A second, separate install path from lint-and-test above:
-    # requirements-lock.txt's exact, pinned versions, not
-    # pyproject.toml's own flexible lower bounds. A dependency added to
-    # pyproject.toml but never re-frozen into the lock file would
-    # silently break a from-scratch locked install without either
-    # install path in CI ever catching it -- lint-and-test's flexible
-    # install always resolves a working set on its own, so it can't.
+    # A second, separate install path from lint-and-test above: the lock
+    # files' exact, pinned versions, not pyproject.toml's own flexible
+    # lower bounds. A dependency added to pyproject.toml but never
+    # re-frozen into a lock file would silently break a from-scratch
+    # locked install without either install path in CI ever catching it
+    # -- lint-and-test's flexible install always resolves a working set
+    # on its own, so it can't.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
+      # The runtime lock is what the container ships, so this asserts the
+      # property that matters about it: the test and audit toolchain is
+      # absent. A combined lock previously put pytest, bandit, pip-audit,
+      # ruff and pip-tools into the production image, where none of them
+      # runs and all of them are attack surface. Checked here rather than
+      # trusted, because re-running pip-compile against the wrong extras
+      # would silently put them back.
+      - name: Runtime lock must contain no development tooling
+        run: |
+          for pkg in pytest bandit pip-audit pip-tools ruff; do
+            if grep -q "^${pkg}==" requirements-lock.txt; then
+              echo "$pkg is in the runtime lock; it belongs in requirements-dev-lock.txt only" >&2
+              exit 1
+            fi
+          done
+          echo "runtime lock is free of development tooling"
       # --require-hashes makes pip refuse any artifact whose SHA-256
       # does not match the lock file, so a package republished under a
       # pinned version cannot slip in unnoticed. Version pinning alone
       # cannot catch that.
-      - name: Install exact locked dependencies, hash-verified
-        run: pip install --require-hashes -r requirements-lock.txt
+      #
+      # Installed into its own virtualenv so it is genuinely exercised --
+      # this is the exact set the image gets -- without the dev lock's
+      # extra packages being present to mask a missing runtime
+      # dependency.
+      - name: Install the runtime lock alone, hash-verified
+        run: |
+          python -m venv /tmp/runtime-env
+          /tmp/runtime-env/bin/pip install --require-hashes -r requirements-lock.txt
+          /tmp/runtime-env/bin/pip install --no-deps .
+          # Imports the serving path, which is all the runtime lock has
+          # to support. If a serving import needs a package that only the
+          # dev lock carries, this is where it surfaces.
+          /tmp/runtime-env/bin/python -c "import recommender.serving.app"
+      - name: Install the development lock, hash-verified
+        run: pip install --require-hashes -r requirements-dev-lock.txt
       - name: Install the project with no dependency resolution
         run: pip install --no-deps -e .
       - name: Test
         run: pytest -q
+      # Reads only the committed report files, never the licensed
+      # dataset, so the published claims' provenance is checkable in
+      # public CI even though the numbers themselves are not
+      # reproducible here.
+      - name: Published reports must satisfy the report contract
+        run: python -m recommender.evaluation.generate_reports
       # Audits the environment installed above -- the exact pinned set
       # that would actually ship -- rather than whatever a flexible
       # resolve happens to pick. Auditing the installed environment

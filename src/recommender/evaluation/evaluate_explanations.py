@@ -146,11 +146,15 @@ def evaluate_explanations(
 
 
 def main() -> None:
+    from recommender.evaluation.publish import publish_explanation_report
+
     context = build_serving_context()
     report = evaluate_explanations(context)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
+    published = publish_explanation_report(report)
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

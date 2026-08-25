@@ -30,9 +30,18 @@ TOP_N = 50
 NUM_QUERY_USERS = 500
 
 
-def load_trained_model(num_categories: int, num_subcategories: int) -> TwoTowerModel:
+def load_trained_model(
+    num_categories: int, num_subcategories: int, path=MODEL_PATH
+) -> TwoTowerModel:
+    """Loads a trained two-tower model.
+
+    `path` defaults to the deployed model. It is a parameter so the
+    tuning evaluations can load the fit-half model
+    (`recommender.retrieval.train_fit_only`) without either bundle being
+    able to overwrite the other.
+    """
     model = TwoTowerModel(num_categories, num_subcategories, EMBEDDING_DIM)
-    state = torch.load(MODEL_PATH, weights_only=True)
+    state = torch.load(path, weights_only=True)
     model.load_state_dict(state)
     model.eval()
     return model

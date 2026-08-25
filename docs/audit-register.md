@@ -15,17 +15,31 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 ---
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
-**Severity** Critical · **Status** open
+**Severity** Critical · **Status** code complete, awaiting rerun
+**Tests** `tests/test_reports.py`
 
-Reports are generated after the fact from previously produced raw JSON,
+Reports were generated after the fact from previously produced raw JSON,
 attaching the *current* commit and manifest without establishing that
-the current code produced those results. Existing reports also contain
+the current code produced those results. Existing reports also contained
 null denominators and stale configuration.
 
-**Remaining** Generate reports during the evaluation run; record dirty-tree
-status, dataset and split hashes, seeds and sampling policy; refuse
-generation from a dirty tree; strict per-report schemas; rerun every
-licensed-data evaluation from a clean commit.
+**Fixed** Each evaluation now builds and writes its own report while it
+holds its results (`recommender.evaluation.publish`), so the recorded
+commit describes the code that ran. `build_report` refuses a dirty
+working tree outright rather than recording a caveat. Schema version 2
+adds `provenance` (commit, tree-clean flag, generated-at, evaluation
+module) and `sampling`, fingerprints the catalog and every split file,
+and rejects a report with an undefined metric, a null denominator, or a
+rate outside `[0, 1]`. `recommender.evaluation.generate_reports` is now
+a validator, run in public CI against the committed reports only —
+it reads no licensed data.
+
+The four schema-version-1 reports were removed rather than re-stamped:
+re-labelling them under the new contract is exactly the defect this
+closes.
+
+**Remaining** Republish all four reports from a clean commit of this
+code, on a machine holding the licensed dataset.
 
 ---
 
@@ -171,29 +185,62 @@ and fraction drift.
 ---
 
 ## EVAL-RETRIEVAL-LEAKAGE-09 — Tuning features leak tuning-fold labels
-**Severity** High · **Status** open
+**Severity** High · **Status** code complete, awaiting rerun
+**Tests** `tests/test_fit_only_bundle.py`
 
-The ranking model is refit on the fit half, but the retrieval model
+The ranking model was refit on the fit half, but the retrieval model
 producing `retrieval_score` was trained on the whole training split
-including the tuning half.
+including the tuning half — so the fold was held out from one model and
+not the other. The fitted feature context (popularity counts, first-seen
+dates) had the same problem.
 
-**Remaining** Create the fold before training retrieval; train retrieval
-and ranking on fit-half data only; regenerate tuning features from
-fit-only artifacts; rerun diversity, freshness and retrieval-depth
-comparisons. Until then the tuning results are development evidence
-with residual feature leakage.
+**Fixed** A second, separate bundle:
+`recommender.retrieval.train_fit_only` trains a two-tower model on
+fit-half impressions only, using the same `TUNE_FOLD_SEED` the fold
+itself uses, and writes `two_tower_model_fit_only.pt`,
+`item_content_fit_only.npz` and `bundle_fit_only.json`.
+`recommender.ranking.build_dataset_fit_only` rebuilds the ranking
+features from that model with the context fitted on fit rows alone, into
+`ranking/train_fit_only.parquet`. `verify_tuning_decisions` prefers that
+table and records which one it used in every section's output, so a run
+that fell back to the leaked table cannot be mistaken for a clean one.
+
+The deployed artifacts are untouched by design. The fit-half model is
+trained on 80% of the data specifically so it can be honest about the
+fold, which makes it a worse model to serve; substituting it would trade
+real serving quality for an evaluation property. A test asserts the two
+bundles' paths stay distinct.
+
+**Remaining** Build the fit-half bundle and rerun the diversity,
+freshness and retrieval-depth comparisons from a clean commit. Until
+that rerun lands, the published tuning results remain development
+evidence with residual feature leakage.
 
 ---
 
 ## EVAL-SAMPLING-10 — Tuning experiments use biased first-N samples
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** code complete, awaiting rerun
+**Tests** `tests/test_sampling.py`
 
-`head(1500)` and `head(400)` select the earliest qualifying impressions
-rather than a representative sample.
+`head(1500)` and `head(400)` selected the earliest qualifying
+impressions rather than a representative sample. Because a user's
+session sits inside one part of a day, that also restricted every
+comparison to whoever happened to be active first.
 
-**Remaining** Deterministic seeded or stratified sampling; record seed,
-eligible population, time range, user count and sample hash; repeat
-across several samples; report sampling variance.
+**Fixed** `recommender.evaluation.sampling` draws a seeded uniform
+sample without replacement, over impression ids rather than rows.
+Applied at all four biased sites: the end-to-end replay and the
+diversity-cap, freshness and retrieval-depth comparisons. Each run
+records seed, eligible population, selected count and fraction, distinct
+users, time range, and a digest of the selected ids — enough to confirm
+a rerun drew the same sample without publishing licensed ids. The
+end-to-end replay still sorts chronologically after selection, so its
+point-in-time guarantees are unchanged.
+
+**Remaining** Republish the affected reports from a clean commit.
+Sampling variance across several seeds is not yet measured; the single
+seed is recorded, so the figures are reproducible but their sampling
+error is unquantified.
 
 ---
 
@@ -231,7 +278,22 @@ a missing production feature.
 **Severity** Medium · **Status** open
 
 ## SUPPLY-RUNTIME-LOCK-15 — Production image installs dev and audit tooling
-**Severity** Medium · **Status** open
+**Severity** Medium · **Status** verified closed
+**Tests** CI job `locked-install-test`
+
+A single combined lock put pytest, bandit, pip-audit, ruff and pip-tools
+into the production image — packages that never execute in serving but
+are present to be exploited.
+
+**Fixed** Split into `requirements-lock.txt` (62 packages, runtime only,
+what the container installs) and `requirements-dev-lock.txt` (94
+packages, a strict superset for CI and local work). Both are
+hash-pinned and regenerated together. CI asserts the absence of each dev
+tool from the runtime lock, then installs the runtime lock alone into
+its own virtualenv and imports the serving app from it, so a runtime
+dependency that only the dev lock carries fails there rather than in
+production.
+
 
 ## SUPPLY-DOCKERIGNORE-16 — No restrictive `.dockerignore`
 **Severity** Medium · **Status** verified closed

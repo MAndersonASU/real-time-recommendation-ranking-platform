@@ -5,6 +5,7 @@ import pytest
 from recommender.evaluation.reports import (
     REPORT_SCHEMA_VERSION,
     REQUIRED_FIELDS,
+    ReportProvenanceError,
     build_report,
     validate_report,
     write_report,
@@ -12,15 +13,28 @@ from recommender.evaluation.reports import (
 
 
 def _report(**overrides):
+    # require_clean_tree is off here and only here: these tests build
+    # reports from a working tree that is, by definition, being edited.
+    # The refusal itself is covered by its own test below.
     report = build_report(
         report_name="example-evaluation",
+        evaluation_module="recommender.evaluation.example",
         dataset={"name": "MIND small", "split": "validation", "edition": "2019-11"},
         configuration={"k": 10, "seed": 42},
+        sampling={"method": "seeded uniform random without replacement", "seed": 7},
         denominators={"impressions_evaluated": 2000, "users": 1500},
-        metric_definitions={"hit_rate_at_k": "share of impressions whose clicked item is in the top K"},
+        metric_definitions={
+            "hit_rate_at_k": "share of impressions whose clicked item is in the top K"
+        },
         results={"hit_rate_at_k": 0.0145},
         limitations=["retrieval remains the binding constraint"],
+        require_clean_tree=False,
     )
+    # Every test below asserts against a report that is valid apart from
+    # the one thing it is testing, so the baseline must satisfy the
+    # clean-tree rule regardless of the tree these tests run in.
+    report["provenance"]["working_tree_clean"] = True
+    report["provenance"]["source_commit"] = "0" * 40
     report.update(overrides)
     return report
 
@@ -32,12 +46,42 @@ def test_a_built_report_carries_full_provenance():
         assert field in report, field
 
     assert report["schema_version"] == REPORT_SCHEMA_VERSION
-    assert report["generated_at"].endswith("+00:00")
+    assert report["provenance"]["generated_at"].endswith("+00:00")
+    assert report["provenance"]["evaluation_module"] == "recommender.evaluation.example"
     # Ties the numbers to the exact artifacts that produced them, so a
     # later artifact change shows up as a changed hash rather than an
     # unexplained metric shift.
     assert "retrieval_model_sha256_prefix" in report["artifacts"]
     assert "serving_code_commit" in report["artifacts"]
+
+
+def test_building_from_a_dirty_tree_is_refused():
+    """The defect this closes: a report used to be assembled after the
+    fact and stamped with whatever commit was checked out at publishing
+    time. From a modified tree that commit describes code that is not
+    what ran, so the report looks attributable while being unverifiable.
+    Refusing is the only honest option -- a warning would be recorded and
+    ignored.
+    """
+    import recommender.evaluation.reports as reports_module
+
+    original = reports_module.working_tree_is_clean
+    reports_module.working_tree_is_clean = lambda: False
+    try:
+        with pytest.raises(ReportProvenanceError, match="dirty working tree"):
+            build_report(
+                report_name="example-evaluation",
+                evaluation_module="recommender.evaluation.example",
+                dataset={},
+                configuration={},
+                sampling={"method": "full"},
+                denominators={"n": 1},
+                metric_definitions={"hit_rate_at_k": "x"},
+                results={"hit_rate_at_k": 0.5},
+                limitations=[],
+            )
+    finally:
+        reports_module.working_tree_is_clean = original
 
 
 def test_validate_accepts_a_well_formed_report():
@@ -51,6 +95,59 @@ def test_validate_rejects_a_report_missing_any_required_field(field):
 
     with pytest.raises(ValueError, match="missing required fields"):
         validate_report(report)
+
+
+def test_validate_rejects_a_report_whose_tree_was_dirty():
+    report = _report()
+    report["provenance"]["working_tree_clean"] = False
+
+    with pytest.raises(ValueError, match="dirty working tree"):
+        validate_report(report)
+
+
+def test_validate_rejects_a_report_with_no_source_commit():
+    report = _report()
+    report["provenance"]["source_commit"] = None
+
+    with pytest.raises(ValueError, match="no source commit"):
+        validate_report(report)
+
+
+def test_validate_rejects_a_metric_with_no_definition():
+    """A number with no stated definition is not a result, it is a
+    number. `recall@k` in particular has several defensible definitions
+    that differ by a factor of the clicked-item count.
+    """
+    report = _report(results={"hit_rate_at_k": 0.1, "mystery_metric": 0.3})
+
+    with pytest.raises(ValueError, match="no definition"):
+        validate_report(report)
+
+
+def test_validate_rejects_a_null_denominator():
+    """A rate whose denominator is null cannot be interpreted at all --
+    0.0 out of nothing and 0.0 out of 50,000 are different claims.
+    """
+    report = _report(denominators={"impressions_evaluated": None})
+
+    with pytest.raises(ValueError, match="must not be null"):
+        validate_report(report)
+
+
+def test_validate_rejects_a_rate_outside_its_own_range():
+    report = _report(results={"hit_rate_at_k": 1.4})
+
+    with pytest.raises(ValueError, match="is a rate"):
+        validate_report(report)
+
+
+def test_validate_requires_a_sampling_description():
+    """Absent sampling used to mean "assume it read everything". It also
+    silently covered a `head(N)` selection that read the earliest rows
+    only, which is not a sample of anything.
+    """
+    with pytest.raises(ValueError, match="how its sample was selected"):
+        validate_report(_report(sampling={}))
 
 
 def test_validate_rejects_a_stale_schema_version():
@@ -92,7 +189,7 @@ def test_write_report_round_trips_and_is_deterministically_ordered(tmp_path):
 
 def test_write_report_refuses_to_write_an_invalid_report(tmp_path):
     report = _report()
-    del report["source_commit"]
+    del report["provenance"]
 
     with pytest.raises(ValueError):
         write_report(report, directory=tmp_path)

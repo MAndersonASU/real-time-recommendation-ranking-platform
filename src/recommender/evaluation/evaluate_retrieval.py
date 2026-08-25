@@ -85,9 +85,16 @@ def evaluate_retrieval(n: int = N) -> dict:
 
 
 def main() -> None:
+    from recommender.evaluation.publish import publish_retrieval_report
+
     report = evaluate_retrieval()
     RETRIEVAL_REPORT_PATH.write_text(json.dumps(report, indent=2))
+    # Published by the run that measured, so the recorded commit and
+    # artifact fingerprints describe these numbers rather than whatever
+    # happened to be checked out at some later publishing step.
+    published = publish_retrieval_report(report)
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import time
 from datetime import UTC, datetime
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import ConcatDataset, DataLoader
 
@@ -32,8 +33,27 @@ NUM_SAMPLED_NEGATIVES = 4
 TRAIN_SEED = 42
 
 
-def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
-    train = load_split("train")
+def build_train_dataset(
+    num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES,
+    train: "pd.DataFrame | None" = None,
+    content_artifact_path=CONTENT_ARTIFACT_PATH,
+):
+    """Builds the two-tower training dataset.
+
+    `train` defaults to the full training split, which is what the
+    deployed model is fit on. It is a parameter so a leakage-free
+    variant can pass fit-half rows only, without that variant having to
+    duplicate this construction -- and `content_artifact_path` follows,
+    so the fit-half run writes its content matrix beside its own model
+    instead of overwriting the deployed one.
+
+    The content matrix itself is fitted from article text alone and
+    never from click labels, so restricting the behaviour rows does not
+    change what it is entitled to see; it is refitted per run only so
+    each model is guaranteed to score against the exact basis it was
+    trained against.
+    """
+    train = load_split("train") if train is None else train
     news = load_catalog()
     item_vocab, categories, subcategories = build_item_vocab(news)
     catalog_cat, catalog_subcat, row_by_news_id = build_catalog_arrays(news, item_vocab)
@@ -41,7 +61,7 @@ def build_train_dataset(num_sampled_negatives: int = NUM_SAMPLED_NEGATIVES):
     # matrix, so serving never scores against a differently-oriented
     # SVD basis than the one the model was trained on.
     content_matrix = build_item_content_matrix(news)
-    save_item_content(news, content_matrix)
+    save_item_content(news, content_matrix, path=content_artifact_path)
 
     cat, subcat, mask, history_item_rows, impression_row = build_history_arrays(
         train, item_vocab, row_by_news_id=row_by_news_id

@@ -11,6 +11,11 @@ from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import TOP_K, load_catalog, load_split
 from recommender.evaluation.metrics import catalog_coverage, hit_rate_at_k, reciprocal_rank
 from recommender.evaluation.retrieval_metrics import ndcg_at_n_known_total, recall_at_n_known_total
+from recommender.evaluation.sampling import (
+    DEFAULT_SAMPLE_SEED,
+    describe_sample,
+    sample_impression_ids,
+)
 from recommender.features.fake_redis import InMemoryRedis
 from recommender.features.online_features import (
     DurableUserFeatures,
@@ -127,6 +132,7 @@ def evaluate_end_to_end(
     k: int = TOP_K,
     validation: pd.DataFrame | None = None,
     news: pd.DataFrame | None = None,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Runs the real serving code path (`safe_recommend`, retrieval ->
     ranking -> reranking, exactly what `/recommend` calls) against real
@@ -157,9 +163,19 @@ def evaluate_end_to_end(
     # `time` alone leaves impressions sharing a timestamp in whatever
     # order the source happened to supply, so the same data could
     # produce different results on a differently-ordered input.
+    # Chronological ordering is what the replay needs; the *selection* of
+    # which impressions to replay is a separate decision. Taking the
+    # earliest `num_impressions` rows -- what this did before -- is not a
+    # sample of the split, it is one narrow slice of its first hours and
+    # of whoever happened to be active then. Selection is now a seeded
+    # uniform draw over the whole split, then sorted back into
+    # chronological order so the replay's point-in-time guarantees are
+    # unchanged.
+    validation = validation.sort_values(["time", "impression_id"], kind="mergesort")
+    selected_ids = sample_impression_ids(validation, num_impressions, seed=sample_seed)
+    sampling = describe_sample(validation, selected_ids, seed=sample_seed)
     validation = (
-        validation.sort_values(["time", "impression_id"], kind="mergesort")
-        .head(num_impressions)
+        validation[validation["impression_id"].isin(selected_ids)]
         .reset_index(drop=True)
     )
     exploded = explode_impressions(validation)
@@ -282,6 +298,7 @@ def evaluate_end_to_end(
     total_impressions = impressions_evaluated + sum(skip_reasons.values())
     return {
         "k": k,
+        "sampling": sampling,
         "impressions_in_sample": total_impressions,
         "impressions_evaluated": impressions_evaluated,
         "impressions_skipped": dict(skip_reasons),
@@ -306,13 +323,23 @@ def evaluate_end_to_end(
 
 
 def main() -> None:
+    """Measures and publishes in one step.
+
+    Publishing here rather than in a later pass is the point: the
+    provenance stamped on the published report describes the process that
+    produced these exact numbers, which a separate step reading this
+    file back off disk could never establish.
+    """
+    from recommender.evaluation.publish import publish_end_to_end_report
     from recommender.serving.pipeline import build_serving_context
 
     context = build_serving_context()
     report = evaluate_end_to_end(context)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
+    published = publish_end_to_end_report(report, sampling=report["sampling"])
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

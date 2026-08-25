@@ -10,6 +10,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from recommender.evaluation.contract import TOP_K, load_catalog, load_split
+from recommender.evaluation.sampling import (
+    DEFAULT_SAMPLE_SEED,
+    describe_sample,
+    sample_impression_ids,
+)
 from recommender.evaluation.tuning_fold import (
     chronological_tuning_split_impression_ids,
     split_rows_by_impression_ids,
@@ -75,7 +80,7 @@ def verify_popularity_exclusion() -> dict:
     genuinely out-of-sample, the same real property validation had by
     virtue of being a different day entirely.
     """
-    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_rows, feature_provenance = _load_tuning_rows()
     fit_rows, tune_rows = split_train_for_tuning(train_rows)
 
     train_behaviors = load_split("train")
@@ -94,6 +99,7 @@ def verify_popularity_exclusion() -> dict:
     auc = float(roc_auc_score(tune_rows["clicked"], pred))
 
     return {
+        "feature_provenance": feature_provenance,
         "original_validation_auc": ORIGINAL_VALIDATION_POPULARITY_AUC,
         "tune_fold_auc_out_of_sample_popularity": auc,
         "decision_confirmed": auc <= 0.55,  # still no better than a coin flip
@@ -122,7 +128,7 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
     separate, larger decision requiring model retraining, not made
     here).
     """
-    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_rows, feature_provenance = _load_tuning_rows()
     train_behaviors = load_split("train")
     fit_impression_ids, tune_impression_ids = chronological_tuning_split_impression_ids(train_behaviors)
 
@@ -144,11 +150,49 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
     auc = float(roc_auc_score(tune_rows["clicked"], pred))
 
     return {
+        "feature_provenance": feature_provenance,
         "original_validation_auc": ORIGINAL_VALIDATION_POPULARITY_AUC,
         "chronological_split_tune_fold_auc": auc,
         "recency_leakage_explanation_supported": auc <= 0.55,
         "fit_rows": len(fit_rows),
         "tune_rows": len(tune_rows),
+    }
+
+
+
+def _load_tuning_rows() -> tuple[pd.DataFrame, dict]:
+    """Loads the feature table the tuning comparisons run on.
+
+    Prefers the fit-half table (`recommender.ranking.build_dataset_fit_only`),
+    whose `retrieval_score` and fitted context were both produced without
+    any tune-fold information. The deployed table is the fallback, and it
+    is a compromised one: its retrieval model was trained on the tuning
+    fold, so a comparison run against it is development evidence with
+    residual feature leakage, not a held-out result.
+
+    Which table was used is returned rather than inferred, and travels
+    into the published report -- a leaked run and a clean one must not
+    look the same afterwards.
+    """
+    from recommender.ranking.build_dataset_fit_only import FIT_ONLY_TRAIN_PATH
+
+    if FIT_ONLY_TRAIN_PATH.exists():
+        return pd.read_parquet(FIT_ONLY_TRAIN_PATH), {
+            "feature_table": "fit_half_only",
+            "retrieval_model_trained_on": "fit half only",
+            "feature_context_fitted_on": "fit half only",
+            "tune_fold_leakage": False,
+        }
+    return pd.read_parquet(TRAIN_PATH), {
+        "feature_table": "full_train",
+        "retrieval_model_trained_on": "all of train, including the tuning fold",
+        "feature_context_fitted_on": "all of train, including the tuning fold",
+        "tune_fold_leakage": True,
+        "note": (
+            "residual feature leakage: run "
+            "`python -m recommender.retrieval.train_fit_only` then "
+            "`python -m recommender.ranking.build_dataset_fit_only` to remove it"
+        ),
     }
 
 
@@ -170,6 +214,7 @@ def _compare_diversity_cap_values(
     category_by_id: pd.Series,
     sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS,
     news: pd.DataFrame | None = None,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Runs the real diversity-reranking algorithm at several candidate
     cap values -- not just the currently-configured one's own behavior
@@ -188,8 +233,8 @@ def _compare_diversity_cap_values(
     news = news if news is not None else load_catalog()
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
 
-    sample_impression_ids = scored_rows["impression_id"].drop_duplicates().head(sample_impressions)
-    sample = scored_rows[scored_rows["impression_id"].isin(sample_impression_ids)]
+    selected = sample_impression_ids(scored_rows, sample_impressions, seed=sample_seed)
+    sample = scored_rows[scored_rows["impression_id"].isin(selected)]
 
     candidate_caps = [1, 2, 3, 5, None]  # None stands in for "no cap at all"
     by_cap: dict[str, dict] = {}
@@ -246,7 +291,8 @@ def _compare_diversity_cap_values(
     by_budget = {f"{budget:.2f}": _select_under_budget(budget) for budget in (0.85, 0.90, 0.95, 0.99)}
 
     return {
-        "sample_impressions": len(sample_impression_ids),
+        "sample_impressions": len(selected),
+        "sampling": describe_sample(scored_rows, selected, seed=sample_seed),
         "by_cap_value": by_cap,
         "selection_rule": (
             "highest mean distinct-category count among caps whose mean slate relevance "
@@ -273,7 +319,7 @@ def verify_diversity_cap() -> dict:
     model that had already seen the tune fold's own labels would not be
     a genuinely held-out check.
     """
-    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_rows, feature_provenance = _load_tuning_rows()
     fit_rows, tune_rows = split_train_for_tuning(train_rows)
     news = load_catalog()
     category_by_id = news.set_index("news_id")["category"]
@@ -297,6 +343,7 @@ def verify_diversity_cap() -> dict:
 
     four_plus_rate = four_plus / total if total else None
     return {
+        "feature_provenance": feature_provenance,
         "original_validation_four_plus_same_category_rate": ORIGINAL_VALIDATION_FOUR_PLUS_SAME_CATEGORY_RATE,
         "tune_fold_four_plus_same_category_rate": four_plus_rate,
         "original_validation_single_category_rate": ORIGINAL_VALIDATION_SINGLE_CATEGORY_RATE,
@@ -382,6 +429,7 @@ def _compare_min_fresh_values(
     impression_time: pd.Series,
     news: pd.DataFrame | None = None,
     sample_impressions: int = COMPARISON_SAMPLE_IMPRESSIONS,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Compares real alternatives for the minimum-fresh-items quota,
     the one reranking parameter never previously checked against
@@ -402,8 +450,8 @@ def _compare_min_fresh_values(
     news = news if news is not None else load_catalog()
     tfidf_vectors, tfidf_row_by_id = build_content_vectors(news)
 
-    sample_ids = scored_rows["impression_id"].drop_duplicates().head(sample_impressions)
-    sample = scored_rows[scored_rows["impression_id"].isin(sample_ids)]
+    selected = sample_impression_ids(scored_rows, sample_impressions, seed=sample_seed)
+    sample = scored_rows[scored_rows["impression_id"].isin(selected)]
 
     by_value: dict[str, dict] = {}
     for min_fresh in MIN_FRESH_CANDIDATE_VALUES:
@@ -452,7 +500,8 @@ def _compare_min_fresh_values(
     by_budget = {f"{b:.2f}": _select(b) for b in (0.90, 0.95, 0.99)}
 
     return {
-        "sample_impressions": len(sample_ids),
+        "sample_impressions": len(selected),
+        "sampling": describe_sample(scored_rows, selected, seed=sample_seed),
         "by_min_fresh_value": by_value,
         "selection_rule": (
             "largest minimum-fresh quota whose mean slate relevance stays within a "
@@ -477,7 +526,7 @@ def verify_freshness_threshold() -> dict:
     first_seen = compute_first_seen(train_behaviors)
     impression_time = train_behaviors.set_index("impression_id")["time"]
 
-    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_rows, feature_provenance = _load_tuning_rows()
     fit_rows, tune_rows = split_train_for_tuning(train_rows)
     _fit_rows = fit_rows
 
@@ -486,6 +535,7 @@ def verify_freshness_threshold() -> dict:
     )
     fresh_row_rate = at_configured_threshold["fresh_row_rate"]
     return {
+        "feature_provenance": feature_provenance,
         "original_validation_fresh_row_rate": ORIGINAL_VALIDATION_FRESH_ROW_RATE,
         "tune_fold_fresh_row_rate": fresh_row_rate,
         "original_validation_zero_fresh_impression_rate": ORIGINAL_VALIDATION_ZERO_FRESH_IMPRESSION_RATE,
@@ -517,6 +567,7 @@ RETRIEVAL_DEPTH_SAMPLE_IMPRESSIONS = 400
 
 def verify_retrieval_depth(
     sample_impressions: int = RETRIEVAL_DEPTH_SAMPLE_IMPRESSIONS,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Measures what retrieval depth actually buys, against the tuning
     fold rather than `validation`.
@@ -540,14 +591,14 @@ def verify_retrieval_depth(
     from recommender.serving.pipeline import build_serving_context, encode_recent_history
 
     context = build_serving_context()
-    train_rows = pd.read_parquet(TRAIN_PATH)
+    train_rows, feature_provenance = _load_tuning_rows()
     _fit_rows, tune_rows = split_train_for_tuning(train_rows)
 
     train_behaviors = load_split("train")
     history_by_impression = train_behaviors.set_index("impression_id")["history"]
 
-    impression_ids = tune_rows["impression_id"].drop_duplicates().head(sample_impressions)
-    sample = tune_rows[tune_rows["impression_id"].isin(impression_ids)]
+    selected = sample_impression_ids(tune_rows, sample_impressions, seed=sample_seed)
+    sample = tune_rows[tune_rows["impression_id"].isin(selected)]
 
     queries = []
     clicked_rows = []
@@ -603,6 +654,7 @@ def verify_retrieval_depth(
     ]
 
     return {
+        "feature_provenance": feature_provenance,
         "impressions_measured": len(clicked_rows),
         "split": "tuning fold carved from train (never validation)",
         "by_depth": by_depth,
@@ -629,6 +681,8 @@ def verify_retrieval_depth(
 
 
 def main() -> None:
+    from recommender.evaluation.publish import publish_tuning_report
+
     report = {
         "popularity_exclusion": verify_popularity_exclusion(),
         "popularity_exclusion_temporal_split_diagnostic": verify_popularity_exclusion_with_temporal_split(),
@@ -638,7 +692,14 @@ def main() -> None:
     }
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
+    # Every section here draws its own sample; the diversity-cap section's
+    # description stands for the run, and each section carries its own
+    # alongside its numbers.
+    published = publish_tuning_report(
+        report, sampling=report["diversity_cap"]["sampling"]
+    )
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":
