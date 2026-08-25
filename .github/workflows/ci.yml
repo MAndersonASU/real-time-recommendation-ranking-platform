@@ -76,8 +76,15 @@ jobs:
       # on the maintainer's network fails it with
       # SSLCertVerificationError even with certifi's CA bundle set
       # explicitly.
+      #
+      # Not --strict: that flag additionally fails the run when any
+      # distribution could not be collected, and the one distribution
+      # skipped here is this project itself, skipped on purpose. The two
+      # flags contradict each other. Removing it does not weaken
+      # vulnerability detection -- pip-audit still exits non-zero when it
+      # finds an actual advisory, which is what makes this step blocking.
       - name: Audit locked dependencies for known vulnerabilities
-        run: pip-audit --strict --skip-editable
+        run: pip-audit --skip-editable
 
   api-container-test:
     runs-on: ubuntu-latest

@@ -1,13 +1,17 @@
 from unittest.mock import MagicMock, patch
 
 from recommender.explanation.generation import (
+    APPROVED_TEMPLATES,
     MIN_CONTENT_SIMILARITY_FOR_GROUNDING,
     MODEL_NAME,
     MODEL_REVISION,
+    _preserves_required_facts,
     build_template_explanation,
+    extract_facts,
     generate_explanation,
     has_sufficient_evidence,
     load_generator,
+    select_template_key,
 )
 from recommender.explanation.retrieval import SupportContext
 
@@ -104,7 +108,10 @@ def test_generate_explanation_uses_the_models_rewrite_when_it_keeps_the_real_cat
     context = _context(category_match=True, content_similarity=0.0, category="sports")
     generator = _FakeGenerator("This is recommended because it matches your interest in sports.")
 
-    response = generate_explanation(context, generator=generator)
+    # Opt-in: the rewrite path is no longer the default (see
+    # generate_explanation's docstring on why the deterministic template
+    # states the factual relationship).
+    response = generate_explanation(context, generator=generator, allow_generative_rewrite=True)
 
     assert response.refused is False
     assert response.explanation == "This is recommended because it matches your interest in sports."
@@ -249,8 +256,127 @@ def test_generate_explanation_accepts_a_genuine_rewrite_with_no_invented_terms()
         "It is recommended because its content closely resembles articles you have read before."
     )
 
-    response = generate_explanation(context, generator=generator)
+    response = generate_explanation(context, generator=generator, allow_generative_rewrite=True)
 
     assert response.explanation == (
         "It is recommended because its content closely resembles articles you have read before."
+    )
+
+
+# --- Constrained deterministic design -------------------------------
+
+
+def test_explanation_is_deterministic_and_never_calls_a_model_by_default():
+    """The factual relationship is stated by an approved template, not
+    by a model. A generator supplied but not opted into must never be
+    invoked.
+    """
+    class _ExplodingGenerator:
+        def generate(self, prompt):
+            raise AssertionError("no model may be called on the default path")
+
+    context = _context(category_match=True, content_similarity=0.4, category="sports")
+
+    response = generate_explanation(context, generator=_ExplodingGenerator())
+
+    assert response.explanation == build_template_explanation(context)
+    assert "sports" in response.explanation
+
+
+def test_every_produced_sentence_comes_from_the_approved_template_set():
+    """Whatever combination of evidence holds, the output is one of the
+    approved sentences with only the category substituted.
+    """
+    for category_match, similarity in ((True, 0.4), (True, 0.0), (False, 0.4)):
+        context = _context(
+            category_match=category_match, content_similarity=similarity, category="sports"
+        )
+        rendered = build_template_explanation(context)
+        key = select_template_key(extract_facts(context))
+        assert rendered == APPROVED_TEMPLATES[key].format(category="sports")
+
+
+def test_an_implausible_category_value_is_never_substituted_into_output():
+    """The single placeholder is filled only from a validated value, so
+    a corrupted category cannot reach the user through it.
+    """
+    context = _context(
+        category_match=True, content_similarity=0.4,
+        category="<script>alert(1)</script>",
+    )
+
+    rendered = build_template_explanation(context)
+
+    assert "<script>" not in rendered
+    assert rendered == APPROVED_TEMPLATES[("content",)]
+
+
+# --- Adversarial: why the lexical gate is not a semantic one ---------
+#
+# Each case below is built ONLY from words the gate already permits, so
+# it passes the lexical check while meaning something the evidence does
+# not support. These are not hypothetical -- they are the reason
+# generation is opt-in and the deterministic template is authoritative.
+
+
+def _lexically_passes(text, context):
+    template = build_template_explanation(context)
+    return _preserves_required_facts(text, context, template)
+
+
+def test_lexical_gate_accepts_reordered_words_that_change_the_claim():
+    context = _context(category_match=True, content_similarity=0.4, category="sports")
+
+    # Every word here appears in the template or the scaffolding set,
+    # but the sentence now asserts the reader's articles resemble the
+    # content, reversing which thing is being compared to which.
+    reordered = (
+        "Articles you've read before closely resembles its content and your interest "
+        "in sports matches it."
+    )
+
+    assert _lexically_passes(reordered, context), (
+        "this case exists to document that the lexical gate passes it"
+    )
+
+
+def test_lexical_gate_accepts_a_reversed_subject_object_relationship():
+    context = _context(category_match=True, content_similarity=0.0, category="sports")
+
+    reversed_claim = "Your interest in sports is recommended because it matches this."
+
+    assert _lexically_passes(reversed_claim, context)
+
+
+def test_lexical_gate_accepts_an_unsupported_claim_built_from_allowed_words():
+    context = _context(category_match=True, content_similarity=0.0, category="sports")
+
+    # Every word is already available to the gate, yet the sentence
+    # asserts something the evidence never established: that the reader
+    # is *in* sports, rather than interested in the category.
+    unsupported = "It matches your interest because you are in sports."
+
+    assert _lexically_passes(unsupported, context)
+
+
+def test_lexical_gate_accepts_a_fabricated_actor_made_only_of_allowed_words():
+    context = _context(category_match=True, content_similarity=0.4, category="sports")
+
+    # "we" is grammatical scaffolding; the sentence still invents an
+    # actor and a motive the system never had.
+    fabricated_actor = "We matches your interest in sports because we have your content."
+
+    assert _lexically_passes(fabricated_actor, context)
+
+
+def test_the_deterministic_path_is_immune_to_all_of_the_above():
+    """The point of the adversarial cases: none of them can occur when
+    no model is asked to state the relationship in the first place.
+    """
+    context = _context(category_match=True, content_similarity=0.4, category="sports")
+
+    response = generate_explanation(context)
+
+    assert response.explanation == APPROVED_TEMPLATES[("category", "content")].format(
+        category="sports"
     )

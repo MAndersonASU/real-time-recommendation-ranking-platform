@@ -81,33 +81,99 @@ def _evidence_used(context: SupportContext) -> list[str]:
     return evidence
 
 
+@dataclass(frozen=True)
+class ExplanationFacts:
+    """The complete set of facts an explanation is permitted to state,
+    extracted from real matched signals before any text exists.
+
+    Separating the facts from the wording is what makes the explanation
+    checkable: a template is chosen by which facts are present, and only
+    validated values are ever substituted into it. Nothing downstream
+    can introduce a fact that is not represented here.
+    """
+
+    category: str | None
+    category_match: bool
+    content_similarity: float
+
+    @property
+    def has_category_evidence(self) -> bool:
+        return self.category_match and bool(self.category)
+
+    @property
+    def has_content_evidence(self) -> bool:
+        return self.content_similarity >= MIN_CONTENT_SIMILARITY_FOR_GROUNDING
+
+
+def extract_facts(context: SupportContext) -> ExplanationFacts:
+    return ExplanationFacts(
+        category=context.category,
+        category_match=bool(context.category_match),
+        content_similarity=float(context.content_similarity),
+    )
+
+
+# The complete set of sentences this system can produce. Each is chosen
+# by which evidence is actually present, and `{category}` is the only
+# substitution point -- filled solely from a validated real category.
+APPROVED_TEMPLATES = {
+    ("category", "content"): (
+        "Recommended because it matches your interest in {category} "
+        "and its content closely resembles articles you've read before."
+    ),
+    ("category",): "Recommended because it matches your interest in {category}.",
+    ("content",): (
+        "Recommended because its content closely resembles articles you've read before."
+    ),
+}
+
+
+def select_template_key(facts: ExplanationFacts) -> tuple:
+    key = []
+    if facts.has_category_evidence:
+        key.append("category")
+    if facts.has_content_evidence:
+        key.append("content")
+    return tuple(key)
+
+
+_CATEGORY_PATTERN = re.compile(r"^[a-z][a-z0-9 &/-]{0,40}$", re.IGNORECASE)
+
+
 def build_template_explanation(context: SupportContext) -> str:
-    """A deterministic sentence built directly from the real matched
-    signals -- guaranteed to contain no fact beyond what is actually
-    true. Used both as the safe fallback and as the only thing a real
-    model paraphrase is ever allowed to reword, never as raw material
-    the model free-generates from.
+    """Selects one approved template by which evidence is present and
+    fills its single placeholder with a validated category value.
+
+    No generative model participates in stating the factual
+    relationship. A model can only ever reword this sentence, and only
+    when a caller explicitly opts in -- see `generate_explanation`.
 
     This design exists because of a real, measured limitation, not a
-    guess: an early version of this step let the model generate freely
-    from the article's title and abstract, and real output on real
-    recommended items included at least one outright factual
-    corruption (a title's "Bosses" rewritten as "boyfriends") alongside
-    several redundant or uninformative sentences. Two further real
-    attempts -- a fill-in-the-blank prompt that withheld the title, and
-    asking the model to paraphrase this exact template sentence --
-    both reliably avoided inventing new facts, but the paraphrase
-    attempt regularly dropped the one real fact it was given entirely
-    (rewriting a category-specific sentence into content-free filler
-    like "It is a good choice for you"). `docs/explanation-generation.md`
-    records the real examples from all three attempts.
+    guess: an early version let the model generate freely from the
+    article's title and abstract, and real output on real recommended
+    items included an outright factual corruption (a title's "Bosses"
+    rewritten as "boyfriends"). A later paraphrase-only attempt avoided
+    inventing facts but regularly dropped the one fact it was given,
+    rewriting a category-specific sentence into content-free filler.
+    `docs/explanation-generation.md` records those real examples.
     """
-    clauses = []
-    if context.category_match:
-        clauses.append(f"it matches your interest in {context.category}")
-    if context.content_similarity >= MIN_CONTENT_SIMILARITY_FOR_GROUNDING:
-        clauses.append("its content closely resembles articles you've read before")
-    return "Recommended because " + " and ".join(clauses) + "."
+    facts = extract_facts(context)
+    key = select_template_key(facts)
+    if not key:
+        return ""
+
+    template = APPROVED_TEMPLATES[key]
+    if "{category}" not in template:
+        return template
+
+    category = facts.category or ""
+    if not _CATEGORY_PATTERN.match(category):
+        # A category that does not look like a real category label is
+        # not substituted into user-visible text. Falling back to the
+        # content-only sentence keeps the output true rather than
+        # rendering an unvalidated value.
+        return APPROVED_TEMPLATES[("content",)] if facts.has_content_evidence else ""
+    return template.format(category=category)
 
 
 # Every word a rewrite is allowed to use that the template doesn't
@@ -175,15 +241,28 @@ def _preserves_required_facts(text: str, context: SupportContext, template: str)
 
 
 def generate_explanation(
-    context: SupportContext, generator: TextGenerator | None = None
+    context: SupportContext,
+    generator: TextGenerator | None = None,
+    allow_generative_rewrite: bool = False,
 ) -> ExplanationResponse:
     """Refuses outright, with no model call at all, when neither real
-    signal supports the recommendation. Otherwise builds the safe
-    deterministic template first, asks the local model only to reword
-    it more naturally, and falls back to the unmodified template
-    whenever the rewrite fails the faithfulness gate above -- the
-    model's role is narrowed specifically to reduce the real, measured
-    risk of it inventing or dropping a fact, not eliminated outright.
+    signal supports the recommendation. Otherwise returns the
+    deterministic, evidence-grounded sentence.
+
+    `allow_generative_rewrite` is off by default, and that default is
+    the substantive safety property. A generated rewrite can only be
+    checked lexically -- that every word it uses was already available
+    to it -- and a lexical check cannot validate meaning. Approved words
+    can be reordered into a different claim, a subject and object can be
+    swapped, and an unsupported assertion can be built entirely from
+    allowed vocabulary. Those cases are demonstrated directly in
+    `tests/test_explanation_generation.py`, and they are the reason the
+    factual relationship is never delegated to a model here.
+
+    With the flag on, the rewrite is still gated by
+    `_preserves_required_facts` and still falls back to the template on
+    failure, so the worst case is unchanged wording. What the flag
+    cannot do is make a rewrite semantically verified.
     """
     if not has_sufficient_evidence(context):
         return ExplanationResponse(
@@ -191,13 +270,17 @@ def generate_explanation(
         )
 
     template = build_template_explanation(context)
-    active_generator = generator if generator is not None else load_generator()
-    prompt = (
-        "Rewrite the following sentence to sound more natural. Do not add any new "
-        f"facts or names. Sentence: {template}"
-    )
-    rewritten = active_generator.generate(prompt)
-    explanation = rewritten if _preserves_required_facts(rewritten, context, template) else template
+    explanation = template
+
+    if allow_generative_rewrite:
+        active_generator = generator if generator is not None else load_generator()
+        prompt = (
+            "Rewrite the following sentence to sound more natural. Do not add any new "
+            f"facts or names. Sentence: {template}"
+        )
+        rewritten = active_generator.generate(prompt)
+        if _preserves_required_facts(rewritten, context, template):
+            explanation = rewritten
 
     return ExplanationResponse(
         news_id=context.news_id,
