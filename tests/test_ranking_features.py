@@ -152,3 +152,37 @@ def test_no_impression_row_leaks_a_different_impressions_history():
     row_101 = rows[rows["impression_id"] == 101].iloc[0]
     assert row_100["category_match"] == 1.0
     assert row_101["category_match"] == 1.0
+
+
+def test_offline_and_serving_derive_hour_of_day_the_same_way():
+    """Offline feature building and the serving path must not compute
+    this feature differently. Both now call one function, so they cannot
+    drift in derivation.
+
+    What this does *not* establish is timezone agreement. MIND does not
+    document its timestamps' zone, so a historical row's hour is
+    dataset-local while a live request with no historical anchor falls
+    back to a UTC hour. That is a disclosed parity gap, not something
+    shared code can fix -- see `hour_of_day`'s docstring.
+    """
+    import pandas as pd
+
+    from recommender.ranking.features import hour_of_day
+
+    instant = pd.Timestamp("2019-11-14 13:45:00")
+
+    assert hour_of_day(instant) == 13
+    assert hour_of_day(instant.to_pydatetime()) == 13
+    assert hour_of_day("2019-11-14 13:45:00") == 13
+
+
+def test_hour_of_day_reads_the_timestamp_verbatim():
+    """The hour is taken as given rather than converted, which is what
+    makes the dataset-local convention explicit rather than implied.
+    """
+    import pandas as pd
+
+    from recommender.ranking.features import hour_of_day
+
+    assert hour_of_day(pd.Timestamp("2019-11-14 00:30:00")) == 0
+    assert hour_of_day(pd.Timestamp("2019-11-14 23:59:59")) == 23

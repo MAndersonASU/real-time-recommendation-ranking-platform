@@ -45,6 +45,25 @@ def _serving_code_commit() -> str:
         return MISSING
 
 
+def _behaviour_split_fingerprints() -> dict:
+    """Fingerprints of the behaviour splits that derived serving state is
+    computed from.
+
+    Hashes the split files themselves rather than the derived structures:
+    the derivation is deterministic given the code (whose commit is
+    already in the manifest), so the inputs plus the code identify the
+    outputs. Hashing multi-hundred-megabyte in-memory frames on every
+    manifest build would also be real startup cost for no extra
+    information.
+    """
+    from recommender.evaluation.contract import SPLITS_DIR
+
+    fingerprints = {}
+    for split in ("train", "validation"):
+        fingerprints[split] = _file_fingerprint(SPLITS_DIR / split / "behaviors.parquet")
+    return fingerprints
+
+
 def build_serving_artifact_manifest() -> dict:
     """Every persisted artifact and behaviour-affecting configuration
     value that determines what a live request is served.
@@ -144,6 +163,14 @@ def build_serving_artifact_manifest() -> dict:
         # --- environment ---
         "dependency_lock_sha256_prefix": _file_fingerprint(lock_path),
         "serving_code_commit": _serving_code_commit(),
+        # --- behaviour splits and derived snapshots ---
+        # Popularity, first-seen and durable features are all derived
+        # from behaviour data at startup rather than read from a
+        # single artifact file. Hashing only the model files left them
+        # invisible: swapping the underlying split changes what every
+        # request returns while the reported serving version stays
+        # identical.
+        "behaviour_splits": _behaviour_split_fingerprints(),
     }
 
 

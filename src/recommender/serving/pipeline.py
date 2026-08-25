@@ -14,7 +14,7 @@ from recommender.evaluation.contract import CATALOG_PATH, load_catalog, load_spl
 from recommender.features.cold_start import get_online_features
 from recommender.features.state_store import build_client
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
-from recommender.ranking.features import content_profile
+from recommender.ranking.features import content_profile, hour_of_day
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
 from recommender.ranking.train import MODEL_PATH as RANKING_MODEL_PATH
 from recommender.reranking.diversity import build_diverse_slate
@@ -373,7 +373,7 @@ def recommend(
             "category_match": category_matches,
             "content_similarity": content_sims,
             "user_history_length": lookup.durable.lifetime_click_count,
-            "hour_of_day": request_time.hour,
+            "hour_of_day": hour_of_day(request_time),
         }
     )
     _stage_end("feature_build_ms", t)

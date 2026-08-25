@@ -33,6 +33,7 @@ BASE_MANIFEST = {
     "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
     "dependency_lock_sha256_prefix": "eeeeeeeeeeee",
     "serving_code_commit": "0123456789abcdef0123456789abcdef01234567",
+    "behaviour_splits": {"train": "ffffffffffff", "validation": "999999999999"},
 }
 
 
@@ -109,6 +110,8 @@ BEHAVIOUR_AFFECTING_FIELDS = [
     pytest.param(("explanation_model_revision",), "another-sha", id="explanation-revision"),
     pytest.param(("dependency_lock_sha256_prefix",), "changed", id="dependency-lock"),
     pytest.param(("serving_code_commit",), "a-different-commit", id="serving-commit"),
+    pytest.param(("behaviour_splits", "train"), "changed", id="train-split"),
+    pytest.param(("behaviour_splits", "validation"), "changed", id="validation-split"),
 ]
 
 

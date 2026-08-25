@@ -22,6 +22,32 @@ FEATURE_COLUMNS = [
 ]
 
 
+def hour_of_day(timestamp) -> int:
+    """The single definition of `hour_of_day`, used by both offline
+    feature building and the serving path.
+
+    **Timezone convention, stated because it is not derivable from the
+    data.** MIND does not document the timezone of its timestamps, and
+    this project has not established it. The hour is therefore taken
+    verbatim from the timestamp as given: for historical rows that means
+    dataset-local time, whatever zone that is.
+
+    The consequence is a real, disclosed parity gap. A live request with
+    no historical anchor falls back to the UTC wall clock, so its
+    `hour_of_day` is a UTC hour while every trained value was a
+    dataset-local hour. Both paths call this one function, so they cannot
+    drift in *derivation* -- but the underlying zones still differ, and
+    no amount of shared code fixes that.
+
+    Removing the feature outright would close the gap; it is kept because
+    it carries the smallest coefficient in the trained model and removing
+    it would invalidate every published number for a marginal input. That
+    tradeoff is recorded rather than hidden (`docs/feature-parity.md`).
+    """
+    stamp = pd.Timestamp(timestamp)
+    return int(stamp.hour)
+
+
 def build_feature_context(
     train: pd.DataFrame,
     news: pd.DataFrame,
@@ -119,7 +145,7 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
         ).numpy()
 
     history_by_impression = behaviors.set_index("impression_id")["history"]
-    hour_by_impression = behaviors.set_index("impression_id")["time"].dt.hour
+    impression_time_by_id = behaviors.set_index("impression_id")["time"]
     exploded = explode_impressions(behaviors)
 
     frames = []
@@ -156,7 +182,7 @@ def build_ranking_rows(behaviors: pd.DataFrame, context: dict) -> pd.DataFrame:
                     "category_match": category_matches,
                     "content_similarity": content_sims,
                     "user_history_length": len(history_ids),
-                    "hour_of_day": int(hour_by_impression.loc[impression_id]),
+                    "hour_of_day": hour_of_day(impression_time_by_id.loc[impression_id]),
                 }
             )
         )
