@@ -147,7 +147,7 @@ def publish_end_to_end_report(raw: dict, sampling: dict):
                 "The serving path builds its retrieval query from recent in-session "
                 "clicks only, so a returning user with long durable history but no "
                 "in-window activity is retrieved for as a cold start. "
-                "docs/known-limitations.md records this."
+                "docs/limitations.md records this."
             ),
         ],
     }
@@ -197,14 +197,53 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
         "configuration": {
             "mode": "deterministic templates; generative rewriting off by default",
         },
-        "denominators": {"explanations_evaluated": raw.get("explanations_evaluated")},
+        "denominators": {
+            "total_recommendations_evaluated": raw.get("total_recommendations_evaluated"),
+            "attempted": raw.get("attempted"),
+        },
+        # Every published number gets a definition. The previous report
+        # dumped the raw result dict with a single definition covering
+        # eleven metrics, so most of them were bare numbers -- and
+        # `faithfulness_rate: 1.0` in particular reads as a far stronger
+        # claim than what is actually measured.
         "metric_definitions": {
-            "lexical_policy_pass_rate": (
-                "share of produced explanations containing no vocabulary outside the "
-                "approved template plus grammatical scaffolding. A lexical property "
-                "only -- it does not establish semantic faithfulness."
+            "total_recommendations_evaluated": (
+                "recommendations an explanation was requested for -- the denominator "
+                "for refusal_rate"
             ),
-            "explanations_evaluated": "count of explanations produced and checked",
+            "refused": (
+                "recommendations the explanation layer declined to explain, because no "
+                "approved template's preconditions were satisfied by validated signals"
+            ),
+            "refusal_rate": "refused / total_recommendations_evaluated",
+            "attempted": (
+                "recommendations an explanation was actually produced for -- the "
+                "denominator for faithfulness_rate"
+            ),
+            "faithful": "produced explanations that passed the lexical policy check",
+            "faithfulness_rate": (
+                "faithful / attempted. Named for what the check enforces, which is "
+                "lexical, not semantic: an explanation passes when it contains no "
+                "vocabulary outside its approved template plus grammatical "
+                "scaffolding. Approved words can still be arranged into an "
+                "unsupported claim, and tests/test_explanation_generation.py "
+                "demonstrates exactly that. A rate of 1.0 means every explanation "
+                "stayed inside the approved vocabulary, not that every explanation "
+                "is true."
+            ),
+            "model_rewrite_used": (
+                "explanations whose wording came from the local generative model. "
+                "Zero in the default configuration, where rewriting is off"
+            ),
+            "template_fallback_used": (
+                "explanations whose wording came from a deterministic template"
+            ),
+            "model_contribution_rate": "model_rewrite_used / attempted",
+            "mean_explanation_length_chars": "mean character length of produced explanations",
+            "distinct_explanations": (
+                "count of unique explanation strings produced. A low number is "
+                "expected and is a property of the template set, not a defect"
+            ),
         },
         "results": raw,
         "limitations": [

@@ -32,7 +32,14 @@ from recommender.serving.pipeline import ServingContext
 from recommender.streaming.consumer import UserState
 
 REPORT_PATH = Path("data/processed/mind_small/end_to_end_evaluation_report.json")
-DEFAULT_NUM_IMPRESSIONS = 500
+# Raised from 500 once sampling became representative. At 500
+# impressions an end-to-end hit rate near 1% rests on about five hits,
+# so the figure moved with the sample rather than with the system. The
+# replay is inherently sequential -- each impression is scored through
+# the real serving path before its own events are applied -- so this is
+# the cost driver for the run, and 5,000 is the point where the estimate
+# is stable enough to publish without the run becoming impractical.
+DEFAULT_NUM_IMPRESSIONS = 5000
 
 
 def _point_in_time_durable_features(
