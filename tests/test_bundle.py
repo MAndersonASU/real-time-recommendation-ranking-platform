@@ -217,3 +217,43 @@ def test_file_sha256_matches_the_recorded_hash(tmp_path):
     manifest = load_manifest(manifest_path)
 
     assert manifest.retrieval_model_sha256 == file_sha256(paths["model"])
+
+
+def test_the_written_manifest_is_readable_by_other_users(tmp_path):
+    """Regression test for a container-only failure.
+
+    `tempfile.mkstemp` creates 0600 owned by the build user. Every other
+    artifact beside the manifest is written under the normal umask and is
+    world-readable, so the manifest alone arrived unreadable to a
+    different user -- and the API died with PermissionError on this one
+    file while every model and parquet next to it loaded fine.
+
+    Skipped on Windows, where POSIX mode bits are not meaningfully
+    enforced; the deployment that cares is a Linux container.
+    """
+    import os
+    import stat
+    import sys
+
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission bits are not enforced on Windows")
+
+    paths = _artifacts(tmp_path)
+    manifest_path = tmp_path / "serving_bundle.json"
+    write_manifest(
+        build_manifest(
+            retrieval_model_path=paths["model"],
+            content_artifact_path=paths["content"],
+            catalog_path=paths["catalog"],
+            content_dim=64,
+            embedding_dim=32,
+            catalog_items=100,
+            built_at="2026-08-26T00:00:00+00:00",
+        ),
+        path=manifest_path,
+    )
+
+    mode = stat.S_IMODE(os.stat(manifest_path).st_mode)
+
+    assert mode & stat.S_IRGRP, f"manifest is not group-readable (mode {mode:o})"
+    assert mode & stat.S_IROTH, f"manifest is not world-readable (mode {mode:o})"
