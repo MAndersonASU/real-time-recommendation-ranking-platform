@@ -10,25 +10,50 @@ raised anywhere, which is the exact failure `content_artifact` exists to
 prevent.
 
 So this does not refit. It reads the existing matrix and article ids
-unchanged, and rewrites the file with the metadata the strict loader
-requires. The coordinates the model was trained against are preserved
-bit for bit, and that is verified rather than assumed: the upgraded
-matrix is compared against the original before the replacement is kept.
+unchanged and rewrites the file with the metadata the strict loader
+requires, preserving the coordinates the model was trained against bit
+for bit.
+
+**This tool publishes a new bundle manifest, so it can defeat the very
+check that manifest exists to enforce.** An earlier version did exactly
+that. It refreshed a stale manifest whenever the model and catalog
+hashes still matched -- which are precisely the files that stay
+unchanged when only the content matrix is swapped. A content matrix from
+an entirely foreign basis could be dropped in, handed a fresh manifest,
+and would then pass serving validation. Reproduced directly: the bundle
+correctly refused the foreign matrix, and the migration tool blessed it.
+
+Every step below exists because of that. The rule now is that a manifest
+is only ever published for content this run has itself verified to be
+semantically identical to what the original bundle covered:
+
+1. Validate the complete original bundle before touching anything.
+2. Keep the original bytes for rollback.
+3. Write the upgrade to a temporary path, never over the original.
+4. Strict-load the temporary artifact.
+5. Require ordered ids and matrix values to be bit-identical.
+6. Build the manifest against that verified artifact.
+7. Publish, restoring the original on any failure.
+
+There is no path that refreshes a manifest without performing a verified
+migration in the same run.
 
     python -m recommender.retrieval.upgrade_content_artifact
 
 Idempotent -- an artifact already carrying the current schema is left
-alone.
+alone, manifest included.
 """
 
+import hashlib
 import json
 import sys
 
 import numpy as np
 
-from recommender.evaluation.contract import load_catalog
+from recommender.evaluation.contract import CATALOG_PATH, load_catalog
 from recommender.retrieval.bundle import (
     BUNDLE_MANIFEST_PATH,
+    BundleError,
     build_manifest,
     load_manifest,
     write_manifest,
@@ -41,156 +66,180 @@ from recommender.retrieval.content_artifact import (
     load_item_content,
     save_item_content,
 )
-from recommender.retrieval.train import MODEL_PATH
+from recommender.retrieval.features import CONTENT_DIM
+from recommender.retrieval.train import EMBEDDING_DIM, MODEL_PATH
 from recommender.retrieval.train_fit_only import (
     FIT_ONLY_BUNDLE_PATH,
     FIT_ONLY_CONTENT_PATH,
     FIT_ONLY_MODEL_PATH,
 )
 
-# Each content artifact, the model it belongs with, and the manifest
-# that binds them. Upgrading the artifact changes its file bytes, so the
-# manifest's recorded hash has to be refreshed or the bundle check --
-# correctly -- refuses the pair.
 UPGRADE_TARGETS = (
     (CONTENT_ARTIFACT_PATH, MODEL_PATH, BUNDLE_MANIFEST_PATH),
     (FIT_ONLY_CONTENT_PATH, FIT_ONLY_MODEL_PATH, FIT_ONLY_BUNDLE_PATH),
 )
 
 
-def _refresh_manifest(content_path, model_path, manifest_path, news) -> str:
-    """Re-fingerprints the bundle after a metadata-only artifact upgrade.
+class MigrationError(RuntimeError):
+    """The migration could not be completed safely and was rolled back."""
 
-    The manifest records file hashes, and rewriting the artifact changes
-    its bytes even though its meaning is identical. Refreshing is
-    therefore correct here and *only* here: the artifacts genuinely
-    still belong together, which the caller has already verified by
-    comparing the matrix before and after. Nothing in this function
-    would notice a real mismatch, so it is never called on an
-    un-upgraded pair.
+
+def semantic_digest(content: np.ndarray, news_ids: np.ndarray) -> str:
+    """What the artifact *means*, independent of how it is stored.
+
+    Ordered article ids plus matrix values, and nothing else -- not the
+    schema version, not the file layout. That is the point: a
+    metadata-only upgrade must leave this identical, so comparing it
+    before and after is what proves the migration changed only the
+    packaging.
     """
-    existing = load_manifest(manifest_path)
-    if existing is None:
-        return "no manifest to refresh"
-
-    from recommender.evaluation.contract import CATALOG_PATH
-    from recommender.retrieval.features import CONTENT_DIM
-    from recommender.retrieval.train import EMBEDDING_DIM
-
-    write_manifest(
-        build_manifest(
-            retrieval_model_path=model_path,
-            content_artifact_path=content_path,
-            catalog_path=CATALOG_PATH,
-            content_dim=CONTENT_DIM,
-            embedding_dim=EMBEDDING_DIM,
-            catalog_items=len(news),
-            # Preserved. The bundle was not rebuilt, only re-described,
-            # so claiming a new build time would misreport when these
-            # artifacts were actually produced together.
-            built_at=existing.built_at,
-        ),
-        path=manifest_path,
-    )
-    return "refreshed"
+    digest = hashlib.sha256()
+    digest.update(f"ids={len(news_ids)}\n".encode())
+    for article_id in news_ids:
+        digest.update(f"{len(str(article_id))}:{article_id}\n".encode())
+    digest.update(f"shape={content.shape[0]}x{content.shape[1]}\n".encode())
+    digest.update(np.ascontiguousarray(content, dtype=np.float32).tobytes())
+    return digest.hexdigest()
 
 
-def _refresh_stale_manifest_only(content_path, model_path, manifest_path, news) -> dict:
-    """Refreshes a manifest left stale by an already-completed upgrade.
+def _read_payload(path):
+    """Ordered ids and matrix, read without any validation.
 
-    Deliberately narrow. Refreshing a manifest whenever it disagrees
-    would defeat the bundle check entirely -- the whole point is that a
-    disagreement is fatal. So this refuses unless the disagreement is
-    *exactly* the signature of a metadata-only content upgrade:
-
-    - the content artifact already carries the current schema, and
-    - the model and catalog hashes still match the manifest, so the only
-      thing that moved is the content file's bytes.
-
-    If the model or catalog also changed, something real happened and
-    this is not the tool for it.
+    Used to capture the *original* state before migration, so it must
+    not go through the strict loader -- the artifact being migrated is by
+    definition one the strict loader rejects.
     """
-    from recommender.evaluation.contract import CATALOG_PATH
-    from recommender.retrieval.bundle import file_sha256
-
-    existing = load_manifest(manifest_path)
-    if existing is None:
-        return {"path": str(content_path), "action": "skipped", "reason": "already current"}
-
-    if existing.content_artifact_sha256 == file_sha256(content_path):
-        return {"path": str(content_path), "action": "skipped", "reason": "already current"}
-
-    model_matches = existing.retrieval_model_sha256 == file_sha256(model_path)
-    catalog_matches = existing.catalog_sha256 == file_sha256(CATALOG_PATH)
-    if not (model_matches and catalog_matches):
-        raise ContentArtifactError(
-            f"{manifest_path} disagrees with more than the content artifact "
-            f"(model matches: {model_matches}, catalog matches: {catalog_matches}). "
-            f"That is a real bundle mismatch, not a metadata upgrade; retrain rather "
-            f"than re-describing it."
+    with np.load(path, allow_pickle=False) as data:
+        return (
+            np.array(data["content"]).astype(np.float32),
+            np.array(data["news_ids"]).astype(str),
+            set(data.files),
         )
 
-    _refresh_manifest(content_path, model_path, manifest_path, news)
+
+def upgrade(content_path, model_path, manifest_path, news) -> dict:
+    if not content_path.exists():
+        return {"path": str(content_path), "action": "skipped", "reason": "absent"}
+
+    original_bytes = content_path.read_bytes()
+    original_content, original_ids, present = _read_payload(content_path)
+    before = semantic_digest(original_content, original_ids)
+
+    if not [field for field in REQUIRED_FIELDS if field not in present]:
+        # Already current. Nothing is republished -- in particular, a
+        # manifest that disagrees is left disagreeing, because this tool
+        # has no way to tell a stale manifest from a swapped artifact.
+        return {"path": str(content_path), "action": "skipped", "reason": "already current"}
+
+    # 1. The original bundle must be coherent before anything moves. A
+    #    manifest is a statement that these artifacts belong together; if
+    #    that is already false, migrating produces a *new* manifest
+    #    asserting it, which is how a foreign matrix gets blessed.
+    original_manifest = load_manifest(manifest_path)
+    if original_manifest is None:
+        raise MigrationError(
+            f"no bundle manifest at {manifest_path}. Without one there is nothing "
+            f"establishing what this content artifact is supposed to be, so a "
+            f"migration cannot verify it preserved anything. Retrain instead."
+        )
+    try:
+        from recommender.retrieval.bundle import validate_bundle
+
+        validate_bundle(
+            model_path, content_path, CATALOG_PATH,
+            catalog_items=len(news), path=manifest_path,
+        )
+    except BundleError as error:
+        raise MigrationError(
+            f"the existing bundle at {manifest_path} does not validate, so this "
+            f"artifact is not the one the manifest covers: {error}. Migration would "
+            f"issue a fresh manifest blessing whatever is on disk. Retrain instead."
+        ) from error
+
+    # 2-3. Write the upgrade beside the original, never over it.
+    # Must still end in .npz: np.savez appends the extension when the
+    # path lacks it, so "content.npz.migrating" would silently become
+    # "content.npz.migrating.npz" and the verification step would look
+    # for a file that was never written.
+    temporary_path = content_path.with_name(f"{content_path.stem}.migrating.npz")
+    try:
+        save_item_content(news, original_content, path=temporary_path)
+
+        # 4. Strict-load what was written -- the same path serving uses.
+        migrated = load_item_content(news, path=temporary_path)
+        _, migrated_ids, _ = _read_payload(temporary_path)
+
+        # 5. Ordered ids and matrix values must be bit-identical.
+        after = semantic_digest(migrated, migrated_ids)
+        if after != before:
+            raise MigrationError(
+                f"migration changed what the artifact means (semantic digest "
+                f"{before[:12]} -> {after[:12]}). The model was trained against the "
+                f"original coordinates, so only the packaging may change."
+            )
+        if not np.array_equal(migrated_ids, original_ids):
+            raise MigrationError("migration changed the article ordering")
+        if not np.array_equal(migrated, original_content):
+            raise MigrationError("migration changed the matrix values")
+
+        # 6-7. Publish, restoring the original on any failure.
+        temporary_path.replace(content_path)
+        try:
+            write_manifest(
+                build_manifest(
+                    retrieval_model_path=model_path,
+                    content_artifact_path=content_path,
+                    catalog_path=CATALOG_PATH,
+                    content_dim=CONTENT_DIM,
+                    embedding_dim=EMBEDDING_DIM,
+                    catalog_items=len(news),
+                    # Preserved: the bundle was re-described, not rebuilt.
+                    built_at=original_manifest.built_at,
+                ),
+                path=manifest_path,
+            )
+        except BaseException:
+            content_path.write_bytes(original_bytes)
+            raise
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        if content_path.read_bytes() != original_bytes:
+            content_path.write_bytes(original_bytes)
+        raise
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
     return {
         "path": str(content_path),
-        "action": "manifest refreshed",
-        "reason": "artifact already upgraded; manifest recorded its pre-upgrade hash",
-    }
-
-
-
-def upgrade(path, model_path, manifest_path, news) -> dict:
-    if not path.exists():
-        return {"path": str(path), "action": "skipped", "reason": "absent"}
-
-    with np.load(path, allow_pickle=False) as data:
-        present = set(data.files)
-        original = np.array(data["content"])
-
-    missing = [field for field in REQUIRED_FIELDS if field not in present]
-    if not missing:
-        # Already upgraded. Its manifest may still record the artifact's
-        # pre-upgrade file hash, so check that narrow case rather than
-        # leaving a coherent bundle looking broken.
-        return _refresh_stale_manifest_only(path, model_path, manifest_path, news)
-
-    # Read through the legacy allowance -- the only place it is used --
-    # then write back through the ordinary strict writer.
-    matrix = load_item_content(news, path=path, allow_legacy=True)
-    save_item_content(news, matrix, path=path)
-
-    # The upgrade must be metadata-only. If the coordinates moved, the
-    # trained model no longer matches them and the artifact is worse
-    # than it was before.
-    reloaded = load_item_content(news, path=path)
-    if not np.array_equal(reloaded, original.astype(np.float32)):
-        raise ContentArtifactError(
-            f"upgrading {path} changed the matrix values; the model was trained "
-            f"against the original coordinates, so this must be metadata-only"
-        )
-
-    manifest_action = _refresh_manifest(path, model_path, manifest_path, news)
-
-    return {
-        "path": str(path),
         "action": "upgraded",
-        "added_fields": missing,
         "schema_version": CONTENT_SCHEMA_VERSION,
-        "rows": int(matrix.shape[0]),
-        "feature_width": int(matrix.shape[1]),
+        "rows": int(migrated.shape[0]),
+        "feature_width": int(migrated.shape[1]),
+        # The migration receipt: identical before and after, computed in
+        # this run, over the two things that define the artifact.
+        "semantic_digest_before": before,
+        "semantic_digest_after": after,
+        "original_manifest_sha256": hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest(),
         "matrix_unchanged": True,
-        "bundle_manifest": manifest_action,
     }
 
 
 def main() -> None:
     news = load_catalog()
-    results = [
-        upgrade(content_path, model_path, manifest_path, news)
-        for content_path, model_path, manifest_path in UPGRADE_TARGETS
-    ]
+    results = []
+    for content_path, model_path, manifest_path in UPGRADE_TARGETS:
+        try:
+            results.append(upgrade(content_path, model_path, manifest_path, news))
+        except (MigrationError, ContentArtifactError) as error:
+            results.append(
+                {"path": str(content_path), "action": "refused", "reason": str(error)}
+            )
     print(json.dumps(results, indent=2))
-    if all(result["action"] == "skipped" and result["reason"] == "absent" for result in results):
+    if any(result["action"] == "refused" for result in results):
+        raise SystemExit(1)
+    if all(result.get("reason") == "absent" for result in results):
         print("no content artifacts found to upgrade", file=sys.stderr)
 
 

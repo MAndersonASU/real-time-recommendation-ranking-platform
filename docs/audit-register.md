@@ -242,13 +242,67 @@ refitting TF-IDF and SVD, and SVD axes are defined only up to sign and
 ordering, so a refit produces a different valid basis and the trained
 item tower would score coordinates it has never seen. The upgrade adds
 metadata only, and verifies the matrix is bit-identical before keeping
-the result. Because the file bytes change, the bundle manifest is
-re-fingerprinted -- under a guard narrow enough that it refuses unless
-the model and catalog hashes still match, since a blanket refresh would
-defeat the bundle check entirely.
+the result. Because the file bytes change, the bundle manifest has to be
+re-published.
 
-**Remaining** The checksum covers matrix bytes only, not shape, dtype or
-ids; artifacts predating the metadata fields are still accepted.
+**That re-publication was itself a defect** -- the guard described in an
+earlier version of this entry checked that the model and catalog hashes
+still matched, which is insufficient: those are exactly the files that
+stay unchanged when only the content matrix is swapped. Tracked and
+fixed as ARTIFACT-MIGRATION-46 below.
+
+---
+
+## ARTIFACT-MIGRATION-46 — Migration tool could bless a foreign content matrix
+**Severity** High · **Status** verified closed
+**Fix commit** this change · **Tests** `tests/test_content_artifact_migration.py`
+
+`upgrade_content_artifact` publishes a bundle manifest, so it can defeat
+the check that manifest exists to enforce -- and it did. It refreshed a
+stale manifest whenever the model and catalog hashes still matched. Those
+are precisely the files that remain unchanged when only the content
+matrix is replaced, so the guard tested the one thing the attack does not
+touch.
+
+**Reproduced end to end:** a valid bundle was created, its content matrix
+replaced with entirely different values, model and catalog left alone.
+`validate_bundle` correctly refused the foreign matrix. The migration
+tool then refreshed the manifest, and `validate_bundle` accepted it. A
+matrix from a foreign fitted basis would have been served -- the exact
+failure ARTIFACT-BUNDLE-06 exists to prevent.
+
+A second defect in the same path: `upgrade()` overwrote the original
+artifact before comparing the migrated matrix, with no rollback if
+verification or manifest publication failed.
+
+**Fixed.** The migration now:
+
+1. validates the complete original bundle before anything is modified,
+   and refuses outright if it does not already cohere;
+2. retains the original bytes for rollback;
+3. writes to a temporary path rather than over the original;
+4. strict-loads that temporary artifact through the same path serving
+   uses;
+5. requires ordered ids and matrix values to be bit-identical, compared
+   through a `semantic_digest` that covers meaning and ignores packaging;
+6. builds the manifest only against that verified artifact;
+7. restores the original on any failure, leaving no temporary file.
+
+`_refresh_stale_manifest_only` is **removed**. There is no longer any
+path that publishes a manifest without performing a verified migration
+in the same run. An already-current artifact with a disagreeing manifest
+is now left disagreeing on purpose: this tool cannot distinguish a stale
+manifest from a swapped artifact, and guessing is what created the
+defect.
+
+A related packaging bug surfaced while testing: `np.savez` appends
+`.npz` when a path lacks it, so the temporary file was being written
+somewhere other than where verification looked.
+
+**Scope:** this concerns the reusable migration path. The artifacts
+already migrated and the retrieval figure published from them are
+unaffected -- the retrieval numbers came back byte-identical across the
+migration, which is independent evidence the matrix did not change.
 
 ---
 
