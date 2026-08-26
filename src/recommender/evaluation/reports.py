@@ -25,6 +25,7 @@ user identifiers, no article text.
 import hashlib
 import json
 import os
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -217,9 +218,14 @@ def validate_report(report: dict) -> None:
     if not isinstance(definitions, dict):
         raise TypeError("metric_definitions must be an object")
 
-    undefined = [key for key in results if key not in definitions]
+    undefined = sorted(_metric_leaves(results) - set(definitions))
     if undefined:
-        raise ValueError(f"results contain metrics with no definition: {sorted(undefined)}")
+        raise ValueError(
+            f"results contain metrics with no definition: {undefined}. Every published "
+            f"measurement needs one, at any depth. If one of these is metadata rather "
+            f"than a measurement, add it to _METADATA_KEYS so the exemption is "
+            f"explicit and reviewable."
+        )
 
     denominators = report["denominators"]
     if not isinstance(denominators, dict) or not denominators:
@@ -233,6 +239,8 @@ def validate_report(report: dict) -> None:
 
     _validate_metric_values(results)
 
+    _validate_fit_only_provenance(report)
+
     if not isinstance(report["limitations"], list):
         raise TypeError("limitations must be a list, even if empty")
     if not isinstance(report["sampling"], dict) or not report["sampling"]:
@@ -240,6 +248,151 @@ def validate_report(report: dict) -> None:
     for key in ("dataset", "artifacts", "configuration"):
         if not isinstance(report[key], dict):
             raise TypeError(f"{key} must be an object")
+
+
+_FIT_ONLY_REQUIRED_HASHES = (
+    "retrieval_model_sha256",
+    "content_artifact_sha256",
+    "bundle_manifest_sha256",
+    "ranking_feature_table_sha256",
+    "train_report_sha256",
+)
+
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _validate_fit_only_provenance(report: dict) -> None:
+    """A leakage-free claim must identify the artifacts behind it.
+
+    `tune_fold_leakage: false` says a tuning comparison used a retrieval
+    model that never saw the fold. That is only checkable if the report
+    names the model. An earlier version recorded the string "absent" for
+    a missing artifact and validation accepted it, so the strongest
+    claim in the report could be published with nothing identifying its
+    subject.
+
+    Enforced only when the claim is actually made: a run that used the
+    deployed table reports `tune_fold_leakage: true`, and is not
+    required to carry a fit-only manifest because it does not have one.
+    """
+    results = report.get("results")
+    if not isinstance(results, dict):
+        return
+
+    claims_leakage_free = any(
+        isinstance(section, dict)
+        and section.get("feature_provenance", {}).get("tune_fold_leakage") is False
+        for section in results.values()
+    )
+    if not claims_leakage_free:
+        return
+
+    bundle = report.get("artifacts", {}).get("fit_only_bundle")
+    if bundle is None:
+        raise ValueError(
+            "report claims tune_fold_leakage: false but carries no fit_only_bundle "
+            "manifest, so the model behind the claim is unidentified"
+        )
+    if not isinstance(bundle, dict):
+        raise TypeError(f"fit_only_bundle must be an object, got {type(bundle).__name__}")
+
+    for field in _FIT_ONLY_REQUIRED_HASHES:
+        value = bundle.get(field)
+        if not isinstance(value, str) or not _SHA256_PATTERN.match(value):
+            raise ValueError(
+                f"fit_only_bundle.{field} is {value!r}, which does not identify an "
+                f"artifact. A leakage-free claim requires a full lowercase SHA-256 "
+                f"for every fit-only artifact."
+            )
+
+    for field, kind in (
+        ("tune_fold_seed", int),
+        ("training_seed", int),
+        ("embedding_dim", int),
+        ("tune_fold_fraction", float),
+    ):
+        value = bundle.get(field)
+        if not isinstance(value, kind) or isinstance(value, bool):
+            raise TypeError(
+                f"fit_only_bundle.{field} must be a {kind.__name__}, got {value!r}"
+            )
+    if not 0.0 < bundle["tune_fold_fraction"] < 1.0:
+        raise ValueError(
+            f"fit_only_bundle.tune_fold_fraction is {bundle['tune_fold_fraction']}, "
+            f"which does not describe a fold"
+        )
+
+
+# Keys that describe a run rather than measure it: seeds, digests,
+# counts of what was sampled, echoes of configuration, prose. They are
+# published and they are useful, but they are not results and there is
+# nothing to define about them.
+#
+# The list is explicit rather than heuristic. A rule like "anything
+# ending in _rate is a metric" would silently exempt whatever it failed
+# to match, which is the failure this whole check exists to prevent:
+# an invented nested field named `made_up_score` passed validation
+# because only top-level keys were compared against the definitions.
+_METADATA_KEYS = frozenset(
+    {
+        # provenance and sampling description
+        "seed", "method", "note", "sampling", "shared_samples", "sharing_note",
+        "by_comparison", "selected_ids_sha256", "selected_ids_sha256_prefix",
+        "selected_impressions", "eligible_impressions", "selected_fraction",
+        "distinct_users", "time_range", "start", "end",
+        "user_and_time_metadata",
+        # what was compared, and on what
+        "selection_rule", "split", "purpose", "bundle", "feature_provenance",
+        "feature_table", "retrieval_model_trained_on", "feature_context_fitted_on",
+        "tune_fold_leakage", "sample_impressions", "impressions_checked",
+        "impressions_measured", "fit_rows", "tune_rows",
+        # echoes of deployed configuration, not measurements of it
+        "currently_configured_cap", "currently_configured_depth",
+        "currently_configured_min_fresh_in_slate", "currently_configured_threshold_days",
+        "budgets_supporting_current_configuration", "search_p99_budget_ms",
+        "depths_within_search_budget",
+        # explanation-layer counts that name themselves
+        "explanations_evaluated",
+    }
+)
+
+
+def _is_dimension_key(key: str) -> bool:
+    """True for a key that names a *value being compared*, not a metric.
+
+    Comparison tables are keyed by the candidate value -- budgets
+    `"0.90"`, caps `"3"`, retrieval depths `"1000"`. Those keys are
+    coordinates in the table, and demanding a definition for each one
+    would mean defining every number anyone ever compares.
+    """
+    try:
+        float(key)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _metric_leaves(node, inside_metadata: bool = False) -> set:
+    """Every published measurement's key name, at any depth.
+
+    Descends into comparison tables and lists, so
+    `by_min_fresh_value.2.mean_slate_relevance` contributes
+    `mean_slate_relevance`. Stops at metadata subtrees, because a
+    sampling block's internals are description, not results.
+    """
+    found: set = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in _METADATA_KEYS:
+                continue
+            if isinstance(value, (dict, list)):
+                found |= _metric_leaves(value, inside_metadata)
+            elif not _is_dimension_key(key):
+                found.add(key)
+    elif isinstance(node, list):
+        for item in node:
+            found |= _metric_leaves(item, inside_metadata)
+    return found
 
 
 def _is_rate(metric_name: str) -> bool:

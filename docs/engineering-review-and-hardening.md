@@ -72,8 +72,11 @@ set.
 
 ## 5. Verification evidence
 
-All figures below come from the CI run for the published commit, not
-from a local machine. The authoritative source is the run itself.
+The CI status and software-verification statements in this section come
+from the linked GitHub Actions run for the published commit, not from a
+local machine. The licensed-data quality metrics in Section 6 come from
+the committed machine-readable reports under `reports/` and are **not**
+reproduced by public CI, which runs against synthetic artifacts only.
 
 - **CI**: [GitHub Actions](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml) — the badge in `README.md` reflects current status.
 - **Test counts and coverage**: reported by the `lint-and-test` job.
@@ -138,7 +141,7 @@ generalization estimates.
 |---|---|---|
 | Retrieval hit rate@100 (30,270 impressions, full 51,282-item catalog) | 0.0044 | **0.0336** |
 | Distinct catalog embeddings | 284 | **50,704** |
-| End-to-end retrieval-contains-click@10 (5,000 impressions) | 0.002 | **0.1414** |
+| End-to-end retrieval-contained-click rate, 1,000-candidate pool (5,000 impressions) | 0.002 | **0.1414** |
 | End-to-end hit rate@10 | 0.0005 | **0.0084** |
 | End-to-end MRR | 0.000125 | **0.0048** |
 

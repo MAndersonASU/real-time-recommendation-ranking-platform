@@ -113,3 +113,20 @@ def test_the_description_fingerprints_the_selection_without_publishing_it(impres
         impressions, other, seed=DEFAULT_SAMPLE_SEED + 1
     )["selected_ids_sha256"]
     assert "i000" not in str(description)
+
+
+def test_the_selection_digest_is_a_full_sha256(impressions):
+    """Named `sha256`, so it has to be one.
+
+    An earlier version stored `hexdigest()[:16]` -- a 64-bit prefix --
+    under a field name promising a full digest, while the same report
+    format insisted on complete hashes for every fit-only artifact. The
+    inconsistency mattered more than the collision risk.
+    """
+    import re
+
+    description = describe_sample(impressions, sample_impression_ids(impressions, 20))
+
+    digest = description["selected_ids_sha256"]
+    assert len(digest) == 64, f"digest is {len(digest)} characters, not a full SHA-256"
+    assert re.fullmatch(r"[0-9a-f]{64}", digest), "digest must be lowercase hexadecimal"

@@ -10,10 +10,20 @@ model had never seen. Shapes still match, no exception is raised, and
 the recommendations are quietly wrong.
 
 The bundle records what each artifact was when they were built together
-and refuses to load a set that no longer agrees. Artifacts are staged in
-a temporary directory and moved into place only once all of them are
-written, so a failed run leaves the previous good bundle untouched
-rather than a half-updated mix.
+and refuses to load a set that no longer agrees. The manifest is written
+atomically, after the artifacts it covers exist, and serving requires it
+and validates every artifact against it -- so a partial build fails
+closed rather than serving a mismatched set.
+
+**Artifact publication as a whole is not atomic.** Only the manifest is
+written through a temporary file and rename; the model and content
+matrix are written in place. A failed build can therefore overwrite part
+of the previous artifact set, and the previous good bundle is not
+guaranteed to remain available -- the failure mode is unavailability,
+not incorrectness. An earlier version of this docstring claimed staging
+and rollback that the implementation does not provide. Making that true
+would mean writing each complete bundle into a versioned directory and
+switching an active-bundle pointer only after validation.
 
 Scope: this project serves a fixed catalog. The fitted TF-IDF and SVD
 transformers are deliberately not persisted, because nothing here

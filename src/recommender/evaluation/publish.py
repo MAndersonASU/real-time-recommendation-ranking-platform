@@ -204,6 +204,77 @@ def publish_tuning_report(raw: dict, sampling: dict):
                 "budget. Reported as a tradeoff table rather than a rule-selected "
                 "value, because the budget did not bind at any depth tried"
             ),
+            # Nested leaves. Every measurement inside the sections above
+            # needs its own definition, at whatever depth it appears --
+            # an invented nested field once passed validation because
+            # only the five section names were checked.
+            "decision_confirmed": (
+                "whether the tuning fold reproduces the original decision made on "
+                "validation"
+            ),
+            "original_validation_auc": (
+                "the popularity feature's AUC as originally measured on validation -- "
+                "the leaked figure this fold re-checks, recorded rather than re-derived"
+            ),
+            "tune_fold_auc_out_of_sample_popularity": (
+                "the same feature's AUC on the tuning fold, out of sample"
+            ),
+            "chronological_split_tune_fold_auc": (
+                "the same, on a chronologically split fold rather than a random one"
+            ),
+            "recency_leakage_explanation_supported": (
+                "whether the chronological split reproduces the random split's result, "
+                "testing whether short-term popularity recency leaks across a "
+                "same-window random split"
+            ),
+            "ranking_model_excludes_tuning_rows": (
+                "whether the ranking model scoring these rows was fit without them"
+            ),
+            "original_validation_four_plus_same_category_rate": (
+                "share of validation slates with four or more items from one category, "
+                "as originally measured"
+            ),
+            "tune_fold_four_plus_same_category_rate": "the same, measured on the tuning fold",
+            "original_validation_single_category_rate": (
+                "share of validation slates drawn entirely from one category, as "
+                "originally measured"
+            ),
+            "tune_fold_single_category_rate": "the same, measured on the tuning fold",
+            "mean_slate_relevance": (
+                "mean predicted relevance of a slate under one candidate parameter "
+                "value. A model score, not an observed click outcome"
+            ),
+            "mean_distinct_categories": "mean count of distinct categories per slate",
+            "original_validation_fresh_row_rate": (
+                "share of validation candidates below the freshness age threshold, as "
+                "originally measured"
+            ),
+            "tune_fold_fresh_row_rate": "the same, measured on the tuning fold",
+            "fresh_row_rate": "share of candidates below the freshness age threshold",
+            "original_validation_zero_fresh_impression_rate": (
+                "share of validation slates containing no fresh item, as originally "
+                "measured"
+            ),
+            "tune_fold_zero_fresh_impression_rate": "the same, measured on the tuning fold",
+            "zero_fresh_impression_rate": "share of slates containing no fresh item",
+            "mean_fresh_items_in_slate": "mean count of fresh items per slate",
+            "share_of_slates_meeting_quota": (
+                "share of slates satisfying the minimum-fresh quota under one candidate "
+                "value"
+            ),
+            "threshold_selected_by_rule": (
+                "freshness age threshold chosen by the selection rule"
+            ),
+            "rule_supports_current_configuration": (
+                "whether the rule's selection matches the deployed value"
+            ),
+            "retrieval_contained_a_click_rate": (
+                "share of impressions whose clicked item appeared anywhere in the "
+                "retrieved candidate pool at a given depth. A ceiling on every ranking "
+                "metric, and not a top-10 measurement"
+            ),
+            "search_p50_ms": "median index search latency at one retrieval depth",
+            "search_p99_ms": "99th-percentile index search latency at one retrieval depth",
         },
         "results": raw,
         "limitations": [

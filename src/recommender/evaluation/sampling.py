@@ -66,9 +66,13 @@ def describe_sample(
         "eligible_impressions": eligible_count,
         "selected_impressions": len(selected_ids),
         "selected_fraction": (len(selected_ids) / eligible_count) if eligible_count else None,
+        # The complete digest, not a prefix. The field is named sha256
+        # and the report insists on full hashes for fit-only artifacts;
+        # publishing a 64-bit prefix under the same name was
+        # inconsistent with both.
         "selected_ids_sha256": hashlib.sha256(
             ",".join(str(i) for i in sorted(selected_ids)).encode()
-        ).hexdigest()[:16],
+        ).hexdigest(),
     }
 
     if user_column in selected.columns:

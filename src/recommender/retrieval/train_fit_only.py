@@ -81,10 +81,24 @@ def fit_only_artifact_manifest() -> dict:
         "ranking_feature_table": FIT_ONLY_TRAIN_PATH,
         "train_report": FIT_ONLY_REPORT_PATH,
     }
-    manifest = {
-        f"{name}_sha256": (file_sha256(path) if path.exists() else "absent")
-        for name, path in artifacts.items()
-    }
+
+    # Raise rather than record "absent". This manifest exists to back the
+    # claim that a tuning run was leakage-free; a placeholder where a
+    # hash should be lets that claim be published without identifying the
+    # model behind it, which is the assertion-without-evidence this whole
+    # manifest replaced.
+    missing = [str(path) for path in artifacts.values() if not path.exists()]
+    if missing:
+        from recommender.evaluation.reports import ReportProvenanceError
+
+        raise ReportProvenanceError(
+            "cannot record fit-only provenance: these artifacts are missing, so a "
+            f"leakage-free tuning run cannot be evidenced: {missing}. Run "
+            "`python -m recommender.retrieval.train_fit_only` and "
+            "`python -m recommender.ranking.build_dataset_fit_only` first."
+        )
+
+    manifest = {f"{name}_sha256": file_sha256(path) for name, path in artifacts.items()}
     manifest["tune_fold_seed"] = TUNE_FOLD_SEED
     manifest["tune_fold_fraction"] = TUNE_FOLD_FRACTION
     manifest["training_seed"] = TRAIN_SEED

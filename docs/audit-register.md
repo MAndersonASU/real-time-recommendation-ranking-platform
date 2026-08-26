@@ -15,7 +15,7 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 ---
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
-**Severity** Critical · **Status** verified closed
+**Severity** Critical · **Status** verified closed (third pass)
 **Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199`, `efacb31`
 **Reports** `63b5443` (published from clean commit `2b91dd4`)
 **Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py` · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
@@ -33,13 +33,36 @@ SHA-256 for the fit-only model, content artifact, bundle manifest,
 ranking feature table and training report, plus the fold seed, fold
 fraction and training seed. Full digests, not 12-character prefixes.
 
-**Gap 2 — validation was not recursive.** Range, null and definition
-checks ran only over top-level results, and almost every tuning metric
-is nested, so a nested rate of 9.0 was accepted. `_validate_metric_values`
+**Gap 2 — value validation was not recursive.** Range and null checks
+ran only over top-level results, and almost every tuning metric is
+nested, so a nested rate of 9.0 was accepted. `_validate_metric_values`
 now walks dicts and lists to any depth. A null that is a real answer --
 a selection rule nothing satisfied -- is permitted only under explicitly
 named keys, so "nothing qualified" stays distinguishable from "value
 missing".
+
+**Gap 3, found by a later review — definition enforcement was not
+recursive either.** Fixing the *value* checks left the *definition*
+check comparing only top-level section names, so an invented nested
+field (`made_up_score: 0.5`) was published with nothing saying what it
+measured. `_metric_leaves` now collects every measurement leaf at any
+depth and requires a definition for each. Metadata is exempted through
+an explicit `_METADATA_KEYS` allow-list rather than a heuristic, and
+comparison-table keys that name a compared *value* (`"0.90"`, `"3"`,
+`"1000"`) are treated as coordinates rather than metrics. Twenty-five
+nested measurements that had never been defined now are.
+
+**Gap 4, same review — a missing fit-only artifact could be reported as
+`"absent"`.** `fit_only_artifact_manifest()` wrote that placeholder
+rather than failing, and validation accepted it, so
+`tune_fold_leakage: false` -- the report's strongest claim -- could be
+published with nothing identifying the model behind it. The manifest now
+raises instead of recording a placeholder, and `validate_report` demands
+a full lowercase 64-character SHA-256 for all five fit-only artifacts,
+plus a well-formed fold seed, fold fraction, training seed and embedding
+dimension, whenever a leakage-free run is claimed. A run that honestly
+reports `tune_fold_leakage: true` is not required to carry a manifest it
+does not have.
 
 Reports were generated after the fact from previously produced raw JSON,
 attaching the *current* commit and manifest without establishing that
@@ -61,15 +84,17 @@ The four schema-version-1 reports were removed rather than re-stamped:
 re-labelling them under the new contract is exactly the defect this
 closes.
 
-**Done** All four reports republished from clean commit `c59b199`,
-each recording that commit and a verified-clean tree.
+**Done** All four reports are generated from clean source commit
+`2b91dd4` and published in commit `63b5443`, each recording that source
+commit and a verified-clean tree.
 
 ---
 
 ## EVAL-RECONCILIATION-02 — End-to-end reconciliation mis-counts repeated clicks
 **Severity** High · **Status** verified closed
-**Reports** rerun from clean commit `c59b199`; the ambiguous repeated-article
-case was independently reproduced and now yields the correct history
+**Reports** rerun from clean source commit `2b91dd4`, published in
+`63b5443`; the ambiguous repeated-article case was independently
+reproduced and now yields the correct history
 **Fix commits** `1de8dff`, `ec53440`
 
 The original `[n1,n2,n3] + [n3]` duplication is fixed by multiset
@@ -92,9 +117,6 @@ impression. End-to-end metrics are therefore unchanged to four decimal
 places. The defect was real; its effect on this particular evidence is
 negligible, and that is stated rather than either exaggerated or used to
 dismiss the fix.
-
-**Remaining** Status stays `partially closed` until the evaluation is
-rerun under EVAL-PROVENANCE-01 from a clean commit.
 
 ---
 
@@ -124,10 +146,13 @@ consumers that both read before writing now retain both events, an
 impression stays an impression, and the original rollback case still
 holds.
 
-**Remaining** Exercised only against `InMemoryRedis`. The fake
-implements the script's contract in Python, so real Lua semantics
-(notably `cjson` array encoding) are not covered. Status stays
-`partially closed` until this runs against a real Redis in CI.
+**Remaining** Real Redis semantics are now covered: the script runs
+through actual `EVAL` in CI (`verify_lua_idempotency`), exercising first
+apply, accumulation, late duplicate, returned-state agreement,
+event-type handling and history bounding. **Concurrent multi-writer
+execution against real Redis remains unverified** -- two clients
+mutating the same user simultaneously are still only covered by the
+in-process stand-in.
 
 ---
 
@@ -174,7 +199,7 @@ ids; artifacts predating the metadata fields are still accepted.
 
 ## ARTIFACT-BUNDLE-06 — Model and content artifacts are not one atomic bundle
 **Severity** High · **Status** verified closed (narrowed scope)
-**Fix commits** `5a3ea8e`, this round · **Tests** `tests/test_bundle.py`
+**Fix commits** `5a3ea8e`, `efacb31` · **Tests** `tests/test_bundle.py`
 
 A newly written content artifact could coexist with an older retrieval
 model if training failed between writes, so a model could interpret
@@ -378,7 +403,7 @@ information.
 
 ## FEATURE-FRESHNESS-13 — Durable-feature freshness is not operational
 **Severity** Medium · **Status** verified closed (scope decision)
-**Fix commits** `efe29be`, this round
+**Fix commits** `efe29be`, `efacb31`
 **Tests** `tests/test_serving_cache.py`, `tests/test_snapshot_identity.py`
 
 Staleness was measured against the time the process built the
@@ -462,10 +487,10 @@ survive, so a post-crash redelivery is still refused.
 AOF enabled with `appendfsync everysec`; the ~1s bound is stated in the
 configuration.
 
-**Residual** A volume comment still claims every recent-feature record
-survives restart, contradicting the stated loss window. No abrupt-kill
-recovery test exists, and CI checks connectivity rather than AOF
-recovery.
+CI now performs a real `docker kill` (SIGKILL) and verifies that both
+the user's state and the processed-event claims survive, so a post-crash
+redelivery is still refused (`verify_aof_recovery`). A graceful stop
+would pass even with AOF disabled, which is why the test uses SIGKILL.
 
 ## SCHEMA-EVENT-18 — Event schema validation too permissive
 **Severity** Medium · **Status** verified closed
@@ -493,8 +518,9 @@ accepted despite `str.isprintable()` reporting False.
 `^[A-Za-z0-9._:-]{1,128}$`. Zero-width space, bidirectional marks and
 byte-order marks are now rejected.
 
-**Remaining** Status stays `partially closed` pending explicit
-regression tests for each Unicode category.
+`tests/test_user_id_unicode.py` covers fifteen invisible code points in
+leading, interior and trailing positions, and asserts that the old
+ASCII-control-only rule would have admitted every one of them.
 
 ## FEATURE-TIMEZONE-20 — `hour_of_day` semantics differ offline vs online
 **Severity** Medium · **Status** accepted limitation
@@ -606,20 +632,28 @@ fixture non-degenerate, not by silencing the warning.
 
 ## Status summary
 
-All four published reports were regenerated from clean commit
-`c59b199`, each recording that commit and a verified-clean working
-tree. The tuning comparisons ran against the leakage-free fit-half
-feature table (`tune_fold_leakage: false`).
+All four published reports are generated from a clean source commit and
+record it, together with a verified-clean working tree. The tuning
+comparisons ran against the leakage-free fit-half feature table
+(`tune_fold_leakage: false`), and the report identifies that bundle by
+full SHA-256 rather than asserting the property.
 
-CI is green on all four jobs at commit `6ad6e3e` (run 32929791225):
+The generating source commit is recorded inside each report's
+`provenance.source_commit`, which is the authoritative value; quoting it
+here as well has twice gone stale after a republication, so it is not
+repeated.
+
+CI is green on all four jobs. The most recent verified run at the time
+of writing is 32930125351 at commit `3cfbc37`; run 32929791225 at
+`6ad6e3e` is the run cited against individual fixes above:
 `lint-and-test`, `locked-install-test`, `api-container-test` and
 `integration-smoke-test`. This is stated because it had not been true
 for the three preceding commits: the path-anchoring fix for
 MANIFEST-PATHS-11 broke artifact resolution inside the container, and
 the container job caught it after the change had already shipped.
 
-**A review of that state reopened four findings**, and the summary above
-it was wrong to claim fourteen closures. The reopened items are recorded
+**A review of that state reopened four findings and reclassified one**,
+and the summary above it was wrong to claim fourteen closures. The reopened items are recorded
 in place: EVAL-PROVENANCE-01 (fit-only artifacts unrecorded; validation
 not recursive), EVAL-RETRIEVAL-LEAKAGE-09 (fit-only bundle never
 validated), ARTIFACT-BUNDLE-06 (a missing manifest was accepted

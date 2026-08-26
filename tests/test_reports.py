@@ -6,6 +6,7 @@ from recommender.evaluation.reports import (
     REPORT_SCHEMA_VERSION,
     REQUIRED_FIELDS,
     ReportProvenanceError,
+    _metric_leaves,
     build_report,
     validate_report,
     write_report,
@@ -245,3 +246,158 @@ def test_committed_reports_satisfy_the_schema():
     assert committed, "reports/ exists but contains no reports"
     for path in committed:
         validate_report(json.loads(path.read_text(encoding="utf-8")))
+
+
+# --- nested definition enforcement -------------------------------------
+
+def _nested_report(**overrides):
+    report = _report(
+        results={
+            "diversity_cap": {
+                "decision_confirmed": True,
+                "cap_value_comparison": {
+                    "by_cap_value": {"3": {"mean_slate_relevance": 0.42}},
+                },
+            }
+        },
+        metric_definitions={
+            "diversity_cap": "the cap comparison",
+            "decision_confirmed": "whether the original call held up",
+            "mean_slate_relevance": "mean predicted relevance of a slate",
+        },
+    )
+    report.update(overrides)
+    return report
+
+
+def test_a_nested_metric_needs_a_definition_too():
+    """The gap this closes.
+
+    Only top-level section names were compared against the definitions,
+    so an invented field several levels down -- `made_up_score` -- was
+    published without anyone having said what it measures. Almost every
+    tuning metric lives at that depth.
+    """
+    report = _nested_report()
+    report["results"]["diversity_cap"]["made_up_score"] = 0.5
+
+    with pytest.raises(ValueError, match="no definition"):
+        validate_report(report)
+
+
+def test_a_metric_inside_a_comparison_table_needs_a_definition():
+    """Deeper still: values inside a by-value comparison table."""
+    report = _nested_report()
+    report["results"]["diversity_cap"]["cap_value_comparison"]["by_cap_value"]["3"][
+        "undocumented_thing"
+    ] = 1.0
+
+    with pytest.raises(ValueError, match="undocumented_thing"):
+        validate_report(report)
+
+
+def test_comparison_table_keys_are_not_treated_as_metrics():
+    """A table keyed by the value being compared -- budgets "0.90", caps
+    "3", depths "1000" -- names coordinates, not measurements. Demanding
+    a definition for each would mean defining every number anyone
+    compares.
+    """
+    report = _nested_report()
+    report["results"]["diversity_cap"]["cap_value_comparison"]["by_cap_value"]["5"] = {
+        "mean_slate_relevance": 0.4
+    }
+
+    validate_report(report)  # must not raise
+
+
+def test_known_metadata_is_not_treated_as_a_metric():
+    report = _nested_report()
+    report["results"]["diversity_cap"]["sampling"] = {
+        "seed": 1,
+        "selected_ids_sha256": "0" * 64,
+        "anything_inside_here": 123,
+    }
+    report["results"]["diversity_cap"]["selection_rule"] = "largest cap within budget"
+
+    validate_report(report)  # must not raise
+
+
+def test_every_committed_report_defines_every_nested_metric():
+    """Guards the real reports, not just the rule."""
+    import json
+    from pathlib import Path
+
+    reports_dir = Path("reports")
+    if not reports_dir.exists():
+        pytest.skip("no reports committed yet")
+
+    for path in sorted(reports_dir.glob("*.json")):
+        report = json.loads(path.read_text(encoding="utf-8"))
+        undefined = _metric_leaves(report["results"]) - set(report["metric_definitions"])
+        assert not undefined, f"{path.name} publishes undefined metrics: {sorted(undefined)}"
+
+
+# --- fit-only provenance -----------------------------------------------
+
+def _leakage_free_report(**bundle_overrides):
+    bundle = {
+        "retrieval_model_sha256": "a" * 64,
+        "content_artifact_sha256": "b" * 64,
+        "bundle_manifest_sha256": "c" * 64,
+        "ranking_feature_table_sha256": "d" * 64,
+        "train_report_sha256": "e" * 64,
+        "tune_fold_seed": 20260823,
+        "tune_fold_fraction": 0.2,
+        "training_seed": 42,
+        "embedding_dim": 32,
+    }
+    bundle.update(bundle_overrides)
+    report = _report(
+        results={"diversity_cap": {"feature_provenance": {"tune_fold_leakage": False}}},
+        metric_definitions={"diversity_cap": "the cap comparison"},
+    )
+    report["artifacts"]["fit_only_bundle"] = bundle
+    return report
+
+
+def test_a_leakage_free_claim_with_full_hashes_is_accepted():
+    validate_report(_leakage_free_report())  # must not raise
+
+
+@pytest.mark.parametrize(
+    "bad", ["absent", "", "abc123", "A" * 64, "z" * 64, None, 12345]
+)
+def test_a_leakage_free_claim_needs_a_real_hash(bad):
+    """`tune_fold_leakage: false` says a model never saw the fold. That
+    is only checkable if the report identifies the model. "absent" was
+    accepted here, so the report's strongest claim could be published
+    with nothing behind it.
+    """
+    with pytest.raises((ValueError, TypeError)):
+        validate_report(_leakage_free_report(retrieval_model_sha256=bad))
+
+
+def test_a_leakage_free_claim_needs_the_bundle_at_all():
+    report = _leakage_free_report()
+    del report["artifacts"]["fit_only_bundle"]
+
+    with pytest.raises(ValueError, match="no fit_only_bundle"):
+        validate_report(report)
+
+
+def test_a_leaked_run_is_not_required_to_carry_a_fit_only_bundle():
+    """A run that used the deployed table reports the leakage honestly
+    and has no fit-only artifacts to name. Requiring them would force a
+    manifest describing artifacts that were never built.
+    """
+    report = _report(
+        results={"diversity_cap": {"feature_provenance": {"tune_fold_leakage": True}}},
+        metric_definitions={"diversity_cap": "the cap comparison"},
+    )
+
+    validate_report(report)  # must not raise
+
+
+def test_the_fold_description_must_describe_a_fold():
+    with pytest.raises(ValueError, match="does not describe a fold"):
+        validate_report(_leakage_free_report(tune_fold_fraction=1.5))
