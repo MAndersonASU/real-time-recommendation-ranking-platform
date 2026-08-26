@@ -15,9 +15,10 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 ---
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
-**Severity** Critical · **Status** reopened by review, refixed; verification pending
+**Severity** Critical · **Status** verified closed
 **Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199`, `efacb31`
-**Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py`
+**Reports** `63b5443` (published from clean commit `2b91dd4`)
+**Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py` · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 
 **Reopened after review**, because two gaps made the earlier closure
 broader than its evidence. Both are now fixed; the closure is not
@@ -99,7 +100,7 @@ rerun under EVAL-PROVENANCE-01 from a clean commit.
 
 ## STREAM-IDEMPOTENCY-03 — Duplicate and concurrent events corrupt user state
 **Severity** High · **Status** partially closed (narrowed)
-**Tests** `recommender.features.verify_lua_idempotency` (CI, real Redis EVAL)
+**Tests** `recommender.features.verify_lua_idempotency` (CI, real Redis EVAL) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 **Fix commits** `1de8dff` (rollback), `ec53440` (lost update, type inference)
 
 Rollback on late duplicate delivery is fixed: a duplicate now returns
@@ -249,8 +250,14 @@ and fraction drift.
 ---
 
 ## EVAL-RETRIEVAL-LEAKAGE-09 — Tuning features leak tuning-fold labels
-**Severity** High · **Status** reopened by review, refixed; verification pending
-**Fix commits** `d70f1df`, `efacb31` · **Tests** `tests/test_fit_only_bundle.py`
+**Severity** High · **Status** verified closed
+**Fix commits** `d70f1df`, `efacb31` · **Reports** `63b5443`
+**Tests** `tests/test_fit_only_bundle.py` · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
+
+The published report records the fit-only model's full SHA-256, which
+matches the artifact on disk and differs from the deployed model's, so
+`tune_fold_leakage: false` is backed by identification rather than
+assertion.
 
 **Reopened after review.** The training and feature path was correct,
 but `build_dataset_fit_only` checked only that the fit-only model and
@@ -444,8 +451,12 @@ and build output are excluded. CI builds the API container successfully
 with this configuration.
 
 ## STREAM-DURABILITY-17 — Redis may lose acknowledged writes
-**Severity** Medium · **Status** fixed; verification pending
-**Tests** `recommender.features.verify_aof_recovery` (CI, real Redis)
+**Severity** Medium · **Status** verified closed
+**Tests** `recommender.features.verify_aof_recovery` (CI, real Redis) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
+
+`docker kill` (SIGKILL), not a graceful stop that would pass with AOF
+disabled entirely. Both the user's state and the processed-event claims
+survive, so a post-crash redelivery is still refused.
 **Fix commit** `ccc1106`
 
 AOF enabled with `appendfsync everysec`; the ~1s bound is stated in the
@@ -467,8 +478,8 @@ event's own content, so the same real event produces the same id across
 producers rather than a fresh one per send.
 
 ## API-USERID-19 — User ids insufficiently bounded
-**Severity** Medium · **Status** fixed; verification pending
-**Tests** `tests/test_user_id_unicode.py` (50 cases)
+**Severity** Medium · **Status** verified closed
+**Tests** `tests/test_user_id_unicode.py` (50 cases) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 **Fix commit** `ccc1106`
 
 Bounded to 128 characters; empty ids, ASCII whitespace and ASCII control
@@ -600,7 +611,7 @@ All four published reports were regenerated from clean commit
 tree. The tuning comparisons ran against the leakage-free fit-half
 feature table (`tune_fold_leakage: false`).
 
-CI was green on all four jobs at commit `f3ecca9` (run 32892969746):
+CI is green on all four jobs at commit `6ad6e3e` (run 32929791225):
 `lint-and-test`, `locked-install-test`, `api-container-test` and
 `integration-smoke-test`. This is stated because it had not been true
 for the three preceding commits: the path-anchoring fix for
@@ -622,7 +633,23 @@ Two CI checks were added in response, both against real infrastructure
 rather than stand-ins: the atomic claim-and-apply Lua script is now
 exercised through real Redis `EVAL`, and AOF durability is demonstrated
 by `docker kill` (SIGKILL) rather than a graceful stop that would pass
-even with AOF disabled.
+even with AOF disabled. Both pass on GitHub's runners, not only locally.
+
+Three CI runs were needed to get there, and each failure was caused by
+one of these changes rather than by flakiness:
+
+- The fail-closed bundle rule rejected the container's synthetic
+  artifacts, because the synthetic generator never wrote a manifest --
+  the rule working correctly against a generator that had not caught up
+  with it.
+- Describing a tuning sample loaded the training split unconditionally,
+  which made three tests that had always run on synthetic frames require
+  the licensed dataset.
+- `tempfile.mkstemp` creates 0600, so the manifest alone arrived
+  unreadable to the unprivileged user that serves it, while every model
+  and parquet beside it loaded fine.
+
+None was fixed by weakening a check.
 
 **Not closed**, and each is recorded above with what remains:
 
