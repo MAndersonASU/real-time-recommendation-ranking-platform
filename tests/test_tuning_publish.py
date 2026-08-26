@@ -143,3 +143,42 @@ def test_every_section_of_a_tuning_report_is_defined_before_publishing(report, t
     undefined = set(published["results"]) - set(published["metric_definitions"])
     assert not undefined, f"published sections with no definition: {sorted(undefined)}"
     assert None not in published["denominators"].values()
+
+
+def test_comparisons_sharing_a_sample_are_named(report):
+    """A single boolean could not describe this correctly.
+
+    Diversity and freshness draw the identical sample; retrieval depth
+    draws from a different population. An "are all samples shared?" flag
+    answers False here and then describes every sample as independently
+    drawn -- which is false for two of the three. Grouping by selection
+    digest states which comparisons share which sample.
+    """
+    report["retrieval_depth"]["sampling"] = {
+        "method": "seeded uniform random without replacement",
+        "seed": DEFAULT_SAMPLE_SEED,
+        "selected_impressions": 400,
+        "selected_ids_sha256": "a-different-digest",
+    }
+
+    collected = collect_sampling(report)
+
+    assert collected["shared_samples"] == {
+        "abc123": [
+            "diversity_cap.cap_value_comparison",
+            "freshness_threshold.min_fresh_value_comparison",
+        ]
+    }
+    assert "retrieval_depth" not in str(collected["shared_samples"])
+    assert "identical set of impressions" in collected["sharing_note"]
+
+
+def test_wholly_independent_samples_are_described_as_such(report):
+    report["freshness_threshold"]["min_fresh_value_comparison"]["sampling"][
+        "selected_ids_sha256"
+    ] = "another-digest"
+
+    collected = collect_sampling(report)
+
+    assert collected["shared_samples"] == {}
+    assert "No two comparisons drew the same sample." in collected["sharing_note"]

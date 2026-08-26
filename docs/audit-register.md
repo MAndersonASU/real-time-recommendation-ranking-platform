@@ -302,8 +302,15 @@ table has neither column -- both are now joined from the behaviours
 split. The report also described its samples as "drawn independently for
 each comparison", which was false: diversity and freshness share a seed,
 a population and a selection digest. They use the same sample, which is
-the right choice for a paired comparison, and the field now says so and
-reports `shared_sample`.
+the right choice for a paired comparison.
+
+The first correction to that wording was itself wrong. A single
+`shared_sample` boolean answered "do *all* comparisons share a sample?",
+which became False the moment retrieval depth -- a genuinely different
+population -- joined the report, and it then described all three samples
+as independent while two were provably identical. The report now groups
+comparisons by selection digest and names which ones share which
+sample.
 
 ---
 

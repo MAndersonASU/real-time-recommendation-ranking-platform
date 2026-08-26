@@ -207,27 +207,34 @@ def collect_sampling(report: dict) -> dict:
                 walk(value, f"{path}.{key}")
 
     walk(report, "")
-    digests = {
-        description.get("selected_ids_sha256") for description in found.values()
+    # Grouped by selection digest, not reduced to one flag. An earlier
+    # version asked "do all comparisons share a sample?", which answered
+    # False as soon as a third comparison with a different eligible
+    # population was added -- and then described every sample as
+    # independent, while two of the three were provably identical. Which
+    # comparisons share which sample is the fact a reader needs, so it is
+    # reported directly.
+    groups: dict[str, list[str]] = {}
+    for name, description in found.items():
+        groups.setdefault(description.get("selected_ids_sha256", "unknown"), []).append(name)
+    shared_groups = {
+        digest: sorted(names) for digest, names in groups.items() if len(names) > 1
     }
-    shared = len(found) > 1 and len(digests) == 1
 
     return {
-        "method": (
-            "seeded uniform random without replacement. "
-            + (
-                "The comparisons below drew the same sample: same seed, same eligible "
-                "population, same selection digest. This is deliberate -- comparing "
-                "reranking parameters on identical impressions is a paired comparison "
-                "and removes between-sample variation from the difference being "
-                "measured. An earlier version of this field claimed the samples were "
-                "drawn independently, which was not true of any two of them."
-                if shared
-                else "Each comparison below draws from its own eligible population, so "
-                "the samples differ where the populations differ."
-            )
+        "method": "seeded uniform random without replacement",
+        "shared_samples": shared_groups,
+        "sharing_note": (
+            "Comparisons listed together under one digest were run on the identical "
+            "set of impressions. That is deliberate: comparing reranking parameters "
+            "on the same impressions is a paired comparison and removes between-"
+            "sample variation from the difference being measured. Comparisons with "
+            "different digests draw from different eligible populations. An earlier "
+            "version of this field claimed every sample was drawn independently, "
+            "which was not true of any two of them."
+            if shared_groups
+            else "No two comparisons drew the same sample."
         ),
-        "shared_sample": shared,
         "seed": DEFAULT_SAMPLE_SEED,
         "by_comparison": found,
     }
