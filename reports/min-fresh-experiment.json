@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "587812ace481c2379facd167f99618872ec85a1d"
+    "serving_code_commit": "2548f210420c24f962a373fee1c8a2af634fce19"
   },
   "configuration": {
     "bootstrap_seed": 20260826,
@@ -55,7 +55,7 @@
     ],
     "resamples": 2000,
     "resampling": "paired bootstrap clustered by user",
-    "scoring_commit": "bcd6731"
+    "scoring_commit": "bcd673102dd2c3b4a0462cacf90cda7f4031a791"
   },
   "dataset": {
     "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
@@ -85,7 +85,9 @@
     "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
     "A prospectively specified tuning-fold policy experiment, not an untouched final evaluation. No untouched final split exists in this project.",
     "Measured against logged clicks on a fixed, already-decided candidate set. It bounds what a freshness quota costs in observed relevance; it cannot say what a fresher slate is worth to a reader over time, which needs a live experiment this project does not attempt.",
-    "Every quota tested retains at or above the baseline, so the cost this rule was written to bound is not measurably present. 'Largest passing quota' therefore resolves to the largest value tried, and the result should be read as 'no quota up to 5 measurably costs relevance' rather than as positive evidence that 5 is optimal."
+    "A non-inferiority result with boundary selection. Every tested quota satisfied the offline relevance-retention bounds, so the rule -- which contained no benefit, satisfiability or diversity requirement -- selected the largest value tested, the boundary of the candidate set rather than an interior optimum. This establishes no measurable logged-click relevance loss up to that quota under the frozen candidate-list protocol; it does not establish that the selected quota is optimal or valuable to users.",
+    "Scored against MIND's own supplied impression candidate list, not the end-to-end retrieval protocol, so it does not speak to what a quota costs on a Faiss-retrieved slate.",
+    "Satisfiability is not part of the rule and falls sharply with the quota: reported per quota under diagnostics."
   ],
   "metric_definitions": {
     "deployed_quota": "the value currently configured in serving",
@@ -104,13 +106,13 @@
     "quotas_passing_both_bounds": "candidate quotas clearing both floors",
     "retention_lower_bound_95": "one-sided 95% lower confidence bound on retention, from a paired bootstrap resampling whole users",
     "rule_selects_deployed_value": "whether the rule reproduces the deployed value",
-    "selected_quota": "the largest passing quota, or null if none passes",
+    "selected_quota": "the largest quota clearing both floors, or null if none does. Boundary selection when every candidate passes",
     "share_of_slates_meeting_quota": "share of slates satisfying the quota (diagnostic)"
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.min_fresh_experiment",
-    "generated_at": "2026-08-26T20:03:26.526303+00:00",
-    "source_commit": "587812ace481c2379facd167f99618872ec85a1d",
+    "generated_at": "2026-08-26T20:33:38.867005+00:00",
+    "source_commit": "2548f210420c24f962a373fee1c8a2af634fce19",
     "working_tree_clean": true
   },
   "report_name": "min-fresh-experiment",
