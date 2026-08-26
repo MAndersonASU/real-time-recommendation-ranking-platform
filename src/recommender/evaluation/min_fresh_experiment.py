@@ -55,6 +55,12 @@ from recommender.reranking.freshness import (
 
 OUTCOMES_PATH = mind_small_path("min_fresh_experiment_outcomes.parquet")
 
+# The commit whose code scored the fold. Recorded explicitly because a
+# re-analysis publishes from a later commit, and a report that named only
+# the publishing commit would misattribute the numbers -- the same defect
+# EVAL-PROVENANCE-01 closed.
+SCORING_COMMIT = "bcd6731"
+
 # --- frozen protocol constants -----------------------------------------
 # Transcribed from docs/min-fresh-experiment-protocol.md. Changing any of
 # these after seeing output would make the experiment worthless.
@@ -245,11 +251,35 @@ def analyse(outcomes: pd.DataFrame) -> dict:
     }
 
 
-def main(limit: int | None = None) -> None:
-    outcomes = score_fold(limit=limit)
-    provenance = outcomes.attrs.get("feature_provenance", {})
-    OUTCOMES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    outcomes.to_parquet(OUTCOMES_PATH, index=False)
+def _outcomes_digest() -> str:
+    import hashlib
+
+    return hashlib.sha256(OUTCOMES_PATH.read_bytes()).hexdigest()
+
+
+def main(limit: int | None = None, reuse_outcomes: bool = False) -> None:
+    """Scores the fold and publishes the result.
+
+    `reuse_outcomes` re-analyses an existing outcomes file instead of
+    rescoring. The bootstrap reads only that file, so re-publishing costs
+    seconds. It is honest because the outcomes file is fingerprinted into
+    the report and the commit that produced it is recorded separately
+    from the commit that analysed it -- the two can differ, and pretending
+    otherwise would be the provenance defect this project already fixed
+    once.
+    """
+    from recommender.evaluation.reports import source_commit
+
+    if reuse_outcomes and OUTCOMES_PATH.exists():
+        outcomes = pd.read_parquet(OUTCOMES_PATH)
+        provenance = {"note": "re-analysed from stored outcomes; see scoring_commit"}
+        scoring_commit = SCORING_COMMIT
+    else:
+        outcomes = score_fold(limit=limit)
+        provenance = outcomes.attrs.get("feature_provenance", {})
+        OUTCOMES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        outcomes.to_parquet(OUTCOMES_PATH, index=False)
+        scoring_commit = source_commit()
 
     result = analyse(outcomes)
     baseline_rows = outcomes[outcomes["quota"] == BASELINE_QUOTA]
@@ -272,9 +302,36 @@ def main(limit: int | None = None) -> None:
             "seed": BOOTSTRAP_SEED,
             "choose": "largest quota satisfying both bounds",
         },
+        "scoring_commit": scoring_commit,
+        "outcomes_sha256": _outcomes_digest(),
         **result,
     }
+    summary["selection_rule"].update(
+        {
+            "quotas_evaluated": list(QUOTAS),
+            "ndcg_retention_floor": NDCG_RETENTION_FLOOR,
+            "hit_rate_retention_floor": HIT_RATE_RETENTION_FLOOR,
+            "bootstrap_seed": BOOTSTRAP_SEED,
+        }
+    )
+
+    from recommender.evaluation.publish import publish_min_fresh_experiment_report
+
+    published = publish_min_fresh_experiment_report(
+        summary,
+        sampling={
+            "method": (
+                "no sampling -- every eligible impression in the complete tuning fold "
+                "was evaluated, at every quota"
+            ),
+            "seed": None,
+            "bootstrap_seed": BOOTSTRAP_SEED,
+            "bootstrap_resamples": BOOTSTRAP_RESAMPLES,
+            "bootstrap_unit": "user (clustered), not impression",
+        },
+    )
     print(json.dumps(summary, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

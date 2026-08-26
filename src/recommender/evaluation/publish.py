@@ -370,3 +370,98 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
         ],
     }
     return _publish(spec, "recommender.evaluation.evaluate_explanations", sampling)
+
+
+def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
+    """Publishes the prospectively specified min-fresh policy experiment.
+
+    Named as an experiment rather than an evaluation because that is what
+    it is: a rule declared and committed before the run, applied to its
+    output without adjustment. `docs/min-fresh-experiment-protocol.md`
+    is the frozen protocol, and the commit that added it precedes the
+    commit that produced these numbers.
+    """
+    spec = {
+        "report_name": "min-fresh-experiment",
+        "dataset": {**MIND_DATASET, "split": "complete tuning fold carved from train"},
+        "configuration": {
+            "protocol": "docs/min-fresh-experiment-protocol.md (frozen before the run)",
+            "quotas_evaluated": raw["selection_rule"]["quotas_evaluated"],
+            "primary_metric": "ndcg_at_10",
+            "guardrail_metric": "hit_rate_at_10",
+            "ndcg_retention_floor": raw["selection_rule"]["ndcg_retention_floor"],
+            "hit_rate_retention_floor": raw["selection_rule"]["hit_rate_retention_floor"],
+            "resampling": raw["selection_rule"]["resampling"],
+            "resamples": raw["selection_rule"]["resamples"],
+            "bootstrap_seed": raw["selection_rule"]["bootstrap_seed"],
+            "scoring_commit": raw["scoring_commit"],
+            "outcomes_sha256": raw["outcomes_sha256"],
+        },
+        "denominators": raw["denominators"],
+        "metric_definitions": {
+            "per_quota": (
+                "one entry per candidate quota, each holding the primary and guardrail "
+                "metrics and the diagnostics"
+            ),
+            "ndcg_at_10": (
+                "NDCG@10 of the reranked slate against the impression's observed "
+                "clicks. The decision metric"
+            ),
+            "hit_rate_at_10": (
+                "share of impressions whose clicked item survives in the reranked "
+                "slate. The guardrail: a reordering can preserve graded gain while "
+                "pushing the clicked item out entirely"
+            ),
+            "observed_baseline": "the metric's value at quota 0",
+            "observed_value": "the metric's value at this quota",
+            "observed_retention": "observed_value / observed_baseline",
+            "paired_difference": "observed_value - observed_baseline, measured within impression",
+            "retention_lower_bound_95": (
+                "one-sided 95% lower confidence bound on retention, from a paired "
+                "bootstrap resampling whole users"
+            ),
+            "diagnostics": (
+                "reported for interpretation and deliberately excluded from the "
+                "selection rule"
+            ),
+            "mean_slate_relevance": "mean predicted relevance of the slate (diagnostic)",
+            "mean_fresh_items_in_slate": "mean count of fresh items per slate (diagnostic)",
+            "share_of_slates_meeting_quota": "share of slates satisfying the quota (diagnostic)",
+            "mean_distinct_categories": "mean distinct categories after reranking (diagnostic)",
+            "quotas_passing_both_bounds": "candidate quotas clearing both floors",
+            "selected_quota": "the largest passing quota, or null if none passes",
+            "deployed_quota": "the value currently configured in serving",
+            "rule_selects_deployed_value": "whether the rule reproduces the deployed value",
+            "outcome_statement": "the result stated in words",
+        },
+        "results": {
+            "per_quota": raw["per_quota"],
+            "quotas_passing_both_bounds": raw["quotas_passing_both_bounds"],
+            "selected_quota": raw["selected_quota"],
+            "deployed_quota": raw["deployed_quota"],
+            "rule_selects_deployed_value": raw["rule_selects_deployed_value"],
+            "outcome_statement": raw["outcome_statement"],
+        },
+        "limitations": [
+            *_COMMON_LIMITATIONS,
+            (
+                "A prospectively specified tuning-fold policy experiment, not an "
+                "untouched final evaluation. No untouched final split exists in this "
+                "project."
+            ),
+            (
+                "Measured against logged clicks on a fixed, already-decided candidate "
+                "set. It bounds what a freshness quota costs in observed relevance; it "
+                "cannot say what a fresher slate is worth to a reader over time, which "
+                "needs a live experiment this project does not attempt."
+            ),
+            (
+                "Every quota tested retains at or above the baseline, so the cost this "
+                "rule was written to bound is not measurably present. 'Largest passing "
+                "quota' therefore resolves to the largest value tried, and the result "
+                "should be read as 'no quota up to 5 measurably costs relevance' rather "
+                "than as positive evidence that 5 is optimal."
+            ),
+        ],
+    }
+    return _publish(spec, "recommender.evaluation.min_fresh_experiment", sampling)

@@ -31,6 +31,7 @@ EXPECTED_REPORTS = (
     "end-to-end-evaluation",
     "tuning-decisions",
     "explanation-evaluation",
+    "min-fresh-experiment",
 )
 
 
