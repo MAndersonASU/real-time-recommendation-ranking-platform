@@ -16,7 +16,8 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
 **Severity** Critical · **Status** verified closed (third pass)
-**Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199`, `efacb31`
+**Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199`, `efacb31`, `1251fb4`
+**Reports** `d2f97be` · **CI** run 32975126661 (all four jobs green)
 **Reports** `63b5443` (published from clean commit `2b91dd4`)
 **Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py` · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 
@@ -643,16 +644,21 @@ The generating source commit is recorded inside each report's
 here as well has twice gone stale after a republication, so it is not
 repeated.
 
-CI is green on all four jobs. The most recent verified run at the time
-of writing is 32930125351 at commit `3cfbc37`; run 32929791225 at
-`6ad6e3e` is the run cited against individual fixes above:
+CI is green on all four jobs. The most recent verified run is
+32975126661 at commit `d2f97be`; earlier runs cited against individual
+fixes above remain valid historical evidence for those fixes:
 `lint-and-test`, `locked-install-test`, `api-container-test` and
 `integration-smoke-test`. This is stated because it had not been true
 for the three preceding commits: the path-anchoring fix for
 MANIFEST-PATHS-11 broke artifact resolution inside the container, and
 the container job caught it after the change had already shipped.
 
-**A review of that state reopened four findings and reclassified one**,
+A later review of the published state found two further provenance
+gaps -- nested definition enforcement and the `"absent"` fit-only hash
+-- both recorded under EVAL-PROVENANCE-01 above and closed in `1251fb4`.
+
+**An earlier review of that state reopened four findings and
+reclassified one**,
 and the summary above it was wrong to claim fourteen closures. The reopened items are recorded
 in place: EVAL-PROVENANCE-01 (fit-only artifacts unrecorded; validation
 not recursive), EVAL-RETRIEVAL-LEAKAGE-09 (fit-only bundle never
