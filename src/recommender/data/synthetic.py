@@ -118,6 +118,34 @@ def generate() -> dict:
     RETRIEVAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), RETRIEVAL_MODEL_PATH)
 
+    # Publish the bundle manifest, exactly as the real training path
+    # does. These artifacts were produced together by one run and are a
+    # coherent set, so they are entitled to a manifest saying so.
+    #
+    # Not optional: serving refuses artifacts that arrive without a
+    # manifest, because that is the state a partially failed training run
+    # leaves behind. Generating a synthetic set without one made the
+    # container fail its own health check -- the fail-closed rule working
+    # correctly against a generator that had not caught up with it.
+    from datetime import UTC, datetime
+
+    from recommender.retrieval.bundle import build_manifest, write_manifest
+    from recommender.retrieval.content_artifact import CONTENT_ARTIFACT_PATH
+    from recommender.retrieval.features import CONTENT_DIM
+    from recommender.retrieval.train import EMBEDDING_DIM
+
+    write_manifest(
+        build_manifest(
+            retrieval_model_path=RETRIEVAL_MODEL_PATH,
+            content_artifact_path=CONTENT_ARTIFACT_PATH,
+            catalog_path=CATALOG_PATH,
+            content_dim=CONTENT_DIM,
+            embedding_dim=EMBEDDING_DIM,
+            catalog_items=len(news),
+            built_at=datetime.now(UTC).isoformat(),
+        )
+    )
+
     from recommender.ranking.build_dataset import TRAIN_PATH
     from recommender.ranking.build_dataset import main as build_ranking_dataset
 

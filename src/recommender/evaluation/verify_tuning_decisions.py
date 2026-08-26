@@ -162,7 +162,7 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
 
 
 @lru_cache(maxsize=1)
-def _impression_metadata() -> pd.DataFrame:
+def _impression_metadata() -> pd.DataFrame | None:
     """impression_id -> user_id, time, from the training behaviours.
 
     The ranking feature table is one row per candidate and carries
@@ -171,15 +171,40 @@ def _impression_metadata() -> pd.DataFrame:
     or what stretch of time they covered -- the two facts that say
     whether a sample is representative at all. Cached because every
     comparison would otherwise re-read the same split.
+
+    Returns None when the licensed split is not present. Describing a
+    sample is reporting, not measurement, and it must not be the thing
+    that makes a comparison require the dataset: an earlier version
+    loaded the split unconditionally and broke three tests that had
+    always run on synthetic in-memory frames.
     """
-    behaviors = load_split("train")
+    try:
+        behaviors = load_split("train")
+    except (FileNotFoundError, OSError):
+        return None
     return behaviors[["impression_id", "user_id", "time"]].drop_duplicates("impression_id")
 
 
 def _describe_tuning_sample(frame: pd.DataFrame, selected, seed: int) -> dict:
-    """`describe_sample` with user and time metadata joined back on."""
+    """`describe_sample` with user and time metadata joined back on where
+    it is available.
+
+    When the split is absent the description still reports population,
+    count, fraction and selection digest, and says explicitly that the
+    user and time facts are missing -- an absent field would otherwise
+    read as "not applicable" rather than "not looked up".
+    """
+    metadata = _impression_metadata()
+    if metadata is None:
+        description = describe_sample(frame, selected, seed=seed)
+        description["user_and_time_metadata"] = (
+            "unavailable -- the behaviours split was not present when this sample "
+            "was described"
+        )
+        return description
+
     ids = pd.DataFrame({"impression_id": frame["impression_id"].drop_duplicates()})
-    enriched = ids.merge(_impression_metadata(), on="impression_id", how="left")
+    enriched = ids.merge(metadata, on="impression_id", how="left")
     return describe_sample(enriched, selected, seed=seed)
 
 
