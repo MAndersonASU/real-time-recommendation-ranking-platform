@@ -86,7 +86,7 @@ re-labelling them under the new contract is exactly the defect this
 closes.
 
 **Done** All four reports are generated from clean source commit
-`2b91dd4` and published in commit `63b5443`, each recording that source
+`125e32a` and published in commit `37e6510`, each recording that source
 commit and a verified-clean tree.
 
 ---
@@ -123,6 +123,7 @@ dismiss the fix.
 
 ## STREAM-IDEMPOTENCY-03 — Duplicate and concurrent events corrupt user state
 **Severity** High · **Status** verified closed
+**Fix commit** `125e32a` · **CI** run 33004519430 (`integration-smoke-test`)
 **Tests** `recommender.features.verify_lua_idempotency` and
 `recommender.features.verify_lua_concurrency` (both CI, real Redis `EVAL`) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 **Fix commits** `1de8dff` (rollback), `ec53440` (lost update, type inference)
@@ -197,7 +198,8 @@ broker with consecutive commit failures.
 
 ## ARTIFACT-VALIDATION-05 — Content artifact validation incomplete
 **Severity** High · **Status** verified closed
-**Fix commits** `ccc1106`, `ec53440`, and the strict schema below
+**Fix commits** `ccc1106`, `ec53440`, `125e32a` (strict schema)
+**Reports** `37e6510` · **CI** run 33004519430
 **Tests** `tests/test_content_artifact.py` (30 cases)
 
 Rejected now: one-dimensional arrays, wrong save width, NaN/Inf,
@@ -705,9 +707,11 @@ document has already said that of three different runs -- so specific
 run numbers appear here only where they are evidence for a *particular*
 fix, and stay attached to that fix.
 
-Run 32975126661 at commit `d2f97be` is the **report-republication run**:
+Run 33004519430 at commit `37e6510` is the **report-republication run**:
 the run that verified the four machine-readable reports currently in
-`reports/`. It is cited for that and nothing else.
+`reports/`. It is cited for that and nothing else. (Run 32975126661
+verified the previous set, superseded when the strict content-artifact
+schema changed the artifact hashes those reports recorded.)
 
 The four jobs are `lint-and-test`, `locked-install-test`,
 `api-container-test` and `integration-smoke-test`. Their being green is
