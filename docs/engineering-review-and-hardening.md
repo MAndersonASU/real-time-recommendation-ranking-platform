@@ -246,12 +246,23 @@ product-policy override rather than a data-selected value.
 
 The diversity cap is configured at 3 and is selected by the 0.90 budget
 -- but that comparison still ranks by predicted relevance, so the same
-methodological concern applies to it. Making it data-selected would
-require its own benefit-aware protocol, frozen before any click outcome
-is observed. Retrieval depth is **not** in the same position: its
-comparison already uses clicked-item containment and a latency budget
-rather than predicted relevance, so rerunning it would reduce
-uncertainty on a different question, not correct a method.
+methodological concern applies to it.
+
+**Decision: not rerun, deliberately.** The documentation discloses that
+the cap's selection rests on predicted relevance rather than logged
+outcomes, so this is a disclosed property, not a hidden defect. Running
+a held-out version would be a separate research question rather than
+remediation, it would add scope without materially strengthening the
+evidence, and no untouched final split remains to validate the result
+against. Worth revisiting only if diversity-policy selection becomes a
+central claim of this project rather than one reranking parameter among
+several -- and then it would need its own benefit-aware protocol, frozen
+before any click outcome is observed.
+
+Retrieval depth is **not** in the same position: its comparison already
+uses clicked-item containment and a latency budget rather than predicted
+relevance, so rerunning it would reduce uncertainty on a different
+question, not correct a method.
 
 ### Untouched final evaluation
 

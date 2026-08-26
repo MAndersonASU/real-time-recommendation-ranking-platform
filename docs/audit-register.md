@@ -881,9 +881,15 @@ or valuable to users. The deployed quota remains 2 as an explicit
 conservative product-policy override.
 
 The same methodological concern still applies to the diversity-cap
-comparison, which continues to rank by predicted relevance. Retrieval
-depth is not affected: it already uses clicked-item containment and a
-latency budget.
+comparison, which continues to rank by predicted relevance. **A
+held-out rerun of that comparison was considered and declined**: the
+basis for the cap's selection is disclosed rather than hidden, so a
+rerun would be a separate research question rather than remediation, and
+no untouched final split remains to validate it against. Revisit only if
+diversity-policy selection becomes a central claim of the project.
+
+Retrieval depth is not affected: it already uses clicked-item
+containment and a latency budget.
 
 Accepted limitations are listed above and are not counted as closed.
 
