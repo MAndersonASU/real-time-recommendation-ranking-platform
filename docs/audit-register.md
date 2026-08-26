@@ -15,9 +15,30 @@ Baseline for the current round: `86f26d002100a70cc81965a07092f0888dbe1524`.
 ---
 
 ## EVAL-PROVENANCE-01 — Evaluation reports can carry incorrect provenance
-**Severity** Critical · **Status** verified closed
-**Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199` · **Reports** `5f19d65`
-**Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py` · **CI** run 32892449514 (green)
+**Severity** Critical · **Status** reopened by review, refixed; verification pending
+**Fix commits** `d70f1df`, `b73ce6a`, `42aed02`, `c59b199`, `efacb31`
+**Tests** `tests/test_reports.py`, `tests/test_tuning_publish.py`
+
+**Reopened after review**, because two gaps made the earlier closure
+broader than its evidence. Both are now fixed; the closure is not
+claimed again until the reports are republished and CI is green.
+
+**Gap 1 — fit-only artifacts were not recorded.** The tuning report's
+`artifacts` block described the *deployed* model, which is exactly the
+model the leakage-free comparison exists to avoid, so
+`tune_fold_leakage: false` was an assertion about artifacts the report
+did not identify. `fit_only_artifact_manifest()` now records full
+SHA-256 for the fit-only model, content artifact, bundle manifest,
+ranking feature table and training report, plus the fold seed, fold
+fraction and training seed. Full digests, not 12-character prefixes.
+
+**Gap 2 — validation was not recursive.** Range, null and definition
+checks ran only over top-level results, and almost every tuning metric
+is nested, so a nested rate of 9.0 was accepted. `_validate_metric_values`
+now walks dicts and lists to any depth. A null that is a real answer --
+a selection rule nothing satisfied -- is permitted only under explicitly
+named keys, so "nothing qualified" stays distinguishable from "value
+missing".
 
 Reports were generated after the fact from previously produced raw JSON,
 attaching the *current* commit and manifest without establishing that
@@ -45,7 +66,9 @@ each recording that commit and a verified-clean tree.
 ---
 
 ## EVAL-RECONCILIATION-02 — End-to-end reconciliation mis-counts repeated clicks
-**Severity** High · **Status** partially closed
+**Severity** High · **Status** verified closed
+**Reports** rerun from clean commit `c59b199`; the ambiguous repeated-article
+case was independently reproduced and now yields the correct history
 **Fix commits** `1de8dff`, `ec53440`
 
 The original `[n1,n2,n3] + [n3]` duplication is fixed by multiset
@@ -75,7 +98,8 @@ rerun under EVAL-PROVENANCE-01 from a clean commit.
 ---
 
 ## STREAM-IDEMPOTENCY-03 — Duplicate and concurrent events corrupt user state
-**Severity** High · **Status** partially closed
+**Severity** High · **Status** partially closed (narrowed)
+**Tests** `recommender.features.verify_lua_idempotency` (CI, real Redis EVAL)
 **Fix commits** `1de8dff` (rollback), `ec53440` (lost update, type inference)
 
 Rollback on late duplicate delivery is fixed: a duplicate now returns
@@ -225,9 +249,17 @@ and fraction drift.
 ---
 
 ## EVAL-RETRIEVAL-LEAKAGE-09 — Tuning features leak tuning-fold labels
-**Severity** High · **Status** verified closed
-**Fix commit** `d70f1df` · **Reports** `5f19d65`
-**Tests** `tests/test_fit_only_bundle.py` · **CI** run 32892449514 (green)
+**Severity** High · **Status** reopened by review, refixed; verification pending
+**Fix commits** `d70f1df`, `efacb31` · **Tests** `tests/test_fit_only_bundle.py`
+
+**Reopened after review.** The training and feature path was correct,
+but `build_dataset_fit_only` checked only that the fit-only model and
+content files *existed*. Existence is not coherence: a model from one
+fit-half run could pair with a content matrix from another -- two
+independent SVD fits -- producing a feature table that looked
+leakage-free while the model scored against a basis it never saw.
+`validate_bundle()` now runs against `FIT_ONLY_BUNDLE_PATH` before
+either artifact loads, with the manifest required rather than optional.
 
 The ranking model was refit on the fit half, but the retrieval model
 producing `retrieval_score` was trained on the whole training split
@@ -412,7 +444,8 @@ and build output are excluded. CI builds the API container successfully
 with this configuration.
 
 ## STREAM-DURABILITY-17 — Redis may lose acknowledged writes
-**Severity** Medium · **Status** partially closed
+**Severity** Medium · **Status** fixed; verification pending
+**Tests** `recommender.features.verify_aof_recovery` (CI, real Redis)
 **Fix commit** `ccc1106`
 
 AOF enabled with `appendfsync everysec`; the ~1s bound is stated in the
@@ -434,7 +467,8 @@ event's own content, so the same real event produces the same id across
 producers rather than a fresh one per send.
 
 ## API-USERID-19 — User ids insufficiently bounded
-**Severity** Medium · **Status** partially closed
+**Severity** Medium · **Status** fixed; verification pending
+**Tests** `tests/test_user_id_unicode.py` (50 cases)
 **Fix commit** `ccc1106`
 
 Bounded to 128 characters; empty ids, ASCII whitespace and ASCII control
