@@ -254,8 +254,17 @@ fixed as ARTIFACT-MIGRATION-46 below.
 ---
 
 ## ARTIFACT-MIGRATION-46 — Migration tool could bless a foreign content matrix
-**Severity** High · **Status** verified closed
-**Fix commit** this change · **Tests** `tests/test_content_artifact_migration.py`
+**Severity** High · **Status** open — fix implemented, awaiting independent verification
+**Fix commit** `3b9c8d4` · **Tests** `tests/test_content_artifact_migration.py`
+**CI** run 33006941509 (green)
+
+Recorded as open rather than closed on purpose. The fix below is
+implemented, tested and green in CI, but every other finding in this
+register was closed only after the reviewer reproduced the fix
+independently. Marking this one closed on the implementer's own
+verification would be a weaker standard than the rest of the document
+applies, and this is a finding about a tool that can defeat a safety
+check -- exactly the kind where self-certification is worth least.
 
 `upgrade_content_artifact` publishes a bundle manifest, so it can defeat
 the check that manifest exists to enforce -- and it did. It refreshed a
