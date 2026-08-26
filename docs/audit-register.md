@@ -894,3 +894,24 @@ containment and a latency budget.
 Accepted limitations are listed above and are not counted as closed.
 
 This project is **not** in a state where all audit findings are closed.
+
+## Review status
+
+No further remediation is currently planned. STREAM-COMMIT-04 remains
+partially closed by an explicit scope decision.
+
+Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
+2 accepted limitations. The minimum-fresh quota is retained at 2 as a
+transparent product-policy override rather than a data-selected value.
+
+This was a **maintainer-led engineering review**, not an independent
+audit. Every correction above is paired with the evidence that motivated
+it, a regression test, and a statement of what the fix does not cover.
+Several were defects in claims rather than in code -- a version
+identifier whose documentation promised properties it did not deliver, a
+validator that accepted undefined nested metrics, a migration tool that
+could bless an artifact the bundle check had just refused, and CI
+reported as green from local runs while it was red. Those are recorded
+in place rather than summarised away, because a register that lists only
+the tidy findings is less useful than one that shows what actually went
+wrong.
