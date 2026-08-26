@@ -221,6 +221,20 @@ jobs:
         run: python -m recommender.streaming.verify_connectivity
       - name: Real Redis round trip and latency
         run: python -m recommender.features.verify_state_store
+      # The idempotency and lost-update guarantees live entirely inside a
+      # Lua script executed by Redis. Every other test of them runs
+      # against InMemoryRedis -- a Python reimplementation of the same
+      # contract, written alongside the script it stands in for, so a
+      # defect in the script itself reproduces perfectly in the stand-in
+      # and fails only in production. This runs the real EVAL.
+      - name: Atomic claim-and-apply script against real Redis
+        run: python -m recommender.features.verify_lua_idempotency
+      # SIGKILL, not `docker stop`. A graceful stop lets Redis flush on
+      # exit, so a stop/start cycle would pass even with AOF disabled
+      # entirely and would prove nothing about the documented durability
+      # bound.
+      - name: Acknowledged writes survive an abrupt kill
+        run: python -m recommender.features.verify_aof_recovery
       - name: Tear down
         if: always()
         run: docker compose down

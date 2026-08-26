@@ -54,6 +54,43 @@ FIT_ONLY_CONTENT_PATH = mind_small_path("item_content_fit_only.npz")
 FIT_ONLY_BUNDLE_PATH = mind_small_path("bundle_fit_only.json")
 FIT_ONLY_REPORT_PATH = mind_small_path("two_tower_fit_only_train_report.json")
 
+
+def fit_only_artifact_manifest() -> dict:
+    """Full SHA-256 of every artifact the leakage-free comparison rests
+    on, plus the fold seed that defines what "fit half" means.
+
+    Recorded because `tune_fold_leakage: false` is otherwise an
+    assertion with nothing behind it: the tuning report's own `artifacts`
+    block describes the *deployed* model, which is precisely the model
+    the fit-half path exists to avoid. Without these hashes a reader
+    cannot tell a genuine leakage-free run from one that silently used
+    the deployed artifacts.
+
+    Full digests rather than 12-character prefixes. A prefix is fine for
+    spotting that something changed; it is not what you want underneath
+    a claim that a specific model never saw specific labels.
+    """
+    from recommender.evaluation.tuning_fold import TUNE_FOLD_FRACTION
+    from recommender.ranking.build_dataset_fit_only import FIT_ONLY_TRAIN_PATH
+    from recommender.retrieval.bundle import file_sha256
+
+    artifacts = {
+        "retrieval_model": FIT_ONLY_MODEL_PATH,
+        "content_artifact": FIT_ONLY_CONTENT_PATH,
+        "bundle_manifest": FIT_ONLY_BUNDLE_PATH,
+        "ranking_feature_table": FIT_ONLY_TRAIN_PATH,
+        "train_report": FIT_ONLY_REPORT_PATH,
+    }
+    manifest = {
+        f"{name}_sha256": (file_sha256(path) if path.exists() else "absent")
+        for name, path in artifacts.items()
+    }
+    manifest["tune_fold_seed"] = TUNE_FOLD_SEED
+    manifest["tune_fold_fraction"] = TUNE_FOLD_FRACTION
+    manifest["training_seed"] = TRAIN_SEED
+    manifest["embedding_dim"] = EMBEDDING_DIM
+    return manifest
+
 # Matched to the deployed model's budget so the two are comparable. A
 # fit-half model trained for longer or shorter would confound the
 # leakage question with a training-budget difference.

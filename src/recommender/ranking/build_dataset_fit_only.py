@@ -27,15 +27,20 @@ Output goes to its own file. The deployed table is not touched:
 
 import json
 
-from recommender.evaluation.contract import load_catalog, load_split
+from recommender.evaluation.contract import CATALOG_PATH, load_catalog, load_split
 from recommender.evaluation.tuning_fold import TUNE_FOLD_SEED, split_train_for_tuning
 from recommender.paths import mind_small_path
 from recommender.ranking.build_dataset import RANKING_DIR
 from recommender.ranking.features import FEATURE_COLUMNS, build_feature_context, build_ranking_rows
 from recommender.retrieval.build_index import load_trained_model
+from recommender.retrieval.bundle import validate_bundle
 from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import build_item_vocab
-from recommender.retrieval.train_fit_only import FIT_ONLY_CONTENT_PATH, FIT_ONLY_MODEL_PATH
+from recommender.retrieval.train_fit_only import (
+    FIT_ONLY_BUNDLE_PATH,
+    FIT_ONLY_CONTENT_PATH,
+    FIT_ONLY_MODEL_PATH,
+)
 
 FIT_ONLY_TRAIN_PATH = RANKING_DIR / "train_fit_only.parquet"
 FIT_ONLY_DATASET_REPORT_PATH = mind_small_path("ranking_dataset_fit_only_report.json")
@@ -54,10 +59,25 @@ def build_and_save() -> dict:
             "tuning fold these features are meant to be blind to."
         )
 
-    train = load_split("train")
-    fit_rows, tune_rows = split_train_for_tuning(train)
     news = load_catalog()
 
+    # Existence is not coherence. Checking only that both files are
+    # present let a model from one fit-half run pair with a content
+    # matrix from another -- two independent SVD fits, so the model would
+    # score against a basis it was never trained on, and the resulting
+    # feature table would look leakage-free while being meaningless.
+    # The manifest is what establishes they were written together, and
+    # it is required rather than optional here.
+    validate_bundle(
+        FIT_ONLY_MODEL_PATH,
+        FIT_ONLY_CONTENT_PATH,
+        CATALOG_PATH,
+        catalog_items=len(news),
+        path=FIT_ONLY_BUNDLE_PATH,
+    )
+
+    train = load_split("train")
+    fit_rows, tune_rows = split_train_for_tuning(train)
     _item_vocab, categories, subcategories = build_item_vocab(news)
     model = load_trained_model(
         len(categories) + 1, len(subcategories) + 1, path=FIT_ONLY_MODEL_PATH

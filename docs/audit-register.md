@@ -148,8 +148,8 @@ ids; artifacts predating the metadata fields are still accepted.
 ---
 
 ## ARTIFACT-BUNDLE-06 — Model and content artifacts are not one atomic bundle
-**Severity** High · **Status** verified closed
-**Fix commit** `5a3ea8e` · **Tests** `tests/test_bundle.py`
+**Severity** High · **Status** verified closed (narrowed scope)
+**Fix commits** `5a3ea8e`, this round · **Tests** `tests/test_bundle.py`
 
 A newly written content artifact could coexist with an older retrieval
 model if training failed between writes, so a model could interpret
@@ -166,6 +166,30 @@ set rather than loading a new content matrix against an old model.
 The fit-half bundle exercises this a second time: it writes its own
 manifest to its own path, and the two bundles cannot overwrite each
 other (`tests/test_fit_only_bundle.py`).
+
+**Corrected after review.** A missing manifest used to be accepted
+unconditionally, including when a model, content matrix and catalog were
+all present -- exactly the state a partially failed training run leaves
+behind. Any incoherent artifact set could therefore skip the entire
+check by having no manifest, which is the one failure mode the check was
+written for. An existing test asserted that permissive behaviour, so the
+gap was pinned in place rather than caught. The rule is now:
+
+| artifacts | manifest | outcome |
+|---|---|---|
+| none | none | accepted -- clean clone |
+| any | none | **rejected** -- cannot be verified |
+| all | present | checked, must match |
+
+`require_manifest=False` remains available per call for a caller that
+must tolerate a pre-manifest set; the serving path does not use it.
+
+**Scope, stated rather than implied:** this is mandatory-manifest
+fail-closed behaviour, not a versioned artifact directory with an atomic
+active-bundle pointer. Only the manifest write is atomic; the artifact
+set as a whole is not published through a pointer switch. The stronger
+design is the right one for a system that redeploys artifacts under live
+traffic, and this project does not.
 
 ---
 
@@ -267,9 +291,19 @@ point-in-time guarantees are unchanged.
 roughly 1.7x. Retrieval and ranking moved in opposite directions between
 the two samples, which a fixed prefix cannot reveal.
 
-**Still open within this finding:** sampling variance across several
-seeds is not measured. The seed is recorded, so the figures are
-reproducible, but their sampling error is unquantified.
+Sampling **bias** is closed. Sampling **uncertainty** is a separate
+finding, tracked as `LIMIT-SAMPLING-UNCERTAINTY-44`, because calling one
+finding both "verified closed" and "still open" was self-contradictory.
+
+**Corrected since:** retrieval-depth sampling was computed but never
+reached the published report, and the diversity and freshness
+descriptions carried no user count or time range because the feature
+table has neither column -- both are now joined from the behaviours
+split. The report also described its samples as "drawn independently for
+each comparison", which was false: diversity and freshness share a seed,
+a population and a selection digest. They use the same sample, which is
+the right choice for a paired comparison, and the field now says so and
+reports `shared_sample`.
 
 ---
 
@@ -298,15 +332,36 @@ information.
 
 ## FEATURE-FRESHNESS-13 — Durable-feature freshness is not operational
 **Severity** Medium · **Status** verified closed (scope decision)
-**Fix commit** `efe29be` · **Tests** `tests/test_serving_cache.py`
+**Fix commits** `efe29be`, this round
+**Tests** `tests/test_serving_cache.py`, `tests/test_snapshot_identity.py`
 
 Staleness was measured against the time the process built the
 snapshot, so restarting relabelled a frozen 2019 dataset as freshly
 computed. `built_at` and `data_as_of` are now separate, staleness is
-measured against the data, a content-derived `snapshot_id` is stable
-across restarts, and `/ready` reports age, staleness and an explicit
-policy stating the data are frozen and restarting does not refresh
-them. `durable_feature_data_age_seconds` exposes the data age.
+measured against the data, and `/ready` reports age, staleness and an
+explicit policy stating the data are frozen and restarting does not
+refresh them. `durable_feature_data_age_seconds` exposes the data age.
+
+**Reopened and fixed after review: `snapshot_id` delivered neither
+property it documented.** It summed `hash(user_id)` over the user set,
+which broke both halves of its own docstring:
+
+- Python randomises `str` hashing per process (PEP 456), so the same
+  snapshot produced a different id on every restart. Two processes
+  returned `f4e32d2dcdbf` and `10351e8a25d3` from identical data.
+- Only the user *set* was hashed, never the feature values, so
+  recomputing features for the same users at the same `data_as_of` left
+  the id unchanged -- the one case where the id most needs to move,
+  because serving behaviour changes while the reported version does not.
+
+Every published field of every record now goes into a SHA-256 digest in
+sorted user order, with field tags and separators so adjacent values
+cannot be confused for one another. `tests/test_snapshot_identity.py`
+covers this with real subprocesses under differing `PYTHONHASHSEED`
+values, which is the only way to observe hash randomisation at all --
+the seed is fixed at interpreter start, so every in-process assertion
+passed against the broken implementation. Reverting to the old version
+fails five of the ten tests.
 
 Automated atomic refresh is future work by agreed scope decision, not
 a missing production feature.
@@ -389,16 +444,26 @@ byte-order marks are now rejected.
 **Remaining** Status stays `partially closed` pending explicit
 regression tests for each Unicode category.
 
-## FEATURE-TIMEZONE-20 — `hour_of_day` semantics may differ offline vs online
-**Severity** Medium · **Status** verified closed
-**Fix commit** `0945f55` · **Tests** `tests/test_ranking_features.py`
+## FEATURE-TIMEZONE-20 — `hour_of_day` semantics differ offline vs online
+**Severity** Medium · **Status** accepted limitation
+**Partial fix** `0945f55` · **Tests** `tests/test_ranking_features.py`
+**Tracked as** `LIMIT-HOUR-OF-DAY-TIMEZONE-45`
 
-Two definitions of `hour_of_day` existed, one for training and one for
-serving, so a model trained on one convention could be served under the
-other.
+Reclassified after review. Two *definitions* of `hour_of_day` existed,
+one for training and one for serving; there is now a single function and
+the two paths cannot drift in derivation.
 
-**Fixed** A single `hour_of_day(timestamp)` definition, used by both
-paths.
+That is not the same as resolving the finding, and marking it closed
+overstated the fix. MIND does not document the timezone of its
+timestamps, so trained values are dataset-local hours of an unknown
+zone, while a live request with no historical anchor falls back to the
+UTC wall clock. **The underlying zones still differ.** One function
+prevents derivation drift; it cannot reconcile two different clocks.
+
+Closing this for real means removing `hour_of_day`, retraining, and
+regenerating every dependent evaluation. The feature was retained
+instead, so the honest status is an accepted limitation with a named
+cost, not a closure.
 
 ## SUPPLY-IMAGE-PINS-21 — Redis, Kafka and Actions use mutable tags
 **Severity** Medium · **Status** verified closed
@@ -482,6 +547,8 @@ fixture non-degenerate, not by silencing the warning.
 | LIMIT-IDEMPOTENCY-WINDOW-41 | Idempotency bounded by claim retention |
 | LIMIT-LEXICAL-ONLY-42 | Lexical validation is not semantic verification |
 | HIST-CI-CLAIM-43 | An earlier report described local runs as green CI while CI was red |
+| LIMIT-SAMPLING-UNCERTAINTY-44 | Sampling error of the published figures is unquantified |
+| LIMIT-HOUR-OF-DAY-TIMEZONE-45 | `hour_of_day` means a different zone offline and online |
 
 ---
 
@@ -492,29 +559,54 @@ All four published reports were regenerated from clean commit
 tree. The tuning comparisons ran against the leakage-free fit-half
 feature table (`tune_fold_leakage: false`).
 
-CI is green on all four jobs as of commit `053ddd6` (run 32892449514):
+CI was green on all four jobs at commit `f3ecca9` (run 32892969746):
 `lint-and-test`, `locked-install-test`, `api-container-test` and
 `integration-smoke-test`. This is stated because it had not been true
 for the three preceding commits: the path-anchoring fix for
 MANIFEST-PATHS-11 broke artifact resolution inside the container, and
 the container job caught it after the change had already shipped.
 
+**A review of that state reopened four findings**, and the summary above
+it was wrong to claim fourteen closures. The reopened items are recorded
+in place: EVAL-PROVENANCE-01 (fit-only artifacts unrecorded; validation
+not recursive), EVAL-RETRIEVAL-LEAKAGE-09 (fit-only bundle never
+validated), ARTIFACT-BUNDLE-06 (a missing manifest was accepted
+alongside present artifacts), FEATURE-FRESHNESS-13 (`snapshot_id` was
+neither stable across processes nor derived from content), and
+FEATURE-TIMEZONE-20 (reclassified as an accepted limitation, since one
+shared function prevents derivation drift but does not reconcile two
+different clocks).
+
+Two CI checks were added in response, both against real infrastructure
+rather than stand-ins: the atomic claim-and-apply Lua script is now
+exercised through real Redis `EVAL`, and AOF durability is demonstrated
+by `docker kill` (SIGKILL) rather than a graceful stop that would pass
+even with AOF disabled.
+
 **Not closed**, and each is recorded above with what remains:
 
-- STREAM-IDEMPOTENCY-03 — the Lua path is proven against the in-process
-  Redis stand-in, not a real Redis in CI.
+- STREAM-IDEMPOTENCY-03 — **narrowed.** The Lua script now runs against
+  real Redis in CI (`verify_lua_idempotency`), covering first apply,
+  accumulation, late duplicate, returned-state agreement, event-type
+  handling and history bounding. Concurrent multi-writer behaviour is
+  still only covered by the in-process stand-in.
 - STREAM-COMMIT-04 — commit-failure behaviour is tested against a fake
   broker, not a real one.
-- STREAM-DURABILITY-17 — the AOF bound is configured and documented but
-  not demonstrated by an abrupt-kill recovery test.
-- API-USERID-19 — the identifier pattern is enforced; Unicode category
-  behaviour is not separately tested.
+- STREAM-DURABILITY-17 — **closed.** `verify_aof_recovery` kills Redis
+  with SIGKILL and confirms both the user's state and the processed-event
+  claims survive, so a post-crash redelivery is still refused.
+- API-USERID-19 — **closed.** `tests/test_user_id_unicode.py` covers
+  fifteen invisible code points in leading, interior and trailing
+  positions, and asserts the old ASCII-control-only rule would have
+  admitted every one of them.
 - ARTIFACT-VALIDATION-05 — the content checksum covers the matrix bytes;
   shape, dtype and id ordering are validated separately rather than
   folded into one fingerprint.
-- EVAL-SAMPLING-10 — sampling is representative, seeded and recorded,
-  but variance across several seeds is not measured, so the published
-  figures' sampling error is unquantified.
+- LIMIT-SAMPLING-UNCERTAINTY-44 — sampling is representative, seeded and
+  recorded, but variance across seeds is not measured, so the published
+  figures' sampling error is unquantified. This matters most for the
+  minimum-fresh comparison, where the gap between quota 2 and quota 3 is
+  about 0.15% of predicted relevance on a single 1,500-impression sample.
 
 Accepted limitations are listed above and are not counted as closed.
 

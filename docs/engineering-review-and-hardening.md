@@ -160,17 +160,39 @@ held out from one model and not the other. The published report records
 which feature table produced it (`tune_fold_leakage: false`), so a run
 that fell back to the leaked table cannot be mistaken for a clean one.
 
-**One decision is not supported by its own evidence.** The
-minimum-fresh quota is configured at 2. The selection rule — the
+**One decision is more conservative than its own evidence selects.**
+The minimum-fresh quota is configured at 2. The selection rule — the
 largest quota whose mean slate relevance stays within a given budget of
 the unconstrained slate — chooses 5 at the 0.90 and 0.95 budgets and 3
-at 0.99. No budget tried selects 2, so
-`budgets_supporting_current_configuration` is empty. The configured
-value is more conservative than the rule would pick, which is a
-defensible product choice but is *not* what the tuning evidence
-recommends, and it should not be described as validated by it. The
-diversity cap, by contrast, is configured at 3 and is selected by the
-0.90 budget.
+at 0.99, so `budgets_supporting_current_configuration` is empty.
+
+Stated precisely: **none of the three reported budgets selects 2.** That
+is narrower than "no budget supports 2", which an earlier version of
+this document claimed and which the data do not establish. Only three
+budgets were tested. Measured relevance retention relative to an
+unconstrained slate is approximately 100.02% at quota 2, 99.876% at
+quota 3 and 98.919% at quota 5, so a budget of 99.9% or 100% would
+select 2. The rule's output depends on where the budget is drawn, and
+the budgets tried simply do not go that high.
+
+Three further reasons the table does not settle the question:
+
+- The comparison ranks by **predicted score**, not by held-out hit rate
+  or NDCG. It measures what the model thinks, not what users did.
+- The gap between quota 2 and quota 3 is about **0.15%** of predicted
+  relevance, measured on a single 1,500-impression sample whose sampling
+  error is unquantified (`LIMIT-SAMPLING-UNCERTAINTY-44`).
+- Freshness swaps do not reapply the diversity cap, so raising the quota
+  also perturbs diversity behaviour, which this comparison does not
+  isolate.
+
+The deployed value stays at 2 as a documented conservative product
+judgment. Changing it would require a budget declared **before** the
+run, evaluation across several seeds or the full tuning fold, and paired
+confidence intervals on hit rate@10, NDCG@10, mean model score, fresh
+items per slate, quota satisfaction and post-freshness distinct
+categories. The diversity cap, by contrast, is configured at 3 and is
+selected by the 0.90 budget.
 
 ### Untouched final evaluation
 
@@ -211,9 +233,10 @@ concealed failures.
   the data can settle — the diversity relevance budget, the
   minimum-fresh budget, and retrieval depth, whose predefined latency
   budget did not bind at any depth tried.
-- **The deployed minimum-fresh quota (2) is not the value its own
-  selection rule picks** at any budget tested (see above). It is a
-  deliberately conservative choice, not a measured one.
+- **The deployed minimum-fresh quota (2) is not selected by any of the
+  three budgets tested** (see above). It is a deliberately conservative
+  choice, not a measured one; a stricter relevance budget would select
+  it, and none was tried.
 - **Public CI cannot reproduce licensed-data quality metrics.**
 - **Kafka idempotency is bounded by claim retention** (24 hours) and
   covers the recent-feature state write, not arbitrary side effects.

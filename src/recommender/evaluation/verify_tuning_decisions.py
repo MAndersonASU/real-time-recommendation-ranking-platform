@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -160,6 +161,28 @@ def verify_popularity_exclusion_with_temporal_split() -> dict:
 
 
 
+@lru_cache(maxsize=1)
+def _impression_metadata() -> pd.DataFrame:
+    """impression_id -> user_id, time, from the training behaviours.
+
+    The ranking feature table is one row per candidate and carries
+    neither column, so a sample described from it alone could report how
+    many impressions were drawn but not how many *users* they came from
+    or what stretch of time they covered -- the two facts that say
+    whether a sample is representative at all. Cached because every
+    comparison would otherwise re-read the same split.
+    """
+    behaviors = load_split("train")
+    return behaviors[["impression_id", "user_id", "time"]].drop_duplicates("impression_id")
+
+
+def _describe_tuning_sample(frame: pd.DataFrame, selected, seed: int) -> dict:
+    """`describe_sample` with user and time metadata joined back on."""
+    ids = pd.DataFrame({"impression_id": frame["impression_id"].drop_duplicates()})
+    enriched = ids.merge(_impression_metadata(), on="impression_id", how="left")
+    return describe_sample(enriched, selected, seed=seed)
+
+
 def collect_sampling(report: dict) -> dict:
     """Gathers every comparison's own sampling description.
 
@@ -184,11 +207,27 @@ def collect_sampling(report: dict) -> dict:
                 walk(value, f"{path}.{key}")
 
     walk(report, "")
+    digests = {
+        description.get("selected_ids_sha256") for description in found.values()
+    }
+    shared = len(found) > 1 and len(digests) == 1
+
     return {
         "method": (
-            "seeded uniform random without replacement, drawn independently for each "
-            "comparison"
+            "seeded uniform random without replacement. "
+            + (
+                "The comparisons below drew the same sample: same seed, same eligible "
+                "population, same selection digest. This is deliberate -- comparing "
+                "reranking parameters on identical impressions is a paired comparison "
+                "and removes between-sample variation from the difference being "
+                "measured. An earlier version of this field claimed the samples were "
+                "drawn independently, which was not true of any two of them."
+                if shared
+                else "Each comparison below draws from its own eligible population, so "
+                "the samples differ where the populations differ."
+            )
         ),
+        "shared_sample": shared,
         "seed": DEFAULT_SAMPLE_SEED,
         "by_comparison": found,
     }
@@ -326,7 +365,7 @@ def _compare_diversity_cap_values(
 
     return {
         "sample_impressions": len(selected),
-        "sampling": describe_sample(scored_rows, selected, seed=sample_seed),
+        "sampling": _describe_tuning_sample(scored_rows, selected, seed=sample_seed),
         "by_cap_value": by_cap,
         "selection_rule": (
             "highest mean distinct-category count among caps whose mean slate relevance "
@@ -535,7 +574,7 @@ def _compare_min_fresh_values(
 
     return {
         "sample_impressions": len(selected),
-        "sampling": describe_sample(scored_rows, selected, seed=sample_seed),
+        "sampling": _describe_tuning_sample(scored_rows, selected, seed=sample_seed),
         "by_min_fresh_value": by_value,
         "selection_rule": (
             "largest minimum-fresh quota whose mean slate relevance stays within a "
@@ -689,6 +728,7 @@ def verify_retrieval_depth(
 
     return {
         "feature_provenance": feature_provenance,
+        "sampling": _describe_tuning_sample(tune_rows, selected, seed=sample_seed),
         "impressions_measured": len(clicked_rows),
         "split": "tuning fold carved from train (never validation)",
         "by_depth": by_depth,

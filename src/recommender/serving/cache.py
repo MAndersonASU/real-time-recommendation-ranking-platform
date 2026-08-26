@@ -71,21 +71,53 @@ class DurableFeatureCache:
     def snapshot_id(self) -> str:
         """A stable identifier for *which* snapshot this is.
 
-        Derived from the data it contains, not from when it was loaded,
-        so two processes that built the same snapshot report the same id
-        and a genuinely different snapshot reports a different one.
+        Derived from the feature values it contains, not from when it was
+        loaded, so two processes that built the same snapshot report the
+        same id and a genuinely different snapshot reports a different
+        one.
+
+        An earlier version claimed exactly that and delivered neither.
+        It summed `hash(user_id)` over the user set, which broke both
+        halves of the promise:
+
+        - Python randomises `hash()` for `str` per process (PEP 456), so
+          the same snapshot produced a different id on every restart.
+          Two processes here produced `f4e32d2dcdbf` and `10351e8a25d3`
+          from identical data.
+        - It hashed only the *user set*, never the feature values, so
+          recomputing features for the same users at the same
+          `data_as_of` left the id unchanged -- the one case where the
+          id most needs to move, because serving behaviour changes while
+          the reported version does not.
+
+        Every published field of every record now goes into the digest,
+        in sorted user order, through SHA-256. Cost is linear in the
+        number of users and is paid once per snapshot build, not per
+        request.
         """
-        payload = "|".join(
-            [
-                str(self.data_as_of),
-                str(len(self.features_by_user)),
-                # A bounded, order-independent digest of the user set --
-                # cheap to compute and sufficient to distinguish
-                # snapshots without hashing every feature value.
-                str(sum(hash(user_id) % 1_000_003 for user_id in self.features_by_user)),
-            ]
-        )
-        return hashlib.sha256(payload.encode()).hexdigest()[:12]
+        digest = hashlib.sha256()
+        # Version tag: if the fields below ever change, ids computed
+        # under the old layout must not silently collide with new ones.
+        digest.update(b"durable-feature-snapshot-v1\n")
+        digest.update(f"data_as_of={self.data_as_of}\n".encode())
+        digest.update(f"users={len(self.features_by_user)}\n".encode())
+
+        # Sorted, so the id does not depend on dict insertion order --
+        # which follows the order rows arrived from the split file and is
+        # not part of the snapshot's identity.
+        for user_id in sorted(self.features_by_user):
+            features = self.features_by_user[user_id]
+            # Field-tagged and newline-delimited rather than concatenated:
+            # without separators, ("ab", "c") and ("a", "bc") would
+            # produce the same bytes.
+            digest.update(
+                (
+                    f"user_id={features.user_id}\n"
+                    f"dominant_category={features.dominant_category}\n"
+                    f"lifetime_click_count={features.lifetime_click_count}\n"
+                ).encode()
+            )
+        return digest.hexdigest()[:12]
 
     def describe(self, now: datetime | None = None) -> dict:
         """Operator-visible metadata, surfaced through `/ready`.

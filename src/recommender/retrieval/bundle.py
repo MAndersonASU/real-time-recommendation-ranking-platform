@@ -131,16 +131,45 @@ def validate_bundle(
     catalog_path: Path,
     catalog_items: int,
     path: Path = BUNDLE_MANIFEST_PATH,
+    require_manifest: bool = True,
 ) -> BundleManifest | None:
     """Checks that the artifacts on disk are the ones recorded together.
 
-    Returns the manifest when it validates, or None when no manifest
-    exists. Raises when a manifest exists and any artifact has changed
-    independently of the others -- the case that would otherwise serve a
-    model against a foreign basis.
+    Returns the manifest when it validates, or None when neither the
+    manifest nor any artifact exists. Raises when a manifest exists and
+    any artifact has changed independently of the others -- the case that
+    would otherwise serve a model against a foreign basis.
+
+    **A missing manifest is only acceptable when nothing else is there.**
+    An earlier version returned None whenever the manifest was absent,
+    including when a model, content matrix and catalog were all present.
+    That is the exact state a partially failed training run leaves
+    behind, and it was waved through: the bundle check existed but any
+    incoherent set could skip it by having no manifest at all. The three
+    admissible states are now:
+
+        no artifacts, no manifest  -> clean clone, accepted
+        any artifact, no manifest  -> rejected, cannot be verified
+        artifacts + manifest       -> checked, must match
+
+    `require_manifest=False` is available for the one legitimate caller
+    that has to tolerate a pre-manifest artifact set, and is not used by
+    the serving path.
     """
     manifest = load_manifest(path)
     if manifest is None:
+        present = [
+            str(artifact)
+            for artifact in (retrieval_model_path, content_artifact_path, catalog_path)
+            if Path(artifact).exists()
+        ]
+        if present and require_manifest:
+            raise BundleError(
+                "artifacts exist but no bundle manifest does, so there is nothing "
+                f"establishing they belong together: {present}. This is what a "
+                f"partially failed training run leaves behind. Retrain to publish a "
+                f"manifest at {path}, or delete the artifacts."
+            )
         return None
 
     mismatches = []

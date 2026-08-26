@@ -49,10 +49,15 @@ FULL_POPULATION = {
 }
 
 
-def _publish(spec: dict, evaluation_module: str, sampling: dict):
-    return write_report(
-        build_report(evaluation_module=evaluation_module, sampling=sampling, **spec)
-    )
+def _publish(spec: dict, evaluation_module: str, sampling: dict, extra_artifacts: dict | None = None):
+    report = build_report(evaluation_module=evaluation_module, sampling=sampling, **spec)
+    if extra_artifacts:
+        # Merged rather than replacing: the deployed artifact hashes stay
+        # (they describe the code and catalog the run executed against),
+        # and the run-specific ones are added beside them under their own
+        # key so the two can never be confused for each other.
+        report["artifacts"] = {**report["artifacts"], **extra_artifacts}
+    return write_report(report)
 
 
 def publish_retrieval_report(raw: dict, sampling: dict = FULL_POPULATION):
@@ -212,7 +217,20 @@ def publish_tuning_report(raw: dict, sampling: dict):
             "The chronological-split popularity check is confounded by user composition.",
         ],
     }
-    return _publish(spec, "recommender.evaluation.verify_tuning_decisions", sampling)
+    # Without these, `tune_fold_leakage: false` is an assertion about
+    # artifacts the report does not identify -- its generic `artifacts`
+    # block describes the deployed model, which is exactly the model this
+    # comparison exists to avoid using.
+    from recommender.retrieval.train_fit_only import fit_only_artifact_manifest
+
+    leakage_free = (
+        raw.get("diversity_cap", {}).get("feature_provenance", {}).get("tune_fold_leakage")
+        is False
+    )
+    extra = {"fit_only_bundle": fit_only_artifact_manifest()} if leakage_free else {}
+    return _publish(
+        spec, "recommender.evaluation.verify_tuning_decisions", sampling, extra_artifacts=extra
+    )
 
 
 def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):

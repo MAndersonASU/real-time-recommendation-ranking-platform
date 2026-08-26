@@ -148,15 +148,45 @@ def test_partial_training_failure_leaves_the_previous_bundle_intact(tmp_path):
     assert json.loads(manifest_path.read_text(encoding="utf-8")) == original
 
 
-def test_no_manifest_means_no_cross_artifact_guarantee_rather_than_a_failure(tmp_path):
-    """A clean clone with no artifacts, or an installation predating the
-    bundle, must still start. Absence is tolerated; disagreement is not.
+def test_a_clean_clone_with_no_artifacts_and_no_manifest_is_accepted(tmp_path):
+    """Nothing present, nothing to disagree about. A fresh clone has no
+    artifacts at all and must still start.
+    """
+    assert validate_bundle(
+        tmp_path / "model.bin", tmp_path / "content.bin", tmp_path / "catalog.bin",
+        catalog_items=100, path=tmp_path / "absent.json",
+    ) is None
+
+
+def test_artifacts_without_a_manifest_are_rejected(tmp_path):
+    """This test previously asserted the opposite, and in doing so
+    encoded the gap it should have caught.
+
+    A model, content matrix and catalog sitting there with no manifest is
+    precisely what a partially failed training run leaves behind. Under
+    the old rule, any incoherent artifact set could skip the entire
+    bundle check simply by having no manifest -- so the check existed and
+    could always be bypassed by the one failure mode it was written for.
+    """
+    paths = _artifacts(tmp_path)
+
+    with pytest.raises(BundleError, match="no bundle manifest"):
+        validate_bundle(
+            paths["model"], paths["content"], paths["catalog"],
+            catalog_items=100, path=tmp_path / "absent.json",
+        )
+
+
+def test_a_caller_may_opt_out_of_requiring_a_manifest(tmp_path):
+    """The escape hatch is explicit and per-call, so tolerating a
+    pre-manifest artifact set is a visible decision at the call site
+    rather than the silent default. The serving path does not use it.
     """
     paths = _artifacts(tmp_path)
 
     assert validate_bundle(
         paths["model"], paths["content"], paths["catalog"],
-        catalog_items=100, path=tmp_path / "absent.json",
+        catalog_items=100, path=tmp_path / "absent.json", require_manifest=False,
     ) is None
 
 

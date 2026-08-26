@@ -44,10 +44,14 @@ request:
   time deliberately reads from the durable `lifetime_click_count` field
   instead of the capped recent list specifically to avoid a second,
   silent mismatch on top of this one.
-- **Feature staleness.** Durable features are refreshed on an explicit
-  24-hour cadence (`docs/serving-cache.md`), not continuously — a live
-  request can be scored against a durable snapshot that is, by design,
-  up to a day old.
+- **Feature staleness.** Durable features are **never refreshed**. They
+  are a frozen historical snapshot of a 2019 dataset
+  (`docs/serving-cache.md`), and restarting the service reloads the same
+  data rather than making it newer. The 24-hour value is a staleness
+  *threshold* that this snapshot exceeds permanently and by design, not
+  a refresh cadence. An earlier version of this line described it as a
+  cadence, which implied an automated refresh that does not exist.
+  `/ready` reports the real age and states the policy.
 
 Replay-based evaluation (`docs/replay-evaluation.md`) is the first place
 these two gaps were actually measured together on real data, rather than

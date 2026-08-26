@@ -231,11 +231,7 @@ def validate_report(report: dict) -> None:
             f"interpreted: {sorted(null_denominators)}"
         )
 
-    for key, value in results.items():
-        if value is None:
-            raise ValueError(f"metric {key!r} is null")
-        if _is_rate(key) and isinstance(value, (int, float)) and not 0.0 <= float(value) <= 1.0:
-            raise ValueError(f"metric {key!r} is a rate but has value {value}")
+    _validate_metric_values(results)
 
     if not isinstance(report["limitations"], list):
         raise TypeError("limitations must be a list, even if empty")
@@ -251,6 +247,76 @@ def _is_rate(metric_name: str) -> bool:
         token in metric_name
         for token in ("rate", "recall", "ndcg", "mrr", "coverage", "precision")
     )
+
+
+# Keys whose values are descriptive metadata rather than measurements:
+# seeds, digests, counts, prose. A range check on them would be
+# meaningless, and some legitimately carry values outside [0, 1].
+_NON_METRIC_KEYS = frozenset(
+    {
+        "seed",
+        "method",
+        "note",
+        "selection_rule",
+        "split",
+        "feature_provenance",
+        "sampling",
+        "time_range",
+        "purpose",
+        "bundle",
+    }
+)
+
+
+# Keys whose subtree may legitimately contain null. A selection rule
+# that finds no value satisfying a budget reports null, and that null is
+# the answer -- "no cap retains 99% of relevance" is a real result, not a
+# missing measurement. Distinguishing the two is the whole point: a null
+# denominator makes a rate uninterpretable, while a null selection is
+# itself interpretable.
+_NULLABLE_SUBTREE_KEYS = frozenset(
+    {
+        "cap_selected_by_relevance_budget",
+        "value_selected_by_relevance_budget",
+        "selected_by_relevance_budget",
+        "depth_selected_by_latency_budget",
+    }
+)
+
+
+def _validate_metric_values(node, path: str = "", nulls_allowed: bool = False) -> None:
+    """Checks every metric in the tree, not just the top level.
+
+    The tuning report's results are nested decision objects: almost none
+    of its rates live at the top level. A non-recursive check therefore
+    inspected a handful of section names and passed everything that
+    mattered -- a nested rate of 9.0 was accepted, which is how this gap
+    was found.
+
+    Traversal stops at descriptive metadata (`_NON_METRIC_KEYS`) because
+    a seed or an id is not a measurement and has no range to violate.
+    Lists are walked too: a tradeoff table is a list of per-value
+    objects, and its rates are as publishable as any other.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{path}.{key}" if path else key
+            if key in _NON_METRIC_KEYS:
+                continue
+            allowed = nulls_allowed or key in _NULLABLE_SUBTREE_KEYS
+            if value is None and not allowed:
+                raise ValueError(
+                    f"metric {here!r} is null. If null is the intended answer -- a "
+                    f"selection rule that nothing satisfied -- its key belongs in "
+                    f"_NULLABLE_SUBTREE_KEYS so the distinction stays explicit."
+                )
+            is_numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
+            if _is_rate(key) and is_numeric and not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"metric {here!r} is a rate but has value {value}")
+            _validate_metric_values(value, here, allowed)
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            _validate_metric_values(item, f"{path}[{index}]", nulls_allowed)
 
 
 def write_report(report: dict, directory: Path = REPORTS_DIR) -> Path:
