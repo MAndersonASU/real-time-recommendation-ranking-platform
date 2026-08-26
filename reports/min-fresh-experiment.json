@@ -1,0 +1,249 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "dbfba306a94f",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "37690c7333d6",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "587812ace481c2379facd167f99618872ec85a1d"
+  },
+  "configuration": {
+    "bootstrap_seed": 20260826,
+    "guardrail_metric": "hit_rate_at_10",
+    "hit_rate_retention_floor": 0.95,
+    "ndcg_retention_floor": 0.99,
+    "outcomes_sha256": "bb6e542dbd4653d6e6f5601ba6aa3ae20bc11052c7dcf235a1d7f1908030c54b",
+    "primary_metric": "ndcg_at_10",
+    "protocol": "docs/min-fresh-experiment-protocol.md (frozen before the run)",
+    "quotas_evaluated": [
+      0,
+      1,
+      2,
+      3,
+      5
+    ],
+    "resamples": 2000,
+    "resampling": "paired bootstrap clustered by user",
+    "scoring_commit": "bcd6731"
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "complete tuning fold carved from train",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "distinct_users": 18227,
+    "impressions_evaluated": 25140,
+    "quotas_evaluated": [
+      0,
+      1,
+      2,
+      3,
+      5
+    ],
+    "slates_scored": 125700
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "A prospectively specified tuning-fold policy experiment, not an untouched final evaluation. No untouched final split exists in this project.",
+    "Measured against logged clicks on a fixed, already-decided candidate set. It bounds what a freshness quota costs in observed relevance; it cannot say what a fresher slate is worth to a reader over time, which needs a live experiment this project does not attempt.",
+    "Every quota tested retains at or above the baseline, so the cost this rule was written to bound is not measurably present. 'Largest passing quota' therefore resolves to the largest value tried, and the result should be read as 'no quota up to 5 measurably costs relevance' rather than as positive evidence that 5 is optimal."
+  ],
+  "metric_definitions": {
+    "deployed_quota": "the value currently configured in serving",
+    "diagnostics": "reported for interpretation and deliberately excluded from the selection rule",
+    "hit_rate_at_10": "share of impressions whose clicked item survives in the reranked slate. The guardrail: a reordering can preserve graded gain while pushing the clicked item out entirely",
+    "mean_distinct_categories": "mean distinct categories after reranking (diagnostic)",
+    "mean_fresh_items_in_slate": "mean count of fresh items per slate (diagnostic)",
+    "mean_slate_relevance": "mean predicted relevance of the slate (diagnostic)",
+    "ndcg_at_10": "NDCG@10 of the reranked slate against the impression's observed clicks. The decision metric",
+    "observed_baseline": "the metric's value at quota 0",
+    "observed_retention": "observed_value / observed_baseline",
+    "observed_value": "the metric's value at this quota",
+    "outcome_statement": "the result stated in words",
+    "paired_difference": "observed_value - observed_baseline, measured within impression",
+    "per_quota": "one entry per candidate quota, each holding the primary and guardrail metrics and the diagnostics",
+    "quotas_passing_both_bounds": "candidate quotas clearing both floors",
+    "retention_lower_bound_95": "one-sided 95% lower confidence bound on retention, from a paired bootstrap resampling whole users",
+    "rule_selects_deployed_value": "whether the rule reproduces the deployed value",
+    "selected_quota": "the largest passing quota, or null if none passes",
+    "share_of_slates_meeting_quota": "share of slates satisfying the quota (diagnostic)"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.evaluation.min_fresh_experiment",
+    "generated_at": "2026-08-26T20:03:26.526303+00:00",
+    "source_commit": "587812ace481c2379facd167f99618872ec85a1d",
+    "working_tree_clean": true
+  },
+  "report_name": "min-fresh-experiment",
+  "results": {
+    "deployed_quota": 2,
+    "outcome_statement": "the rule selects quota 5",
+    "per_quota": {
+      "0": {
+        "diagnostics": {
+          "mean_distinct_categories": 5.054455051710422,
+          "mean_fresh_items_in_slate": 3.1097852028639617,
+          "mean_slate_relevance": 0.5772214423463998,
+          "share_of_slates_meeting_quota": 1.0
+        },
+        "hit_rate_at_10": {
+          "observed_baseline": 0.7185361972951472,
+          "observed_retention": 1.0,
+          "observed_value": 0.7185361972951472,
+          "paired_difference": 0.0,
+          "retention_lower_bound_95": 1.0
+        },
+        "ndcg_at_10": {
+          "observed_baseline": 0.45527895733112317,
+          "observed_retention": 1.0,
+          "observed_value": 0.45527895733112317,
+          "paired_difference": 0.0,
+          "retention_lower_bound_95": 1.0
+        }
+      },
+      "1": {
+        "diagnostics": {
+          "mean_distinct_categories": 5.047573587907717,
+          "mean_fresh_items_in_slate": 3.1536197295147175,
+          "mean_slate_relevance": 0.5773677661343126,
+          "share_of_slates_meeting_quota": 0.9661893396976929
+        },
+        "hit_rate_at_10": {
+          "observed_baseline": 0.7185361972951472,
+          "observed_retention": 1.00066430469442,
+          "observed_value": 0.7190135242641209,
+          "paired_difference": 0.0004773269689737347,
+          "retention_lower_bound_95": 0.9998899989709525
+        },
+        "ndcg_at_10": {
+          "observed_baseline": 0.45527895733112317,
+          "observed_retention": 1.0002625011775372,
+          "observed_value": 0.45539846859353056,
+          "paired_difference": 0.00011951126240739018,
+          "retention_lower_bound_95": 0.9998307219566814
+        }
+      },
+      "2": {
+        "diagnostics": {
+          "mean_distinct_categories": 5.024741447891806,
+          "mean_fresh_items_in_slate": 3.3036992840095465,
+          "mean_slate_relevance": 0.5773190396603237,
+          "share_of_slates_meeting_quota": 0.8878679395385839
+        },
+        "hit_rate_at_10": {
+          "observed_baseline": 0.7185361972951472,
+          "observed_retention": 1.0012732506643047,
+          "observed_value": 0.7194510739856802,
+          "paired_difference": 0.0009148766905330286,
+          "retention_lower_bound_95": 0.9997786041348528
+        },
+        "ndcg_at_10": {
+          "observed_baseline": 0.45527895733112317,
+          "observed_retention": 1.000462007436961,
+          "observed_value": 0.45548929959530204,
+          "paired_difference": 0.00021034226417887547,
+          "retention_lower_bound_95": 0.999684026359886
+        }
+      },
+      "3": {
+        "diagnostics": {
+          "mean_distinct_categories": 4.97673031026253,
+          "mean_fresh_items_in_slate": 3.58321400159109,
+          "mean_slate_relevance": 0.5765355454347652,
+          "share_of_slates_meeting_quota": 0.7862370723945903
+        },
+        "hit_rate_at_10": {
+          "observed_baseline": 0.7185361972951472,
+          "observed_retention": 1.0018268379096544,
+          "observed_value": 0.7198488464598249,
+          "paired_difference": 0.0013126491646777705,
+          "retention_lower_bound_95": 0.9994957920017699
+        },
+        "ndcg_at_10": {
+          "observed_baseline": 0.45527895733112317,
+          "observed_retention": 1.001088311490901,
+          "observed_value": 0.45577444265195205,
+          "paired_difference": 0.0004954853208288812,
+          "retention_lower_bound_95": 0.9997924525330103
+        }
+      },
+      "5": {
+        "diagnostics": {
+          "mean_distinct_categories": 4.872792362768497,
+          "mean_fresh_items_in_slate": 4.34431185361973,
+          "mean_slate_relevance": 0.5701686570179179,
+          "share_of_slates_meeting_quota": 0.6049721559268099
+        },
+        "hit_rate_at_10": {
+          "observed_baseline": 0.7185361972951472,
+          "observed_retention": 0.9990035429583702,
+          "observed_value": 0.7178202068416866,
+          "paired_difference": -0.0007159904534606021,
+          "retention_lower_bound_95": 0.9952791611860577
+        },
+        "ndcg_at_10": {
+          "observed_baseline": 0.45527895733112317,
+          "observed_retention": 1.0005592604596456,
+          "observed_value": 0.4555335768500672,
+          "paired_difference": 0.00025461951894401036,
+          "retention_lower_bound_95": 0.9984948772327211
+        }
+      }
+    },
+    "quotas_passing_both_bounds": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "rule_selects_deployed_value": false,
+    "selected_quota": 5
+  },
+  "sampling": {
+    "bootstrap_resamples": 2000,
+    "bootstrap_seed": 20260826,
+    "bootstrap_unit": "user (clustered), not impression",
+    "method": "no sampling -- every eligible impression in the complete tuning fold was evaluated, at every quota",
+    "seed": null
+  },
+  "schema_version": 2
+}

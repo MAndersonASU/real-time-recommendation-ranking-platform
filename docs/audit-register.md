@@ -854,10 +854,19 @@ One primary finding remains open:
 
 Separately, in the limitations register: **LIMIT-SAMPLING-UNCERTAINTY-44**
 — sampling is representative, seeded and recorded, but variance across
-seeds is not measured, so the published figures' sampling error is
-unquantified. This matters most for the minimum-fresh comparison, where
-the gap between quota 2 and quota 3 is about 0.15% of predicted
-relevance on a single 1,500-impression sample.
+seeds is not measured for the routine tuning comparisons, so those
+figures' sampling error is unquantified.
+
+**Resolved for the minimum-fresh decision specifically.** That question
+was rerun as a prospectively specified experiment over the complete
+tuning fold with user-clustered bootstrap intervals
+(`docs/min-fresh-experiment-protocol.md`,
+`reports/min-fresh-experiment.json`). The result is a null: every quota
+from 1 to 5 retains at or above the quota-0 baseline on held-out clicks,
+so the rule's "largest passing quota" resolves to the largest tried
+rather than to a measured optimum. The deployed value of 2 remains a
+product judgment; the experiment establishes that it costs nothing
+measurable, not that it is optimal.
 
 Accepted limitations are listed above and are not counted as closed.
 

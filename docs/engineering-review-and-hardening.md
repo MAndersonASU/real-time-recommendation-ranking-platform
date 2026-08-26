@@ -189,13 +189,45 @@ Three further reasons the table does not settle the question:
   also perturbs diversity behaviour, which this comparison does not
   isolate.
 
-The deployed value stays at 2 as a documented conservative product
-judgment. Changing it would require a budget declared **before** the
-run, evaluation across several seeds or the full tuning fold, and paired
-confidence intervals on hit rate@10, NDCG@10, mean model score, fresh
-items per slate, quota satisfaction and post-freshness distinct
-categories. The diversity cap, by contrast, is configured at 3 and is
-selected by the 0.90 budget.
+**That experiment has since been run**
+(`docs/min-fresh-experiment-protocol.md`, frozen before the run;
+`reports/min-fresh-experiment.json`). Complete tuning fold: 25,140
+impressions, 18,227 users, 125,700 slates, five quotas on identical
+impressions, judged on held-out clicks rather than predicted score, with
+one-sided 95% bounds from a paired bootstrap clustered by user.
+
+**The result did not reproduce the predicted-score finding.** Measured
+against observed clicks, a freshness quota costs essentially nothing:
+
+| Quota | NDCG@10 retention (95% LB) | Hit rate@10 retention (95% LB) |
+|---|---|---|
+| 1 | 1.00026 (0.99983) | 1.00066 (0.99989) |
+| 2 | 1.00046 (0.99968) | 1.00127 (0.99978) |
+| 3 | 1.00109 (0.99979) | 1.00183 (0.99950) |
+| 5 | 1.00056 (0.99849) | 0.99900 (0.99528) |
+
+Every quota clears both floors, so the rule selects the largest tried:
+**quota 5**, not the deployed 2.
+
+**This is read as a null result, not as evidence for 5.** The rule bounds
+what a quota *costs*, and at every value tested the cost is not
+measurably present -- retention sits at or fractionally above 1.0
+throughout. "Largest passing quota" therefore collapses to "largest value
+tried", which is precisely the monotone-trivial failure the diversity-cap
+rule already made once (`docs/evaluation-integrity.md`). The honest
+statement is *no quota up to 5 measurably costs relevance on this fold*,
+which is different from *5 is optimal*.
+
+The diagnostics show what a higher quota does buy and cost: fresh items
+per slate rise from 3.11 at quota 0 to 4.34 at quota 5, while distinct
+categories fall from 5.05 to 4.87 and the share of slates actually
+meeting the quota drops from 97% at quota 1 to 61% at quota 5. A quota
+most slates cannot satisfy is a weaker guarantee than its number
+suggests.
+
+**The deployed value remains 2**, pending a decision on the above. The
+diversity cap, by contrast, is configured at 3 and is selected by the
+0.90 budget.
 
 ### Untouched final evaluation
 
