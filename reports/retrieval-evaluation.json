@@ -15,7 +15,7 @@
     "embedding_dim": 32,
     "explanation_model_name": "google/flan-t5-small",
     "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
-    "item_content_sha256_prefix": "aabf1e851c2e",
+    "item_content_sha256_prefix": "dbfba306a94f",
     "ranking_feature_schema": [
       "retrieval_score",
       "category_match",
@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "1251fb4683d9f241019e16fc3643a0a218ea9567"
+    "serving_code_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd"
   },
   "configuration": {
     "n_candidates": 100,
@@ -72,8 +72,8 @@
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.evaluate_retrieval",
-    "generated_at": "2026-08-26T13:30:57.641649+00:00",
-    "source_commit": "1251fb4683d9f241019e16fc3643a0a218ea9567",
+    "generated_at": "2026-08-26T19:02:49.677914+00:00",
+    "source_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd",
     "working_tree_clean": true
   },
   "report_name": "retrieval-evaluation",

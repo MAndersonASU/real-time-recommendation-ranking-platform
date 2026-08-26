@@ -16,8 +16,8 @@
     "explanation_model_name": "google/flan-t5-small",
     "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
     "fit_only_bundle": {
-      "bundle_manifest_sha256": "df2d3923850b045d1ded4e27a03921130dba4337e95e85fecc127cc7f388f21e",
-      "content_artifact_sha256": "aabf1e851c2ece70bd9fcb3a1f2757dbbea0fcc0be71a9608c197edb1e49fdc8",
+      "bundle_manifest_sha256": "ef7780c1220e40d0184534173551ebbe154bc500caa5da6b616c1e3694a68319",
+      "content_artifact_sha256": "dbfba306a94f536d78d765f650e6b9c55aa22b75b4031c9f5461f8fb1404c2e0",
       "embedding_dim": 32,
       "ranking_feature_table_sha256": "fc86310b43847a91a1599c78a256837b6bf868b13a02b7bb50b5a174d14e4b60",
       "retrieval_model_sha256": "f9cb3fcacec11255d2468062fb2951bc58f478d39d50e83c7b8232e6123e766f",
@@ -26,7 +26,7 @@
       "tune_fold_fraction": 0.2,
       "tune_fold_seed": 20260823
     },
-    "item_content_sha256_prefix": "aabf1e851c2e",
+    "item_content_sha256_prefix": "dbfba306a94f",
     "ranking_feature_schema": [
       "retrieval_score",
       "category_match",
@@ -47,7 +47,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "1251fb4683d9f241019e16fc3643a0a218ea9567"
+    "serving_code_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd"
   },
   "configuration": {
     "selection_rules": "cost-bounded (relevance or latency budgets)",
@@ -109,8 +109,8 @@
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.verify_tuning_decisions",
-    "generated_at": "2026-08-26T13:30:50.268025+00:00",
-    "source_commit": "1251fb4683d9f241019e16fc3643a0a218ea9567",
+    "generated_at": "2026-08-26T18:31:21.903346+00:00",
+    "source_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd",
     "working_tree_clean": true
   },
   "report_name": "tuning-decisions",
@@ -308,28 +308,28 @@
       "by_depth": {
         "100": {
           "retrieval_contained_a_click_rate": 0.09326424870466321,
-          "search_p50_ms": 0.1637499954085797,
-          "search_p99_ms": 0.3455050027696414
+          "search_p50_ms": 0.17615000251680613,
+          "search_p99_ms": 0.39481500862166286
         },
         "1000": {
           "retrieval_contained_a_click_rate": 0.21502590673575128,
-          "search_p50_ms": 0.5919999966863543,
-          "search_p99_ms": 0.9298200020566576
+          "search_p50_ms": 0.8594499959144741,
+          "search_p99_ms": 2.2681600050418607
         },
         "200": {
           "retrieval_contained_a_click_rate": 0.11917098445595854,
-          "search_p50_ms": 0.21220000053290278,
-          "search_p99_ms": 0.44698000128846566
+          "search_p50_ms": 0.22300001000985503,
+          "search_p99_ms": 0.4681849924963895
         },
         "50": {
           "retrieval_contained_a_click_rate": 0.06217616580310881,
-          "search_p50_ms": 0.19844999769702554,
-          "search_p99_ms": 0.3348399884998798
+          "search_p50_ms": 0.14289998216554523,
+          "search_p99_ms": 0.3363199983141379
         },
         "500": {
           "retrieval_contained_a_click_rate": 0.15803108808290156,
-          "search_p50_ms": 0.3667499986477196,
-          "search_p99_ms": 0.7230999995954327
+          "search_p50_ms": 0.40169998828787357,
+          "search_p99_ms": 0.78063499531708
         }
       },
       "currently_configured_depth": 1000,
