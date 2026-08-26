@@ -122,8 +122,9 @@ dismiss the fix.
 ---
 
 ## STREAM-IDEMPOTENCY-03 — Duplicate and concurrent events corrupt user state
-**Severity** High · **Status** partially closed (narrowed)
-**Tests** `recommender.features.verify_lua_idempotency` (CI, real Redis EVAL) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
+**Severity** High · **Status** verified closed
+**Tests** `recommender.features.verify_lua_idempotency` and
+`recommender.features.verify_lua_concurrency` (both CI, real Redis `EVAL`) · **CI** run 32929791225 on `6ad6e3e` (all four jobs green)
 **Fix commits** `1de8dff` (rollback), `ec53440` (lost update, type inference)
 
 Rollback on late duplicate delivery is fixed: a duplicate now returns
@@ -147,18 +148,35 @@ consumers that both read before writing now retain both events, an
 impression stays an impression, and the original rollback case still
 holds.
 
-**Remaining** Real Redis semantics are now covered: the script runs
-through actual `EVAL` in CI (`verify_lua_idempotency`), exercising first
-apply, accumulation, late duplicate, returned-state agreement,
-event-type handling and history bounding. **Concurrent multi-writer
-execution against real Redis remains unverified** -- two clients
-mutating the same user simultaneously are still only covered by the
-in-process stand-in.
+**Closed.** Two checks, both against real Redis in CI:
+
+`verify_lua_idempotency` covers the sequential contract -- first apply,
+accumulation, late duplicate, returned-state agreement, event-type
+handling, history bounding.
+
+`verify_lua_concurrency` covers the case that actually mattered and that
+no stand-in could reach. Eight threads, each with its own
+`redis.Redis`, released together by a `threading.Barrier`, submitting
+200 events for one user, repeated over five rounds. It asserts every
+unique event applies exactly once, that concurrent redelivery of all 200
+changes nothing, and that a mixed batch of duplicates and new events
+lands only the new ones.
+
+A shared client would have serialised on its own connection pool and
+tested nothing, which is why each thread builds its own. `InMemoryRedis`
+runs every call on one thread and therefore reports success regardless
+of how the script behaves under contention -- the reason this could not
+be covered where the other idempotency tests live.
+
+**The check has demonstrated power.** Run against the pre-fix
+read-modify-write design on the same Redis with the same contention, it
+loses 167 of 200 updates. It is not a test that passes because nothing
+can fail it.
 
 ---
 
 ## STREAM-COMMIT-04 — Kafka commit failures handled too weakly
-**Severity** Medium · **Status** partially closed
+**Severity** Medium · **Status** partially closed (accepted for this project's scope)
 **Fix commit** `1ddd1a1` · **Tests** `tests/test_consumer.py`
 
 Processing continued after an offset commit failure. Because Kafka
@@ -178,8 +196,9 @@ broker with consecutive commit failures.
 ---
 
 ## ARTIFACT-VALIDATION-05 — Content artifact validation incomplete
-**Severity** High · **Status** partially closed
-**Fix commits** `ccc1106`, `ec53440`
+**Severity** High · **Status** verified closed
+**Fix commits** `ccc1106`, `ec53440`, and the strict schema below
+**Tests** `tests/test_content_artifact.py` (30 cases)
 
 Rejected now: one-dimensional arrays, wrong save width, NaN/Inf,
 non-floating save dtype, wrong stored dtype, empty and duplicate ids.
@@ -192,6 +211,39 @@ loads successfully.
 
 **Resolved** the declared width is now checked against `CONTENT_DIM`
 rather than trusted.
+
+**Closed by a strict versioned schema.** Two further weaknesses were
+addressed together:
+
+*Metadata was optional.* An artifact missing `schema_version`,
+`feature_width` or `content_sha256` simply skipped the corresponding
+check, so the least verifiable artifact in existence received the least
+validation -- exactly backwards. All five fields are now required and
+`allow_legacy` defaults to `False`. The escape hatch is per-call, used
+only by the migration tool, and never by the serving path.
+
+*The checksum covered matrix bytes only.* That left three ways to change
+what an artifact means without the digest noticing: reorder the article
+ids, change the declared shape, or reinterpret the payload under a
+different dtype -- the bytes are identical in each case. The canonical
+checksum now covers schema version, shape, dtype, length-prefixed
+ordered ids, and matrix bytes. Length prefixing matters: without it
+`["ab", "c"]` and `["a", "bc"]` serialise identically.
+
+A pre-schema artifact is still verified against the weaker digest it was
+actually written with, so "unverifiable" and "corrupt" stay distinct
+claims.
+
+**Existing artifacts were upgraded, not rebuilt**
+(`recommender.retrieval.upgrade_content_artifact`). Rebuilding means
+refitting TF-IDF and SVD, and SVD axes are defined only up to sign and
+ordering, so a refit produces a different valid basis and the trained
+item tower would score coordinates it has never seen. The upgrade adds
+metadata only, and verifies the matrix is bit-identical before keeping
+the result. Because the file bytes change, the bundle manifest is
+re-fingerprinted -- under a guard narrow enough that it refuses unless
+the model and catalog hashes still match, since a blanket refresh would
+defeat the bundle check entirely.
 
 **Remaining** The checksum covers matrix bytes only, not shape, dtype or
 ids; artifacts predating the metadata fields are still accepted.
@@ -644,11 +696,22 @@ The generating source commit is recorded inside each report's
 here as well has twice gone stale after a republication, so it is not
 repeated.
 
-CI is green on all four jobs. The most recent verified run is
-32975126661 at commit `d2f97be`; earlier runs cited against individual
-fixes above remain valid historical evidence for those fixes:
-`lint-and-test`, `locked-install-test`, `api-container-test` and
-`integration-smoke-test`. This is stated because it had not been true
+**Current CI status:**
+[![CI](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml)
+
+The badge is the authority for current status, deliberately. Naming a
+"most recent" run in prose goes stale on the next commit -- this
+document has already said that of three different runs -- so specific
+run numbers appear here only where they are evidence for a *particular*
+fix, and stay attached to that fix.
+
+Run 32975126661 at commit `d2f97be` is the **report-republication run**:
+the run that verified the four machine-readable reports currently in
+`reports/`. It is cited for that and nothing else.
+
+The four jobs are `lint-and-test`, `locked-install-test`,
+`api-container-test` and `integration-smoke-test`. Their being green is
+worth stating because it had not been true
 for the three preceding commits: the path-anchoring fix for
 MANIFEST-PATHS-11 broke artifact resolution inside the container, and
 the container job caught it after the change had already shipped.
@@ -691,30 +754,43 @@ one of these changes rather than by flakiness:
 
 None was fixed by weakening a check.
 
-**Not closed**, and each is recorded above with what remains:
+### How to read the counts
 
-- STREAM-IDEMPOTENCY-03 — **narrowed.** The Lua script now runs against
-  real Redis in CI (`verify_lua_idempotency`), covering first apply,
-  accumulation, late duplicate, returned-state agreement, event-type
-  handling and history bounding. Concurrent multi-writer behaviour is
-  still only covered by the in-process stand-in.
-- STREAM-COMMIT-04 — commit-failure behaviour is tested against a fake
-  broker, not a real one.
-- STREAM-DURABILITY-17 — **closed.** `verify_aof_recovery` kills Redis
-  with SIGKILL and confirms both the user's state and the processed-event
-  claims survive, so a post-crash redelivery is still refused.
-- API-USERID-19 — **closed.** `tests/test_user_id_unicode.py` covers
-  fifteen invisible code points in leading, interior and trailing
-  positions, and asserts the old ASCII-control-only rule would have
-  admitted every one of them.
-- ARTIFACT-VALIDATION-05 — the content checksum covers the matrix bytes;
-  shape, dtype and id ordering are validated separately rather than
-  folded into one fingerprint.
-- LIMIT-SAMPLING-UNCERTAINTY-44 — sampling is representative, seeded and
-  recorded, but variance across seeds is not measured, so the published
-  figures' sampling error is unquantified. This matters most for the
-  minimum-fresh comparison, where the gap between quota 2 and quota 3 is
-  about 0.15% of predicted relevance on a single 1,500-impression sample.
+The headline tally counts the **22 primary findings** in this register
+(`EVAL-*`, `STREAM-*`, `ARTIFACT-*`, `MANIFEST-*`, `FEATURE-*`,
+`SUPPLY-*`, `API-*`, `SCHEMA-*`) and nothing else.
+
+`DOC-*` and `TEST-*` findings are tracked in their own table above.
+`LIMIT-*` and `HIST-*` entries are **not findings at all** -- they are
+the separate limitations register, recording disclosed properties of the
+project that no fix is planned for. Counting them alongside findings
+would make "accepted limitation" ambiguous between "a finding we chose
+not to fix" and "a documented characteristic".
+
+### Not closed
+
+One primary finding remains open:
+
+- **STREAM-COMMIT-04** — commit-failure behaviour is tested against a
+  fake broker, not a real one. The retry-and-stop control flow is
+  covered by regression tests, and real Kafka produce/consume is smoke
+  tested in CI, but no test injects a deterministic broker commit
+  failure and confirms offset behaviour across a restart.
+
+  **Accepted for this project's scope**, deliberately. A deterministic
+  real-Kafka commit-failure test needs network fault injection against a
+  live broker, which adds substantial CI complexity and a realistic
+  chance of flakiness -- and a flaky reliability test is worse than a
+  documented gap, because it trains everyone to ignore a red build.
+  Revisit only if the project is meant to showcase production Kafka
+  reliability specifically.
+
+Separately, in the limitations register: **LIMIT-SAMPLING-UNCERTAINTY-44**
+— sampling is representative, seeded and recorded, but variance across
+seeds is not measured, so the published figures' sampling error is
+unquantified. This matters most for the minimum-fresh comparison, where
+the gap between quota 2 and quota 3 is about 0.15% of predicted
+relevance on a single 1,500-impression sample.
 
 Accepted limitations are listed above and are not counted as closed.
 

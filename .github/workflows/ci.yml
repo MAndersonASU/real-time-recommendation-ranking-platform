@@ -229,6 +229,16 @@ jobs:
       # and fails only in production. This runs the real EVAL.
       - name: Atomic claim-and-apply script against real Redis
         run: python -m recommender.features.verify_lua_idempotency
+      # The sequential check above cannot observe the failure that
+      # actually matters: two consumers mutating one user's state at the
+      # same instant. InMemoryRedis runs everything on one thread, so it
+      # reports success no matter how badly the script races. This uses
+      # eight threads with independent clients, released together by a
+      # barrier, repeated across rounds -- a race that fails one run in
+      # ten is still a race. Measured against the pre-fix
+      # read-modify-write design, this loses 167 of 200 updates.
+      - name: Concurrent multi-writer idempotency against real Redis
+        run: python -m recommender.features.verify_lua_concurrency
       # SIGKILL, not `docker stop`. A graceful stop lets Redis flush on
       # exit, so a stop/start cycle would pass even with AOF disabled
       # entirely and would prove nothing about the documented durability

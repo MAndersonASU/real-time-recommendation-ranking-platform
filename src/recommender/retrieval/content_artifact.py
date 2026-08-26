@@ -31,6 +31,13 @@ from recommender.retrieval.features import CONTENT_DIM
 
 CONTENT_ARTIFACT_PATH = mind_small_path("item_content.npz")
 
+# Bumped whenever the stored fields or the checksum definition change,
+# so an artifact written under an older contract is refused rather than
+# read as if it followed the current one.
+CONTENT_SCHEMA_VERSION = 1
+
+REQUIRED_FIELDS = ("content", "news_ids", "schema_version", "feature_width", "content_sha256")
+
 
 class ContentArtifactError(RuntimeError):
     """The persisted content artifact is missing, unreadable, or does not
@@ -123,28 +130,70 @@ def save_item_content(
         news_ids=news_ids,
         # Recorded so a loader can check what the artifact claims to be,
         # rather than inferring its schema from its shape.
+        schema_version=np.int64(CONTENT_SCHEMA_VERSION),
         feature_width=np.int64(content.shape[1]),
-        content_sha256=np.array(_matrix_checksum(content)),
+        content_sha256=np.array(_canonical_checksum(content, news_ids)),
     )
     return path
 
 
-def _matrix_checksum(content: np.ndarray) -> str:
-    """SHA-256 over the matrix bytes, so a corrupted payload is
-    detectable even when its shape and dtype still look correct.
+def _legacy_matrix_checksum(content: np.ndarray) -> str:
+    """The pre-schema digest: matrix bytes only.
+
+    Retained solely to verify artifacts written under the old format.
+    Its weakness is the reason those artifacts are refused by default --
+    identical bytes under a different id ordering, shape or dtype
+    produce the same value, so it confirms the payload survived transit
+    and nothing about what the payload means.
     """
     return hashlib.sha256(np.ascontiguousarray(content, dtype=np.float32).tobytes()).hexdigest()
 
 
+def _canonical_checksum(
+    content: np.ndarray, news_ids: np.ndarray, schema_version: int = CONTENT_SCHEMA_VERSION
+) -> str:
+    """SHA-256 over everything that makes the artifact what it is.
+
+    The previous checksum covered the matrix bytes alone, which left
+    three ways to corrupt an artifact without the checksum noticing:
+    reorder the article ids, change the declared shape, or reinterpret
+    the payload under a different dtype. The bytes are identical in each
+    case, so a bytes-only digest reports agreement while the artifact
+    now means something different.
+
+    Each component is length-prefixed and tagged. Without separators,
+    ids `["ab", "c"]` and `["a", "bc"]` serialise to the same bytes, and
+    a shape of (2, 3) and (3, 2) would too.
+    """
+    digest = hashlib.sha256()
+    digest.update(f"content-artifact-v{schema_version}\n".encode())
+    digest.update(f"shape={content.shape[0]}x{content.shape[1]}\n".encode())
+    digest.update(f"dtype={np.dtype(np.float32).str}\n".encode())
+    digest.update(f"ids={len(news_ids)}\n".encode())
+    for article_id in news_ids:
+        digest.update(f"{len(str(article_id))}:{article_id}\n".encode())
+    digest.update(b"matrix\n")
+    digest.update(np.ascontiguousarray(content, dtype=np.float32).tobytes())
+    return digest.hexdigest()
+
+
 def load_item_content(
-    news: pd.DataFrame, path: Path = CONTENT_ARTIFACT_PATH
+    news: pd.DataFrame, path: Path = CONTENT_ARTIFACT_PATH, allow_legacy: bool = False
 ) -> np.ndarray:
     """Loads the persisted content matrix and validates it against the
     catalog actually in use.
 
-    Three ways this can be wrong are all checked rather than assumed:
-    the artifact is absent, it is unreadable, or its article ordering
-    and dimensions do not line up with the catalog being served.
+    Every stored field is **required**, and `allow_legacy` defaults to
+    False. An earlier version treated the metadata as optional -- absent
+    schema version, feature width or checksum simply skipped the
+    corresponding check -- so the weakest artifact in existence got the
+    least validation, which is exactly backwards. An artifact written
+    before those fields existed cannot be verified at all, and a loader
+    that accepts it is asserting something it did not check.
+
+    `allow_legacy=True` exists for a deliberate migration and is never
+    used by the serving path. It skips the metadata checks and says so;
+    it does not make an unverifiable artifact verified.
     """
     if not path.exists():
         raise ContentArtifactError(
@@ -154,31 +203,72 @@ def load_item_content(
         )
     try:
         with np.load(path, allow_pickle=False) as data:
-            content = data["content"]
-            stored_ids = data["news_ids"]
-            _stored_width = int(data["feature_width"]) if "feature_width" in data else None
-            _stored_checksum = str(data["content_sha256"]) if "content_sha256" in data else None
+            present = set(data.files)
+            content = data["content"] if "content" in present else None
+            stored_ids = data["news_ids"] if "news_ids" in present else None
+            stored_version = int(data["schema_version"]) if "schema_version" in present else None
+            stored_width = int(data["feature_width"]) if "feature_width" in present else None
+            stored_checksum = str(data["content_sha256"]) if "content_sha256" in present else None
     except Exception as exc:
         raise ContentArtifactError(f"content artifact at {path} is unreadable: {exc}") from exc
+
+    missing = [field for field in REQUIRED_FIELDS if field not in present]
+    if missing:
+        if not allow_legacy:
+            raise ContentArtifactError(
+                f"content artifact at {path} is missing required fields {missing}. It "
+                f"predates the current schema (v{CONTENT_SCHEMA_VERSION}) and cannot be "
+                f"verified. Rebuild it with `python -m recommender.retrieval.train`, or "
+                f"pass allow_legacy=True to load it unverified -- which the serving path "
+                f"never does."
+            )
+        if content is None or stored_ids is None:
+            raise ContentArtifactError(
+                f"content artifact at {path} has no payload: missing {missing}"
+            )
+
+    if stored_version is not None and stored_version != CONTENT_SCHEMA_VERSION:
+        raise ContentArtifactError(
+            f"content artifact declares schema version {stored_version}, but this build "
+            f"reads version {CONTENT_SCHEMA_VERSION}. The stored fields or the checksum "
+            f"definition differ; rebuild rather than reinterpret."
+        )
 
     # The artifact's own declared width is checked against the
     # application's expectation, not merely against the payload. Trusting
     # the declaration alone let a self-consistent artifact -- correct
     # checksum, matching metadata -- load with a feature width this build
     # cannot use.
-    if _stored_width is not None and int(_stored_width) != CONTENT_DIM:
+    if stored_width is not None and stored_width != CONTENT_DIM:
         raise ContentArtifactError(
-            f"content artifact declares feature width {int(_stored_width)}, but this "
+            f"content artifact declares feature width {stored_width}, but this "
             f"build expects {CONTENT_DIM}"
         )
     _validate_matrix(np.asarray(content), expected_width=CONTENT_DIM)
     _validate_ids(np.asarray(stored_ids))
 
-    if _stored_checksum is not None and _matrix_checksum(content) != _stored_checksum:
-        raise ContentArtifactError(
-            "content artifact checksum does not match its payload; the file changed "
-            "after it was written"
-        )
+    if stored_checksum is not None:
+        if stored_version is None:
+            # A pre-schema artifact stores the old bytes-only digest, so
+            # it must be checked with that function. Verifying it with
+            # the canonical one would report every legacy artifact as
+            # corrupt, which is a different claim from "unverifiable".
+            actual = _legacy_matrix_checksum(np.asarray(content))
+            description = "the legacy checksum covers matrix bytes only"
+        else:
+            actual = _canonical_checksum(
+                np.asarray(content), np.asarray(stored_ids).astype(str), stored_version
+            )
+            description = (
+                "the checksum covers schema version, shape, dtype, article ordering "
+                "and matrix bytes, so this reports a reordering or a metadata change "
+                "as well as a corrupted payload"
+            )
+        if actual != stored_checksum:
+            raise ContentArtifactError(
+                f"content artifact checksum does not match its contents -- "
+                f"{description}."
+            )
 
     catalog_ids = news["news_id"].to_numpy().astype(str)
     if content.shape[0] != len(catalog_ids):
