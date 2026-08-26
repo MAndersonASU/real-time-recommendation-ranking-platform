@@ -254,17 +254,25 @@ fixed as ARTIFACT-MIGRATION-46 below.
 ---
 
 ## ARTIFACT-MIGRATION-46 — Migration tool could bless a foreign content matrix
-**Severity** High · **Status** open — fix implemented, awaiting independent verification
-**Fix commit** `3b9c8d4` · **Tests** `tests/test_content_artifact_migration.py`
-**CI** run 33006941509 (green)
+**Severity** High · **Status** verified closed
+**Fix commits** `3b9c8d4`, and the receipt correction below
+**Tests** `tests/test_content_artifact_migration.py` (9 cases)
+**CI** run 33006941509
 
-Recorded as open rather than closed on purpose. The fix below is
-implemented, tested and green in CI, but every other finding in this
-register was closed only after the reviewer reproduced the fix
-independently. Marking this one closed on the implementer's own
-verification would be a weaker standard than the rest of the document
-applies, and this is a finding about a tool that can defeat a safety
-check -- exactly the kind where self-certification is worth least.
+Closed after the reviewer independently repeated the foreign-matrix
+attack: the migration raised `MigrationError`, refused to refresh the
+manifest, and the foreign bundle remained invalid.
+
+**One low-severity correction found in that review.**
+`original_manifest_sha256` was computed *after* publication, so it held
+the digest of the replacement manifest rather than the one the migration
+superseded -- a receipt naming the artifact it created instead of the one
+it replaced, which is the opposite of what a receipt is for. The original
+bytes are now hashed before anything is republished, and the published
+manifest's digest is recorded separately as
+`published_manifest_sha256`. Both are needed: a receipt naming only one
+cannot be checked against either state. This did not affect the safety
+property.
 
 `upgrade_content_artifact` publishes a bundle manifest, so it can defeat
 the check that manifest exists to enforce -- and it did. It refreshed a
@@ -861,12 +869,21 @@ figures' sampling error is unquantified.
 was rerun as a prospectively specified experiment over the complete
 tuning fold with user-clustered bootstrap intervals
 (`docs/min-fresh-experiment-protocol.md`,
-`reports/min-fresh-experiment.json`). The result is a null: every quota
-from 1 to 5 retains at or above the quota-0 baseline on held-out clicks,
-so the rule's "largest passing quota" resolves to the largest tried
-rather than to a measured optimum. The deployed value of 2 remains a
-product judgment; the experiment establishes that it costs nothing
-measurable, not that it is optimal.
+`reports/min-fresh-experiment.json`).
+
+The outcome is a **non-inferiority result with boundary selection**: every
+quota from 1 to 5 cleared both retention floors on held-out clicks, so
+the rule -- which had no benefit, satisfiability or diversity requirement
+-- selected the largest value tested. It establishes no measurable
+logged-click relevance loss up to quota 5 under the frozen
+candidate-list protocol; it does not establish that quota 5 is optimal
+or valuable to users. The deployed quota remains 2 as an explicit
+conservative product-policy override.
+
+The same methodological concern still applies to the diversity-cap
+comparison, which continues to rank by predicted relevance. Retrieval
+depth is not affected: it already uses clicked-item containment and a
+latency budget.
 
 Accepted limitations are listed above and are not counted as closed.
 

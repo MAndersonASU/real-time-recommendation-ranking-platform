@@ -429,7 +429,10 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
             "share_of_slates_meeting_quota": "share of slates satisfying the quota (diagnostic)",
             "mean_distinct_categories": "mean distinct categories after reranking (diagnostic)",
             "quotas_passing_both_bounds": "candidate quotas clearing both floors",
-            "selected_quota": "the largest passing quota, or null if none passes",
+            "selected_quota": (
+                "the largest quota clearing both floors, or null if none does. Boundary "
+                "selection when every candidate passes"
+            ),
             "deployed_quota": "the value currently configured in serving",
             "rule_selects_deployed_value": "whether the rule reproduces the deployed value",
             "outcome_statement": "the result stated in words",
@@ -456,11 +459,23 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
                 "needs a live experiment this project does not attempt."
             ),
             (
-                "Every quota tested retains at or above the baseline, so the cost this "
-                "rule was written to bound is not measurably present. 'Largest passing "
-                "quota' therefore resolves to the largest value tried, and the result "
-                "should be read as 'no quota up to 5 measurably costs relevance' rather "
-                "than as positive evidence that 5 is optimal."
+                "A non-inferiority result with boundary selection. Every tested quota "
+                "satisfied the offline relevance-retention bounds, so the rule -- which "
+                "contained no benefit, satisfiability or diversity requirement -- "
+                "selected the largest value tested, the boundary of the candidate set "
+                "rather than an interior optimum. This establishes no measurable "
+                "logged-click relevance loss up to that quota under the frozen "
+                "candidate-list protocol; it does not establish that the selected quota "
+                "is optimal or valuable to users."
+            ),
+            (
+                "Scored against MIND's own supplied impression candidate list, not the "
+                "end-to-end retrieval protocol, so it does not speak to what a quota "
+                "costs on a Faiss-retrieved slate."
+            ),
+            (
+                "Satisfiability is not part of the rule and falls sharply with the "
+                "quota: reported per quota under diagnostics."
             ),
         ],
     }

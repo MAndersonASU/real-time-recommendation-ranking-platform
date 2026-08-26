@@ -136,6 +136,15 @@ def upgrade(content_path, model_path, manifest_path, news) -> dict:
     #    that is already false, migrating produces a *new* manifest
     #    asserting it, which is how a foreign matrix gets blessed.
     original_manifest = load_manifest(manifest_path)
+    # Hashed here, before publication. Reading the file at the end of the
+    # migration returns the *replacement* manifest, so a receipt built
+    # that way names the artifact it created rather than the one it
+    # superseded -- which is the opposite of what a receipt is for.
+    original_manifest_sha256 = (
+        hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        if manifest_path.exists()
+        else None
+    )
     if original_manifest is None:
         raise MigrationError(
             f"no bundle manifest at {manifest_path}. Without one there is nothing "
@@ -219,7 +228,11 @@ def upgrade(content_path, model_path, manifest_path, news) -> dict:
         # this run, over the two things that define the artifact.
         "semantic_digest_before": before,
         "semantic_digest_after": after,
-        "original_manifest_sha256": hashlib.sha256(
+        # The manifest this migration superseded, captured before
+        # publication, and the one it wrote. Both, because a receipt
+        # naming only one of them cannot be checked against either.
+        "original_manifest_sha256": original_manifest_sha256,
+        "published_manifest_sha256": hashlib.sha256(
             manifest_path.read_bytes()
         ).hexdigest(),
         "matrix_unchanged": True,

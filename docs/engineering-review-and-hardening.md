@@ -209,14 +209,30 @@ against observed clicks, a freshness quota costs essentially nothing:
 Every quota clears both floors, so the rule selects the largest tried:
 **quota 5**, not the deployed 2.
 
-**This is read as a null result, not as evidence for 5.** The rule bounds
-what a quota *costs*, and at every value tested the cost is not
-measurably present -- retention sits at or fractionally above 1.0
-throughout. "Largest passing quota" therefore collapses to "largest value
-tried", which is precisely the monotone-trivial failure the diversity-cap
-rule already made once (`docs/evaluation-integrity.md`). The honest
-statement is *no quota up to 5 measurably costs relevance on this fold*,
-which is different from *5 is optimal*.
+**A non-inferiority result with boundary selection, not evidence that 5
+is better.** The rule bounds what a quota *costs* and contains no
+benefit requirement, so once every candidate cleared the floors the
+selection fell on the largest value tested -- the boundary of the
+candidate set, not an interior optimum. That is the same
+monotone-trivial failure the diversity-cap rule made once
+(`docs/evaluation-integrity.md`), reappearing on the other side: there,
+a benefit-only rule always chose the largest; here, a cost-only rule did
+the same once the cost proved immeasurable.
+
+> The prospectively specified rule selected quota 5 because every tested
+> quota satisfied the offline relevance-retention bounds. This
+> establishes no measurable logged-click relevance loss up to quota 5
+> under the frozen candidate-list protocol; it does not establish that
+> quota 5 is optimal or valuable to users. Because the rule contained no
+> benefit, satisfiability, or diversity requirement, the deployed quota
+> remains 2 as an explicit conservative product-policy override.
+
+On the earlier predicted-score figure: its ~0.15% cost **did not
+translate into measurable logged-click loss under this candidate-list
+protocol**. That is a narrower statement than the cost being absent --
+this experiment scores MIND's own supplied candidate list, not the
+end-to-end retrieval protocol, so it does not speak to what the quota
+costs on a Faiss-retrieved slate.
 
 The diagnostics show what a higher quota does buy and cost: fresh items
 per slate rise from 3.11 at quota 0 to 4.34 at quota 5, while distinct
@@ -225,9 +241,17 @@ meeting the quota drops from 97% at quota 1 to 61% at quota 5. A quota
 most slates cannot satisfy is a weaker guarantee than its number
 suggests.
 
-**The deployed value remains 2**, pending a decision on the above. The
-diversity cap, by contrast, is configured at 3 and is selected by the
-0.90 budget.
+**The deployed value remains 2**, as an explicit conservative
+product-policy override rather than a data-selected value.
+
+The diversity cap is configured at 3 and is selected by the 0.90 budget
+-- but that comparison still ranks by predicted relevance, so the same
+methodological concern applies to it. Making it data-selected would
+require its own benefit-aware protocol, frozen before any click outcome
+is observed. Retrieval depth is **not** in the same position: its
+comparison already uses clicked-item containment and a latency budget
+rather than predicted relevance, so rerunning it would reduce
+uncertainty on a different question, not correct a method.
 
 ### Untouched final evaluation
 

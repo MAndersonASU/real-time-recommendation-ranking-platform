@@ -231,3 +231,27 @@ def test_the_semantic_digest_ignores_packaging_but_not_meaning():
     assert semantic_digest(changed, ids) != baseline
     assert semantic_digest(content, ids[::-1].copy()) != baseline
     assert semantic_digest(content.reshape(4, 3), ids) != baseline
+
+
+def test_the_receipt_names_the_superseded_manifest_not_the_new_one(bundle):
+    """The receipt must identify what the migration replaced.
+
+    An earlier version hashed the manifest file *after* publishing, so
+    `original_manifest_sha256` held the digest of the replacement -- the
+    artifact the migration created, not the one it superseded. A receipt
+    built that way cannot be checked against the prior state, which is
+    the only thing it is for.
+    """
+    import hashlib
+
+    manifest_before = hashlib.sha256(bundle["manifest"].read_bytes()).hexdigest()
+
+    result = upgrade(bundle["content"], bundle["model"], bundle["manifest"], NEWS)
+
+    manifest_after = hashlib.sha256(bundle["manifest"].read_bytes()).hexdigest()
+
+    assert result["original_manifest_sha256"] == manifest_before
+    assert result["published_manifest_sha256"] == manifest_after
+    assert manifest_before != manifest_after, (
+        "the migration must have republished the manifest, or this test proves nothing"
+    )

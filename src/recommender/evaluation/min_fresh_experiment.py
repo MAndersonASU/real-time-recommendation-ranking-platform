@@ -59,7 +59,7 @@ OUTCOMES_PATH = mind_small_path("min_fresh_experiment_outcomes.parquet")
 # re-analysis publishes from a later commit, and a report that named only
 # the publishing commit would misattribute the numbers -- the same defect
 # EVAL-PROVENANCE-01 closed.
-SCORING_COMMIT = "bcd6731"
+SCORING_COMMIT = "bcd673102dd2c3b4a0462cacf90cda7f4031a791"
 
 # --- frozen protocol constants -----------------------------------------
 # Transcribed from docs/min-fresh-experiment-protocol.md. Changing any of
