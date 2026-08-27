@@ -58,7 +58,7 @@ Both the diversity cap and the freshness threshold hold up under a
 genuinely disjoint, held-out re-check. The original decisions were not
 simply noise fit to validation.
 
-## finding: evidence supports a recency-leakage explanation for the popularity discrepancy
+## Finding: evidence supports a recency-leakage explanation for the popularity discrepancy
 
 An earlier version of this document reported the single-feature
 popularity AUC check as a real, unresolved discrepancy. Measured with

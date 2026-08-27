@@ -1,6 +1,6 @@
 # ML Quality Signals
 
-signals about the *model's* behavior, computed over a rolling
+Signals about the *model's* behavior, computed over a rolling
 window of actual recent responses — distinct from the per-request
 operational metrics (`docs/operations/operational-metrics.md`), since a score distribution, a
 diversity figure, or a concentration measure only means something in
@@ -52,6 +52,6 @@ The first version of `catalog_coverage` returned `0.0` — not `None` —
 before any response had ever been recorded, since it only checked that
 `catalog_size` was set, not that any data existed yet. A gauge silently
 reporting "0% coverage" at startup looks exactly like a real, alarming
-signal, when the Interpretation is "no data yet." Caught by a test
+signal, when the interpretation is "no data yet." Caught by a test
 (`test_snapshot_is_all_none_before_anything_is_recorded`) written
 before the fix, not found in production.

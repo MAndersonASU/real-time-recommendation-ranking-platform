@@ -1,6 +1,6 @@
 # Event Schema
 
-the streaming pipeline turns MIND's behavior logs from a finished table into a stream of
+The streaming pipeline turns MIND's behavior logs from a finished table into a stream of
 individual interaction events — what a real system would receive one at a
 time, in order, as it happens. This check defines the message format all
 the streaming components (Kafka broker, replay producer, streaming

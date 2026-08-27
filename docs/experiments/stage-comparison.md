@@ -36,7 +36,7 @@ on top of the best pre-existing approach.
 ## A nuance only visible once the numbers sit side by side
 
 Retrieval alone slightly *beats* content similarity on hit rate and
-recall, but slightly *loses* to it on NDCG — a small, regression
+recall, but slightly *loses* to it on NDCG — a small NDCG regression
 that was true in the underlying report files all along, but invisible
 until this check put both rows next to each other. It means retrieval
 finds a true click inside its top-10 slightly more often, but on

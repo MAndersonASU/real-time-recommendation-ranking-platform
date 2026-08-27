@@ -36,7 +36,7 @@ coverage: an unreachable feature store, an unusable model and an
 unreadable index still degrade gracefully, while a programming error
 propagates to the API's own error handling and is visible.
 
-## The fallback itself: the baselines' first baseline, one more time
+## The fallback itself: the popularity baseline, one more time
 
 `build_fallback_response` ranks the whole catalog by plain training-set
 popularity — the exact same `rank_by_popularity` function built for the popularity
