@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "6daad210877a89b17193b24d2681086ed796eea7"
+    "serving_code_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b"
   },
   "configuration": {
     "environment": "local containerized stack",
@@ -73,54 +73,63 @@
   },
   "provenance": {
     "evaluation_module": "recommender.serving.verify_latency",
-    "generated_at": "2026-08-27T04:57:49.427661+00:00",
-    "source_commit": "6daad210877a89b17193b24d2681086ed796eea7",
+    "generated_at": "2026-08-27T21:06:47.121273+00:00",
+    "source_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b",
     "working_tree_clean": true
   },
   "report_name": "serving-latency",
   "results": {
     "by_stage": {
       "embedding_ms": {
-        "p50_ms": 0.31,
-        "p95_ms": 0.53,
-        "p99_ms": 0.591
+        "p50_ms": 0.401,
+        "p95_ms": 0.59,
+        "p99_ms": 0.73
       },
       "feature_build_ms": {
-        "p50_ms": 3.156,
-        "p95_ms": 4.306,
-        "p99_ms": 6.721
+        "p50_ms": 5.134,
+        "p95_ms": 5.786,
+        "p99_ms": 6.326
       },
       "feature_lookup_ms": {
-        "p50_ms": 1.324,
-        "p95_ms": 1.665,
-        "p99_ms": 21.973
+        "p50_ms": 1.237,
+        "p95_ms": 1.564,
+        "p99_ms": 22.045
       },
       "ranking_ms": {
-        "p50_ms": 1.071,
-        "p95_ms": 1.494,
-        "p99_ms": 2.05
+        "p50_ms": 1.732,
+        "p95_ms": 2.394,
+        "p99_ms": 2.505
       },
       "reranking_ms": {
-        "p50_ms": 6.361,
-        "p95_ms": 8.576,
-        "p99_ms": 12.347
+        "p50_ms": 9.887,
+        "p95_ms": 11.652,
+        "p99_ms": 12.587
       },
       "retrieval_ms": {
-        "p50_ms": 8.777,
-        "p95_ms": 10.268,
-        "p99_ms": 12.647
+        "p50_ms": 13.107,
+        "p95_ms": 15.032,
+        "p99_ms": 16.579
       }
     },
     "requests_measured": 100,
     "total": {
-      "p50_ms": 21.31,
-      "p95_ms": 25.352,
-      "p99_ms": 60.971
+      "p50_ms": 31.437,
+      "p95_ms": 34.885,
+      "p99_ms": 56.86
     }
   },
   "sampling": {
-    "method": "no sampling -- every eligible impression in the split was evaluated",
-    "seed": null
+    "distinct_users": 100,
+    "eligible_users": 20179,
+    "method": "seeded uniform random without replacement",
+    "seed": 20260825,
+    "selected_fraction": 0.00495564695971059,
+    "selected_ids_sha256": "cd9950e45d0bfb7c7368494984260aea086ecda372f921a7898a2b3a32257121",
+    "selected_users": 100,
+    "time_range": {
+      "end": "2019-11-14 21:48:11",
+      "start": "2019-11-14 01:37:12"
+    }
   },
   "schema_version": 2
 }
