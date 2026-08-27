@@ -42,7 +42,7 @@ FEATURE_LOOKUP_LATENCY_SECONDS = Histogram(
 # Kafka lag has a real, honest scope note: the live API never consumes
 # from Kafka (docs/operations/restart-and-failure-testing.md confirmed and removed
 # that coupling entirely) --
-# only the offline streaming consumer processes from Phase 6 do. This
+# only the offline streaming consumer processes do. This
 # gauge exists as the metric *contract* a running consumer process would
 # report into (docs/operations/operational-metrics.md); it has no value here
 # because no consumer runs continuously as part of this service.

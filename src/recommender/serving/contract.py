@@ -65,7 +65,7 @@ class RecommendedItem(BaseModel):
     """One item in a response slate. `rank` is 1-indexed position within
     this response, not a global popularity rank -- explicit so a caller
     doesn't have to infer position from list order alone. `score` is
-    bounded to [0, 1] because the ranking model (Phase 4) is a calibrated
+    bounded to [0, 1] because the ranking model is a calibrated
     probability, not an unbounded raw score -- a value outside that range
     would mean something upstream is already broken, not a valid edge case
     a caller needs to handle.
@@ -93,7 +93,7 @@ class MatchedSignals(BaseModel):
 
 class RecommendationResponse(BaseModel):
     """The full response for one request. `durable_features_used` and
-    `recent_features_used` surface Phase 7's cold-start fallback signal
+    `recent_features_used` surface the online feature store's cold-start fallback signal
     (`OnlineFeatureLookup.durable_is_fallback` / `recent_is_fallback`,
     inverted here since a caller cares whether real personalization
     happened, not whether a fallback fired) directly to the caller,

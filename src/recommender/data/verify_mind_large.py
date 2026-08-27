@@ -34,8 +34,8 @@ def _extract_verified(split: str) -> None:
 
 def verify_mind_large() -> dict:
     """Extracts both real MIND-large archives, then runs the exact same,
-    unmodified `ingest_split` this project has used since Phase 1 against
-    them -- the actual proof this step asks for: the pipeline needs zero
+    unmodified `ingest_split` this project has used since data ingestion
+    began against them -- the actual proof this check asks for: the pipeline needs zero
     code changes to process the larger official dataset, and every metric
     definition it feeds stays exactly as frozen (docs/evaluation-
     protocol.md), since nothing about that definition is scale-dependent.

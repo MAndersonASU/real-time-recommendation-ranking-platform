@@ -20,7 +20,7 @@ def build_and_save() -> dict:
     _item_vocab, categories, subcategories = build_item_vocab(news)
     model = load_trained_model(len(categories) + 1, len(subcategories) + 1)
     # Fit once on train, reused for both splits -- the same discipline
-    # already applied to every Phase 2 baseline (docs/experiments/baselines.md).
+    # already applied to every baseline evaluation (docs/experiments/baselines.md).
     context = build_feature_context(train, news, model)
 
     train_rows = build_ranking_rows(train, context)

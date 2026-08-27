@@ -180,7 +180,7 @@ def encode_recent_history(
     """The same fixed-length, masked category/subcategory/content
     encoding `build_history_arrays` produces for one offline
     impression's history string, built here instead from a live user's
-    recent-clicked-items list (Phase 7) for a single query.
+    recent-clicked-items list (the online feature store) for a single query.
 
     The content block is gathered from the same catalog content matrix
     the item tower was trained against, so a live query is encoded
@@ -217,10 +217,10 @@ def recommend(
     One disclosed asymmetry between this live path and offline training:
     the two-tower embedding and the content-similarity profile here only
     ever see a user's last 20 recent clicks, since that is the cap
-    Phase 7's low-latency store chose (docs/operations/state-store.md). Offline
+    the low-latency store chose (docs/operations/state-store.md). Offline
     training's own content profile (`ranking/features.py`) pools a user's
     entire history string, uncapped. This is a real, disclosed
-    consequence of Phase 7's own latency/storage tradeoff, not a bug --
+    consequence of the online feature store's own latency/storage tradeoff, not a bug --
     `user_history_length` below instead uses the durable
     `lifetime_click_count` specifically because that one field *does*
     carry the same uncapped meaning training used.

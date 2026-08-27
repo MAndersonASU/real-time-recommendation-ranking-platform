@@ -6,7 +6,7 @@ from recommender.tracking.experiment_log import DEFAULT_LOG_PATH, load_runs
 
 METRIC_COLUMNS = ["metric_hit_rate_at_k", "metric_recall_at_k", "metric_ndcg_at_k"]
 
-# The strongest of Phase 2's three non-learned baselines (content
+# The strongest of the three non-learned baselines (content
 # similarity beat popularity and collaborative filtering on every
 # metric), not the weakest one -- comparing the pipeline's cumulative
 # gain against the weakest baseline would overstate how much retrieval,
@@ -26,7 +26,7 @@ def compare_stages(path: Path = DEFAULT_LOG_PATH) -> pd.DataFrame:
     and computes each metric's change from the stage immediately before
     it -- every stage compared here was evaluated on the same K=10,
     same 30,270-impression validation split (docs/experiments/evaluation-protocol.md,
-    frozen since Phase 2), so a delta between adjacent rows reflects that
+    frozen since the baseline evaluation), so a delta between adjacent rows reflects that
     one added stage, not a different evaluation population.
     """
     runs = load_runs(path=path).set_index("run_name")

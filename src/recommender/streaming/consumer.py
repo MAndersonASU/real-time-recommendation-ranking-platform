@@ -74,7 +74,7 @@ class BoundedSet:
 @dataclass
 class UserState:
     """Recent, in-process state for one user -- not a durable store; a
-    low-latency store (Redis) is Phase 7's separate concern. Bounded to
+    low-latency store (Redis) is the online feature store's separate concern. Bounded to
     the most recent `MAX_RECENT_ITEMS` clicks, the same fixed-window idea
     already used for offline click history (docs/experiments/retrieval-model.md), now
     built from live events instead of a pre-collected history string.

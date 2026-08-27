@@ -6,7 +6,7 @@ import pytest
 from recommender.evaluation.metrics import ndcg_at_k, recall_at_k
 from recommender.evaluation.retrieval_metrics import ndcg_at_n_known_total, recall_at_n_known_total
 
-# Hand-worked example matching the lesson's quick check: an impression
+# Hand-worked example matching this module's own quick check: an impression
 # with 3 real clicks, but retrieval's top-5 only found 1 of them, at
 # position 2 (1-indexed).
 RELEVANCE = np.array([0, 1, 0, 0, 0])
