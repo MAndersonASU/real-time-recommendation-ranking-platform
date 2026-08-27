@@ -839,12 +839,14 @@ source files' comments, docstrings and experiment-log notes, replaced
 with the component each one actually named. A targeted guard now
 checks every `.py` file under `src/` and `tests/` for the same two
 patterns, deliberately not extending the ban to the identifier that
-names a single unit of iterative progress -- legitimate in code
-(`optimizer.step()`, a `training_step` counter, GitHub Actions' `steps:`
-key) far more often than it is construction-sequence narration there.
-**Fix commit** `3342aa3` closed the numbered form. A corrective follow-up
-on this same branch, before PR #4 merged, closed four remaining
-occurrences the initial sweep missed
+names a single unit of iterative progress -- legitimate in code (a call
+that advances an optimizer by one iteration, a per-batch training
+counter, and a CI configuration key that groups a job's sequential
+actions) far more often than it is construction-sequence narration
+there.
+**Fix commit** `3342aa3` closed the numbered form. A corrective
+follow-up in PR #5, based on the merged PR #4 state, closed four
+remaining occurrences the initial sweep missed
 (`src/recommender/explanation/retrieval.py`,
 `src/recommender/explanation/contract.py`,
 `src/recommender/serving/pipeline.py`,
