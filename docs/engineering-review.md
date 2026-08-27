@@ -24,9 +24,13 @@ independent check.
 
 ## Evidence status
 
-Every evaluation table in the documentation is now backed by a
-committed, provenance-valid machine-readable report. No report was
-backfilled with inferred or false provenance.
+The twelve headline evaluation result families listed in
+`docs/evaluation.md` now each have a committed, provenance-valid
+machine-readable report. No report was backfilled with inferred or
+false provenance. Other historical and operational measurements
+throughout the documentation are real but are not part of this
+twelve-report contract; each states its own verification scope in the
+document it appears in.
 
 Publishing the last of them changed a result. The serving-latency
 measurement, re-run against the current artifact bundle, contradicts the

@@ -15,8 +15,15 @@ ranking model, diversity/freshness reranking, real-time streaming
 features, and containerized serving — evaluated end to end against a
 frozen research protocol.
 
-**Evidence status.** Every evaluation table in this repository is backed by a committed, provenance-valid machine-readable report. No report was backfilled with inferred or false provenance. Numbers backed by a committed report link to
-it; the rest are labelled as measurements awaiting republication. `docs/research-scenario.md` defines
+**Evidence status.** The twelve published reports in
+[`reports/`](reports/) each carry committed, provenance-valid
+machine-readable backing -- one JSON per published report-backed result
+family, listed in [`docs/evaluation.md`](docs/evaluation.md). No report
+was backfilled with inferred or false provenance. Other numeric tables
+throughout the documentation (data quality, calibration, load and
+profiling measurements, and others) are real, but describe their own
+original verification scope directly in the document they appear in --
+they are not part of this twelve-report contract. `docs/research-scenario.md` defines
 the five research questions this project set out to answer;
 `docs/conclusions.md` answers all five from the evidence gathered
 across every component.
@@ -228,7 +235,7 @@ the runtime detail; [`docs/archive/`](docs/archive/) holds superseded
 historical measurements, each labelled as such.
 
 **Machine-readable results** — [`reports/`](reports/), one JSON per
-published table, each with metric definitions, denominators, sampling,
+published report-backed result family, each with metric definitions, denominators, sampling,
 provenance and limitations.
 
 **Also** — [`docs/architecture-decisions.md`](docs/architecture-decisions.md)
