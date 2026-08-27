@@ -1,10 +1,24 @@
 # Ranking Model
 
-the ranking model's first ranking model, over the six features defined in
+The project's first learned ranking model, over the six features defined in
 `docs/experiments/ranking-features.md`. Deliberately not a neural model at this
 stage — logistic regression, so every fitted weight can be read and
 sanity-checked directly rather than inferred from behavior alone.
 Implementation: `src/recommender/ranking/train.py`.
+
+
+## Serialization is not byte-reproducible
+
+`skops.io.dump` writes bytes that differ on every save. Retraining on
+identical input produces identical coefficients and intercept — verified
+to zero difference — but a different `ranking_model.skops` file hash.
+
+That matters when reading an artifact manifest or a report's
+`ranking_model_sha256`: the hash is an integrity check for one particular
+file, not evidence about whether the model changed. Two rebuilds from the
+same commit will disagree on it and agree on every coefficient. Every
+other build artifact — catalog, splits, content vectors and the two-tower
+model — does rebuild to identical bytes.
 
 ## Architecture
 

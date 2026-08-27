@@ -43,16 +43,34 @@ from recommender.paths import mind_small_path
 
 # Every artifact a rebuild produces, relative to the processed data root.
 BUILT_ARTIFACTS = (
-    "news.parquet",
-    "train.parquet",
-    "validation.parquet",
-    "replay.parquet",
+    "train/news.parquet",
+    "splits/train/behaviors.parquet",
+    "splits/validation/behaviors.parquet",
+    "splits/replay/behaviors.parquet",
+    "ranking/train.parquet",
+    "ranking/validation.parquet",
     "item_content.npz",
     "two_tower_model.pt",
     "faiss_exact.index",
     "faiss_ivf.index",
     "ranking_model.skops",
     "serving_bundle.json",
+)
+
+# Artifacts whose bytes are stable across rebuilds from the same commit.
+# ranking_model.skops is deliberately absent: skops embeds bytes that
+# differ on every save, so the same training run on identical input
+# produces a different file hash while the fitted coefficients are
+# identical to the last bit. Its hash is an integrity check for one file,
+# not a reproducibility check across rebuilds -- comparing it between
+# builds would suggest a model change that did not happen.
+BYTE_REPRODUCIBLE = (
+    "train/news.parquet",
+    "splits/train/behaviors.parquet",
+    "splits/validation/behaviors.parquet",
+    "splits/replay/behaviors.parquet",
+    "item_content.npz",
+    "two_tower_model.pt",
 )
 
 # Seeds that make the build reproducible. Read from the modules that own
@@ -119,6 +137,20 @@ def build_receipt(
         "artifacts": {
             name: _sha256(processed / name) for name in BUILT_ARTIFACTS
         },
+        "byte_reproducible_artifacts": list(BYTE_REPRODUCIBLE),
+        "notes": [
+            (
+                "Artifacts listed under byte_reproducible_artifacts rebuild to "
+                "identical bytes from this commit and these seeds."
+            ),
+            (
+                "ranking_model.skops is not byte-reproducible: skops writes "
+                "bytes that differ on every save. Retraining on identical input "
+                "yields identical coefficients and intercept, verified to zero "
+                "difference, but a different file hash. Treat its hash as file "
+                "integrity, not as evidence of a model change."
+            ),
+        ],
     }
 
 
