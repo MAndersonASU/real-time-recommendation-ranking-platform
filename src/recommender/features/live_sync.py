@@ -17,12 +17,13 @@ MAX_RECENT_CLICKS = 20
 
 class SyncingStreamConsumer(StreamConsumer):
     """A StreamConsumer that also writes each touched user's recent
-    features straight through to Redis, the moment their in-process state
-    changes -- so the same event that updates Phase 6's in-memory state
-    also updates the low-latency store any other process would actually
-    read recent features from. Overrides `_on_state_updated` (write path)
-    and `_get_or_create_state` (read/restore path); parsing, dedup, and
-    counting are untouched, inherited as-is.
+    features straight through to Redis, atomically, as each event
+    arrives -- so the low-latency store any other process reads recent
+    features from stays current with the stream, not just this
+    process's own in-memory state. Overrides `process` (state is derived
+    entirely inside `claim_and_apply_event`'s atomic script, never
+    computed locally first) and `_get_or_create_state` (read/restore
+    path); parsing, dedup, and counting are untouched, inherited as-is.
     """
 
     def __init__(self, redis_client: redis.Redis) -> None:
@@ -47,7 +48,7 @@ class SyncingStreamConsumer(StreamConsumer):
         return state
 
     def _on_state_updated(self, user_id: str, state: UserState, event_id: str) -> bool:
-        """Not used by this consumer -- see `_apply_event`.
+        """Not used by this consumer -- see `process` below.
 
         The base class calls this after mutating its own in-process
         state, which is exactly the stale basis that must not reach

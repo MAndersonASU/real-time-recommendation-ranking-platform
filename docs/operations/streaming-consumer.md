@@ -38,6 +38,12 @@ testing that follows this check meaningful.
 
 ## Restart idempotency: bounded, not absolute
 
+This section describes `SyncingStreamConsumer`
+(`recommender.features.live_sync`, `docs/experiments/live-feature-sync.md`),
+the Redis-backed subclass built on top of the in-memory `StreamConsumer`
+documented above — not the base class itself, which has no restart
+guarantee of its own beyond Kafka's offset commit ordering.
+
 The Redis state mutation and the Kafka offset commit are two separate
 operations. A crash between them redelivers the message after restart,
 and the in-process dedup set (`_seen_event_ids`) does not survive a
@@ -47,23 +53,29 @@ once counted the same real click twice.
 Neither ordering of the two writes fixes it on its own. Marking the
 event processed first can lose its effect entirely if the crash lands
 before the state write; writing state first can apply the event twice.
+An earlier fix stored the resulting state *inside* the claim key itself
+and, on an already-claimed event, restored that stored state — which
+rolled the user back to whatever they looked like the moment the
+original event was applied, discarding every event processed since.
 
-`claim_event` (`recommender.features.state_store`) closes it by storing
-the resulting state *inside* the claim:
+`claim_and_apply_event` (`recommender.features.state_store`) closes it
+with one atomic Lua script that loads current state itself, rather than
+trusting a caller-computed value:
 
-1. Compute the new state for the user.
-2. `SET processed_event:<id> <state> NX EX <ttl>` — one atomic
-   operation, which either claims the event or reports it already
-   claimed.
-3. On a successful claim, write the user's state key.
-4. On an already-claimed event, read the state out of the claim and
-   restore it — both to Redis and to the consumer's own in-process
-   state — then report the event as a duplicate so it is not counted
-   again.
+1. Check the claim key. If it already exists, the event is a duplicate:
+   return the state key's **current** contents, not whatever was stored
+   with the original event.
+2. Otherwise, load the state key (or start from empty state for a new
+   user), apply this event's own delta to it, and write both the claim
+   key and the updated state key — all inside the one atomic script.
 
-A crash between operations 2 and 3 is therefore self-healing: the redelivery
-finds the claim, recovers the exact state that event produced, and
-repairs the state key. Nothing is applied twice and nothing is lost.
+Because the script derives state from whatever is current *inside*
+itself rather than from a value the caller already computed, there is
+no stale local basis a concurrent writer could race against. A crash
+between polling the message and committing its offset is therefore
+self-healing: the redelivery replays the same event against the atomic
+script, which recognises the claim and returns the current state
+unchanged. Nothing is applied twice and nothing is lost.
 
 The claim carries a TTL rather than accumulating forever, so the
 processed-event set stays bounded on its own. That TTL is the real,
