@@ -101,8 +101,9 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     process. Profiling found a single request's CPU time at ~5x its own
     wall time -- torch spreading one request's math across several
     threads by default -- and a real concurrency test confirmed the
-    fix: at concurrency 4, throughput rose from 62.7 to 80.3 req/s and
-    p50 latency dropped from 61ms to 48ms (docs/experiments/optimization.md). This
+    fix: at concurrency 4, throughput rose from 62.7 to 78.8 req/s (+26%)
+    and p50 latency dropped from 61.3ms to 49.8ms (-19%,
+    docs/experiments/optimization.md). This
     process expects to serve many concurrent requests, not minimize one
     request's own wall time in isolation, so a single math thread per
     operation -- leaving concurrency to the request-level thread pool
@@ -212,7 +213,8 @@ def recommend(
     capture_candidates: list | None = None,
 ) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
-    -> reranking -> a Top-K response, exactly the phase's named path.
+    -> reranking -> a Top-K response, exactly the inference path's own
+    named stages (docs/operations/inference-path.md).
 
     One disclosed asymmetry between this live path and offline training:
     the two-tower embedding and the content-similarity profile here only

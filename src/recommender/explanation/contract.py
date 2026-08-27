@@ -19,7 +19,7 @@ class ExplanationRequest(BaseModel):
 
 class ExplanationResponse(BaseModel):
     """`refused` is required, not inferred from an empty `explanation`
-    string -- this phase's own requirement is an explicit refusal when
+    string -- the explanation contract's own requirement is an explicit refusal when
     real evidence is insufficient, not a plausible-sounding guess, and a
     caller should never have to guess which kind of response this is.
     `evidence_used` names exactly which real signals the explanation
