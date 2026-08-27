@@ -75,8 +75,9 @@ a real embedding and the item tower keeps working for cold items.
 The measured effect is the "after" column above. The remaining gap is no
 longer explained by the embedding collapse, which is fixed; what limits
 the result now is the modest capacity of a 32-dimensional two-tower
-model trained on a single day of interactions, which is a different and
-smaller claim than the original diagnosis.
+model trained on the five-day `train` split (2019-11-09 to 2019-11-13,
+`docs/experiments/splits.md`), which is a different and smaller claim
+than the original diagnosis.
 
 ## Interpretation: RQ1
 
@@ -86,8 +87,9 @@ together:
 
 1. **The original collapse was fixed.** The item tower once embedded only
  category and subcategory, producing 284 distinct catalog embeddings
- for 50,704 articles. Per-article content vectors removed that
- degeneracy; distinct embeddings now match the catalog size.
+ across the 51,282-item catalog. Per-article content vectors removed
+ that degeneracy: there are now 50,704 distinct embeddings across
+ those same 51,282 items.
 2. **Retrieval improved substantially.** Hit rate@N rose from 0.0044 to
  0.0336, a 7.6x improvement, with comparable gains across the other
  retrieval metrics.
