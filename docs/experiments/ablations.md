@@ -104,8 +104,8 @@ p50/1.12ms p99).
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured (same code path) |
-| Ranker features | Hit rate −2.9%, NDCG −6.1% | ~1.49ms p50 (ranking stage) |
-| Reranking | Relevance rises (hit rate +1.8%, NDCG +1.4%), but mean distinct categories 5.33→4.50 and slates below the freshness quota 4.8%→13.3% | ~6.36ms p50 (~30% of total request time) |
+| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.07ms p50 (ranking stage) |
+| Reranking | Relevance rises (hit rate ≈+2.3%, NDCG ≈+1.7%), but mean distinct categories 5.42→4.70 and slates below the freshness quota 74.0%→82.0% | ~6.36ms p50 (~30% of total request time) |
 | Recent streaming features | Unchanged (0.0→0.0 hit rate, already at the cold-start floor) | 0.80ms→0.008ms mean feature lookup |
 | Cache/index settings | Recall vs. exact drops to 0.624 at nprobe=8 (0.891 at nprobe=32) | ~12.6x faster than exact search at nprobe=8 (5.0μs vs. 63.1μs) |
 

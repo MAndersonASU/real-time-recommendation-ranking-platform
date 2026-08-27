@@ -14,17 +14,17 @@ input features. Implementation:
 
 30,270 impressions analyzed, the identical reranked served slate
 every other evaluation in this project scores. **Overall miss rate:
-33.2%** (consistent with the tracked hit rate of 0.6675 for the reranked
+33.3%** (consistent with the tracked hit rate of 0.6675 for the reranked
 system, `docs/experiments/reranking-evaluation.md`).
 
 ## By user history length
 
 | History length | Impressions | Miss rate |
 |---|---|---|
-| 0 (cold-start user) | 772 | 43.5% |
-| 1-5 | 4,411 | 36.1% |
+| 0 (cold-start user) | 772 | 43.9% |
+| 1-5 | 4,411 | 35.3% |
 | 6-20 | 10,405 | 33.1% |
-| 20+ | 14,682 | 31.9% |
+| 20+ | 14,682 | 32.2% |
 
 Monotonic and unsurprising: the less history a user has, the more often
 the system misses. Consistent with every earlier finding about sparse
@@ -36,8 +36,8 @@ depth.
 
 | | Impressions | Miss rate |
 |---|---|---|
-| Cold item (never clicked in train) | 20,486 | 27.7% |
-| Warm item (clicked at least once in train) | 9,784 | 44.8% |
+| Cold item (never clicked in train) | 20,486 | 27.6% |
+| Warm item (clicked at least once in train) | 9,784 | 45.0% |
 
 **A real, counter-intuitive result, checked rather than reported
 blindly**: cold items miss *less* often than warm ones, the opposite of
@@ -58,8 +58,8 @@ the model scores it worse.
 
 | | Impressions | Miss rate |
 |---|---|---|
-| Clicked item's category matched the user's dominant history category | 8,346 | 28.3% |
-| Did not match | 21,924 | 35.1% |
+| Clicked item's category matched the user's dominant history category | 8,346 | 28.7% |
+| Did not match | 21,924 | 35.0% |
 
 A real, expected gap: `category_match` is one of the ranking model's own
 input features, so a click that agrees with the model's own signal
@@ -70,7 +70,7 @@ should be, and is, easier to place in the top 10.
 An overall hit rate says the system works roughly two-thirds of the
 time; it says nothing about which third it fails. The clearest, most
 actionable segment here is user history length: a genuinely new user
-misses 11.6 percentage points more often than a well-established one,
+misses 11.7 percentage points more often than a well-established one,
 a concrete, quantified argument for where a future improvement (a
 stronger cold-start policy, not a general model change) would help
 most, feeding directly into the conclusions this component closes with.

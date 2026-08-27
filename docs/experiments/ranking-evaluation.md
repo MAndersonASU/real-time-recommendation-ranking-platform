@@ -23,8 +23,8 @@ Generated from [`reports/ranking-evaluation.json`](../../reports/ranking-evaluat
 | Hit rate@10 | 0.6689 | 0.6828 |
 | Recall@10 | 0.5864 | 0.5999 |
 | NDCG@10 | 0.3518 | 0.3671 |
-| MRR | 0.3084 | 0.3347 |
-| Catalog coverage@10 | 0.0698 | 0.0712 |
+| MRR | 0.3169 | 0.3340 |
+| Catalog coverage@10 | 0.0654 | 0.0678 |
 
 Evaluated on all 30,270 validation impressions. **The ranking model wins on
 every metric, consistently, not on a mixed or ambiguous set of numbers.**
@@ -39,8 +39,8 @@ alone, given the same candidates.
 | Hit rate@10 | 0.5697 | 0.6557 | 0.5709 | 0.6689 | **0.6828** |
 | Recall@10 | 0.5034 | 0.5743 | 0.5046 | 0.5864 | **0.5999** |
 | NDCG@10 | 0.2830 | 0.3526 | 0.2847 | 0.3518 | **0.3671** |
-| MRR | 0.2484 | 0.3236 | 0.2509 | 0.3084 | **0.3347** |
-| Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 | 0.0698 | 0.0712 |
+| MRR | 0.2484 | 0.3236 | 0.2509 | 0.3169 | **0.3340** |
+| Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 | 0.0654 | 0.0678 |
 
 The ranked model beats every baseline in `docs/experiments/baselines.md` on every
 metric except catalog coverage, where it's within rounding of the
@@ -70,7 +70,7 @@ readings of the same underlying model; they are not directly comparable to
 each other because they answer different questions over different
 candidate pools.
 
-## the ranking model close
+## What this settles
 
 RQ2 — how much does a dedicated ranking model improve quality over
 retrieval scores alone — has a clear, positive, quantified answer for this
