@@ -693,9 +693,9 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 | ID | Title | Status |
 |---|---|---|
 | DOC-METRIC-PROMINENCE-23 | Candidate-list metrics more prominent than end-to-end | verified closed |
-| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | reopened 2026-08-26; addressed, pending independent check |
-| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | reopened 2026-08-26; addressed, pending independent check |
-| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | reopened 2026-08-26; addressed, pending independent check |
+| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | verified by review cross-check at `80fbf52` |
+| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | verified by review cross-check at `80fbf52` |
+| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | verified by review cross-check at `80fbf52` |
 | DOC-MINFRESH-EVIDENCE-27 | Minimum-fresh comparison claimed but absent from committed report | verified closed |
 | DOC-BANDIT-COUNTS-28 | Hardcoded Bandit counts go stale | verified closed |
 | DOC-OVERCLAIM-29 | Claims stronger than implementation | verified closed |
@@ -703,6 +703,17 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 | DOC-LOCKGEN-31 | Lock-regeneration instructions incomplete | verified closed |
 | TEST-STARLETTE-32 | TestClient deprecation warning | accepted limitation |
 | TEST-SVD-WARNING-33 | Degenerate SVD warning in a test | verified closed |
+| DOC-SAMPLING-PROVENANCE-47 | Bounded per-user/impression evaluations took first-N, reported "no sampling" | verified closed |
+| DOC-EXPLANATION-METRIC-DEFN-48 | Report metric_definitions still said "faithful / attempted" | verified closed |
+| DOC-RETRIEVAL-OVERCLAIM-49 | `every retrieval metric improved 7.6x-13.5x` false of catalog coverage (1.5x) | verified closed |
+| DOC-N100-DEPTH-CONFLATION-50 | Frozen N=100 retrieval evaluation conflated with deployed depth 1,000 | verified closed |
+| DOC-CATALOG-SIZE-51 | serving-latency.md named 50,704 (distinct-embedding count) as catalog size | verified closed |
+| DOC-FALLBACK-SCOPE-52 | architecture.md overstated Redis as required; overbroad fallback claim | verified closed |
+| DOC-COLDSTART-STALE-53 | replay/ablation docs described superseded zero-vector-Faiss cold start | verified closed |
+| DOC-PROFILING-STALE-54 | profile-hotspots.md/load-test.md presented pre-optimization results as current | verified closed |
+| DOC-REVIEW-STATUS-55 | Three reopened findings never marked verified; "audit" language misdescribed review | verified closed |
+| DOC-GRAMMAR-GUARD-56 | Two paragraph-opening capitalization errors; guard only checked first paragraph | verified closed |
+| SOURCE-VOCABULARY-57 | `Phase N`/`lesson` wording persisted in source comments and docstrings | verified closed |
 
 **DOC-METRIC-PROMINENCE-23** — the README led with hit rate@10 = 0.6828,
 which is the candidate-list protocol (rank a few dozen supplied items
@@ -735,6 +746,102 @@ Both commands are now documented.
 **TEST-SVD-WARNING-33** — caused by a single-user fixture leaving the
 interaction matrix with no between-user variance. Fixed by making the
 fixture non-degenerate, not by silencing the warning.
+
+**DOC-RERANK-CONTRADICTION-24, DOC-RETRIEVAL-SUPERSEDED-25,
+DOC-UNTOUCHED-TERM-26** — addressed in `80fbf52` (PR #2). A subsequent
+maintainer-led review, read-only against the merged state, re-checked
+each: the README and reranking doc no longer disagree, the superseded
+retrieval conclusion is labelled and does not misattribute today's
+weakness to the fixed defect, and every remaining "untouched" claim
+either denies it directly or has been reworded. Not an independent or
+third-party audit -- the same maintainer, checking their own prior fix
+against the current state before relying on it.
+
+**DOC-SAMPLING-PROVENANCE-47** — `evaluate_explanations.py` and
+`verify_latency.py` both took the first N distinct users the validation
+split happened to list, while their published reports asserted
+`FULL_POPULATION`'s "no sampling -- every eligible impression in the
+split was evaluated." `replay_evaluation.py` took the first 500 rows in
+on-disk order while calling it merely "sampled." All three now draw a
+seeded uniform sample (`recommender.evaluation.sampling`), and the two
+publishers can no longer default to `FULL_POPULATION` -- `sampling` is
+a required argument, enforced by a test at both the call-site and the
+signature level. **Fix commit** `0e80e42`. **Reports republished**
+`e368521`. **Docs updated** `9e2d4eb`.
+
+**DOC-EXPLANATION-METRIC-DEFN-48** — `metric_definitions` still read
+"faithful / attempted" after the metric itself was renamed to
+`lexical_policy_passed`. **Fix commit** `0e80e42`.
+
+**DOC-RETRIEVAL-OVERCLAIM-49** — six files claimed `every retrieval metric improved 7.6x-13.5x`;
+catalog coverage, in the same results
+table, improved 1.5x. Reworded to distinguish the four relevance
+metrics from catalog coverage everywhere the claim appeared, plus a
+documentation guard matching the exact false shape. **Fix commit**
+`94ddf64`.
+
+**DOC-N100-DEPTH-CONFLATION-50** — conclusions.md used the frozen N=100
+RQ1 retrieval evaluation's ~97%-absent figure to describe deployability;
+current serving retrieves 1,000 candidates, not 100. Rewritten to name
+N=100 as that evaluation's own cutoff and cite the actual end-to-end
+measurement (14.14% clicked-item containment, 0.84% final hit rate)
+for deployability instead. **Fix commit** `94ddf64`.
+
+**DOC-CATALOG-SIZE-51** — serving-latency.md's cold-start-path paragraph
+named 50,704 (the distinct-embedding count) as the catalog size (which
+is 51,282). **Fix commit** `94ddf64`.
+
+**DOC-FALLBACK-SCOPE-52** — architecture.md said the API "requires the
+artifact bundle and Redis" (optional; startup does not gate on
+it) and that "a failure inside retrieval, ranking or reranking falls
+back to training-set popularity" (only a Redis, two-tower or Faiss
+dependency failure does; an unexpected ranking, feature-construction or
+reranking error propagates as a real error instead). **Fix commit**
+`94ddf64`.
+
+**DOC-COLDSTART-STALE-53** — replay-evaluation.md and ablations.md
+described a cold user's request as querying Faiss with a zero vector
+and receiving "an identical, entirely generic retrieval result" --
+superseded by the global-popularity cold-start path
+(`docs/operations/serving-fallback.md`). Rewritten to describe current
+behaviour, and the replay/ablation measurements were rerun under the
+corrected sampling from DOC-SAMPLING-PROVENANCE-47 rather than patching
+stale prose around unchanged numbers. **Fix commits** `d6a2247`
+(reproducible coverage-check script), `9e2d4eb` (docs updated to the
+rerun's real numbers: 93.6% durable-absent of 497 sampled users, 100%
+Redis-absent, 0.0 hit rate unchanged under the new sample).
+
+**DOC-PROFILING-STALE-54** — profile-hotspots.md listed a persisted,
+on-disk Faiss index `ServingContext` no longer loads (it is rebuilt in
+memory at every startup) and a 515 MB memory figure optimization.md
+already measured down to 448.1 MB; load-test.md's own throughput table
+is the "before" figure optimization.md cites as improved 26% by the
+same fix. Both now carry an explicit historical notice pointing to the
+documents with current numbers. **Fix commit** `94ddf64`.
+
+**DOC-REVIEW-STATUS-55** — this entry. The three findings above sat at
+"pending independent check" with no check ever recorded against them,
+and prose referred to "audit findings" despite this being a
+maintainer-led review throughout. **Fix commit** `9e2d4eb` (this file).
+
+**DOC-GRAMMAR-GUARD-56** — two paragraph openings left lowercase
+("measured, not estimated", "the online feature store's cold-start
+handling"), and the lowercase-opening guard checked only a document's
+first paragraph and headings, so a break deeper in a document was
+invisible to it. Both fixed; the guard now checks every paragraph,
+verified against the whole corpus (zero hits) before enabling.
+**Fix commit** `94ddf64`.
+
+**SOURCE-VOCABULARY-57** — the Markdown vocabulary guard has no reach
+into `.py` files. `Phase N` (including its possessive form) and
+`lesson` persisted in thirteen source files' comments, docstrings and
+experiment-log notes, replaced with the component each one actually
+named. A targeted guard now checks every `.py` file under `src/` and
+`tests/` for the same two patterns, deliberately not extending the ban
+to `step` -- legitimate in code (`optimizer.step()`, a `training_step`
+counter, GitHub Actions' `steps:` key) far more often than it is
+construction narration there.
+**Fix commit** `3342aa3`.
 
 ## Accepted limitations
 
@@ -893,7 +1000,7 @@ containment and a latency budget.
 
 Accepted limitations are listed above and are not counted as closed.
 
-This project is **not** in a state where all audit findings are closed.
+This project is **not** in a state where all review findings are closed.
 
 ## Review status
 
@@ -903,8 +1010,24 @@ DOC-UNTOUCHED-TERM-26, which had been marked closed on incomplete
 evidence, and raised further documentation findings covering stale
 metric tables, stale architecture and serving-contract text, an
 unrenamed explanation metric, and overstated reproducibility and CI
-claims. Those are addressed in this pass and await an independent check;
-the status below will be updated once that check has run.
+claims. A subsequent maintainer-led review, read-only against the
+merged state, verified all three of the reopened findings as addressed
+(`80fbf52`) -- not an independent or third-party check, the same
+maintainer re-verifying their own fix.
+
+That same review found eleven further findings
+(DOC-SAMPLING-PROVENANCE-47 through SOURCE-VOCABULARY-57 above),
+covering false sampling-provenance claims in the explanation and latency reports, a
+stale metric definition, a retrieval-improvement overclaim, a frozen-
+evaluation-vs-deployed-depth conflation, two numeric errors, an
+overbroad dependency-fallback description, a superseded cold-start
+explanation, two files presenting pre-optimization measurements as
+current, this section's own stale status wording, and construction-era
+vocabulary in source code with no documentation guard reaching it. All
+eleven are verified closed, each against its own fix commit recorded
+above -- including two evaluations rerun from a clean commit under
+corrected sampling and republished, not just reworded around unchanged
+numbers.
 
 STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 

@@ -11,16 +11,25 @@ explicit scope decision, 2 accepted limitations.
 | Item | Status |
 |---|---|
 | STREAM-COMMIT-04 — commit-failure behaviour against a live broker | partially closed by scope |
-| DOC-RERANK-CONTRADICTION-24 | reopened 2026-08-26; addressed, pending independent check |
-| DOC-RETRIEVAL-SUPERSEDED-25 | reopened 2026-08-26; addressed, pending independent check |
-| DOC-UNTOUCHED-TERM-26 | reopened 2026-08-26; addressed, pending independent check |
+| DOC-RERANK-CONTRADICTION-24 | verified by review cross-check at `80fbf52` |
+| DOC-RETRIEVAL-SUPERSEDED-25 | verified by review cross-check at `80fbf52` |
+| DOC-UNTOUCHED-TERM-26 | verified by review cross-check at `80fbf52` |
 
 A documentation review on 2026-08-26 reopened the three findings above,
 which had been marked closed on incomplete evidence, and raised further
 findings covering stale metric tables, stale architecture and
 serving-contract text, an unrenamed explanation metric, and overstated
-reproducibility and CI claims. Those are addressed and await an
-independent check.
+reproducibility and CI claims. A subsequent maintainer-led review,
+read-only against the merged state, verified all three -- not an
+independent or third-party check.
+
+That same review found eleven further review findings, from false
+sampling-provenance claims in the explanation and latency reports through
+construction-era vocabulary in source code the documentation guards
+never reached. All eleven are verified closed, each against a fix
+commit recorded in `docs/engineering-review-register.md`, including two
+evaluations rerun from a clean commit under corrected sampling and
+republished rather than reworded around unchanged numbers.
 
 ## Evidence status
 
@@ -39,7 +48,11 @@ stage, not reranking. The pipeline changed underneath that table, and
 `docs/experiments/serving-latency.md` records both measurements and the
 reason they differ.
 
-Not all documentation findings are closed.
+Every review finding raised through this pass is now closed.
+STREAM-COMMIT-04 remains partially closed by an explicit scope decision,
+and the accepted limitations listed in the register are not counted as
+closed either -- neither is a documentation gap still being chased, both
+are permanent, disclosed properties of this project's scope.
 
 ## Why reports are not backfilled
 
