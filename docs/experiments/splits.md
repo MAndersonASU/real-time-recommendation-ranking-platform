@@ -34,7 +34,8 @@ should, not just when it happens to.
 
 ## Why not fold `replay` into validation
 
-Doing so would mean the streaming pipeline's "streaming replay" secretly re-processes
-data a model was already tuned against, and replay evaluation's evaluation would no
-longer be measuring performance on genuinely unseen data. The whole value
-of a held-out replay set depends on nothing earlier having touched it.
+Doing so would mean the streaming replay secretly re-processes data a model
+was already tuned against, and replay evaluation would no longer be
+measuring performance on data no model was fitted or selected against. That
+property, not freedom from evaluation runs, is what a held-out replay set is
+for.

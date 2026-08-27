@@ -35,7 +35,7 @@ aggregate. Implementation: `src/recommender/monitoring/quality_signals.py`.
 
 Feature missingness is already measured exactly by this project, as
 `recommend_durable_cache_total{result}` /
-`recommend_recent_cache_total{result}` from the the preceding work. Building
+`recommend_recent_cache_total{result}` from the preceding work. Building
 a second, parallel "missingness" signal here would just be the same
 fact tracked twice under two different names.
 

@@ -36,8 +36,8 @@ function call instead of opening N separate files.
 
 ## Backfilled with real historical results, measured, not estimated ones
 
-`backfill.py` reads the real, already-computed report files from every
-the preceding work — the baselines' three baselines, the retrieval model's retrieval
+`backfill.py` reads the real, already-computed report files from all
+the preceding work — the three baselines, the retrieval
 evaluation, the ranking comparison, the reranking result —
 and logs each as a structured run. Two pairs of runs share a
 near-identical name in the source data but measure genuinely different

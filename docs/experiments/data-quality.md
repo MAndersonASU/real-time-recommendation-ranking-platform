@@ -22,7 +22,7 @@ findings below are transcribed from an actual run, not estimated.
 Most of the news catalog available in a given window is never actually
 shown: only 39.6% of train-window articles (20,288 of 51,282) receive at
 least one impression; dev is more extreme at 12.7% (5,369 of 42,416).
-Candidate retrieval (the retrieval model) and coverage metrics need to account for a
+Candidate retrieval and coverage metrics need to account for a
 catalog far larger than what any single window's impressions exercise.
 
 ## Click balance

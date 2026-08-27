@@ -55,6 +55,6 @@ deployment has simply never seen live traffic for measures cold-start
 behavior, correctly, and nothing else. The right fix isn't in this
 analysis: it would be evaluating against `replay` users who *do* have prior
 live interaction history recorded in Redis, which requires actually
-running the streaming replay (the streaming pipeline) against a matching population
+running the streaming pipeline against a matching population
 first — a real, disclosed scoping boundary of what this check alone can
 show.

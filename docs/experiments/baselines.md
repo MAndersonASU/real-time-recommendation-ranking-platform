@@ -88,7 +88,7 @@ profiling.
 purely lexical content signal (word overlap via TF-IDF, nothing trained)
 outperforms recommending the same popular items to everyone, on every
 metric measured. It does not yet answer RQ1 on its own: RQ1 specifically
-asks about *learned embeddings* (the retrieval model's two-tower retrieval model), and
+asks about *learned embeddings* (the two-tower retrieval model), and
 TF-IDF word-overlap similarity is a considerably weaker, hand-computed
 stand-in for that. What this result does establish is a second, stronger
 rung on the same ladder — the retrieval model's embedding model now has to beat this

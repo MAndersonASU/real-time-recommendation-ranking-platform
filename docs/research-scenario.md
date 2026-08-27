@@ -76,7 +76,7 @@ Unless independently measured and verified at the time of writing:
 - No Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, a
  feature store, or an LLM, unless a measured requirement in a future work
   justifies adding it.
-- The optional explanation generation generative/RAG explanation layer explains an
+- The optional generative/RAG explanation layer explains an
   already-selected recommendation; it never participates in retrieval,
   ranking, or reranking decisions.
 

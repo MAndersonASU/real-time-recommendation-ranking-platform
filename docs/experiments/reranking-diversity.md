@@ -1,7 +1,7 @@
 # Diversity Reranking
 
 The first reranking policy: a slate-level decision layer, separating "how
-relevant is this item" (the ranking model, the ranking model) from "is this the
+relevant is this item" (the ranking model) from "is this the
 right slate to show, as a set" (this check and the next).
 Implementation: `src/recommender/reranking/diversity.py`.
 
