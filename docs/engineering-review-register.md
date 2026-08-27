@@ -907,6 +907,8 @@ the status below will be updated once that check has run.
 
 STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 
+Seven legacy evaluation tables match their recorded measurements but do not yet have committed, provenance-valid machine-readable reports. Their reports require clean-tree artifact reconstruction and full recomputation. No report was backfilled with inferred or false provenance.
+
 Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
 2 accepted limitations. The minimum-fresh quota is retained at 2 as a
 transparent product-policy override rather than a data-selected value.

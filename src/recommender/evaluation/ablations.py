@@ -119,7 +119,24 @@ def main() -> None:
         metrics=result,
         notes="Retrieval-feature ablation: ranking model retrained with retrieval_score dropped.",
     )
+    from recommender.evaluation.evaluate_ranking import (
+        REPORT_PATH as RANKING_REPORT_PATH,
+    )
+    from recommender.evaluation.publish import (
+        output_dir_from_argv,
+        publish_ablation_report,
+    )
+
+    # Deltas are measured against the full model from the same rebuild, so
+    # the ablation report never compares against a stale baseline.
+    full_model = json.loads(RANKING_REPORT_PATH.read_text())["ranked"]
+    published = publish_ablation_report(
+        {"no_retrieval_score_feature": result},
+        full_model,
+        output_dir=output_dir_from_argv(),
+    )
     print(json.dumps(result, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

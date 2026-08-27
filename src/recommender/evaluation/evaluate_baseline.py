@@ -132,13 +132,22 @@ def evaluate_collaborative_baseline(k: int = TOP_K) -> dict:
 
 
 def main() -> None:
+    from recommender.evaluation.publish import (
+        output_dir_from_argv,
+        publish_baseline_report,
+    )
+
     report = {
         "popularity": evaluate_popularity_baseline(),
         "content_similarity": evaluate_content_similarity_baseline(),
         "collaborative": evaluate_collaborative_baseline(),
     }
     REPORT_PATH.write_text(json.dumps(report, indent=2))
+    # Published by the run that measured, so the recorded commit and
+    # artifact fingerprints describe these numbers.
+    published = publish_baseline_report(report, output_dir=output_dir_from_argv())
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":
