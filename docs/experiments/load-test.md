@@ -1,5 +1,16 @@
 # Load Testing the Service
 
+**Historical, pre-optimization measurement.** The table below predates
+the single-math-thread fix described in
+`docs/experiments/optimization.md`, which measured the same load test again at
+concurrency 4 and found throughput up 26% (62.7 → 78.8 req/s) and p50
+latency down. It also predates the retrieval-depth and cold-start
+pipeline changes recorded in `docs/experiments/serving-latency.md`.
+Current request latency is in
+[`reports/serving-latency.json`](../../reports/serving-latency.json).
+Kept here as the load-testing methodology and the saturation finding
+that motivated the fix, not as a current measurement.
+
 Generates real concurrent traffic against the real `safe_recommend`
 path and measures throughput, latency percentiles, error rate, and
 saturation — not against a mocked or simplified stand-in.

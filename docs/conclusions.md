@@ -22,16 +22,26 @@ embedding vectors across 51,282 items — it had no way to tell two
 articles in the same category apart.
 
 That diagnosis was specific and testable, and fixing the diagnosed
-cause moved every retrieval metric by 7.6x to 13.5x (hit rate@100
-0.0044 → 0.0336; distinct embeddings 284 → 50,704). Each article now
-carries a content vector derived from its own title and abstract
+cause improved the four relevance metrics (hit rate, recall, NDCG, MRR)
+by 7.6x-13.5x (hit rate@100 0.0044 → 0.0336; distinct embeddings 284 →
+50,704); catalog coverage improved separately, by 1.5x. Each article
+now carries a content vector derived from its own title and abstract
 (`docs/experiments/retrieval-model.md`, `docs/experiments/retrieval-evaluation.md`).
 
-It is still not a working retriever in a deployable sense: the user's
-real next click is absent from a 100-item candidate set roughly 97% of
-the time. **Answer: content features produced a measured improvement (7.6x-13.5x
-across retrieval metrics). Absolute retrieval quality remains weak, and
-the remaining cause has not been isolated -- not a verdict on learned
+N=100 is the frozen candidate-list cutoff this isolated retrieval
+evaluation uses to isolate retrieval quality from ranking quality
+(`docs/experiments/retrieval-evaluation.md`); it is not what current
+serving retrieves. Current serving retrieves 1,000 candidates
+(`docs/experiments/evaluation-integrity.md`). Judged by what actually gets
+deployed, not by the N=100 evaluation: the end-to-end evaluation
+measured the real click landing among the retrieved 1,000-candidate
+pool 14.14% of the time, and the final served slate's hit rate@10 at
+0.84% (`docs/experiments/serving-path-end-to-end-evaluation.md`). Both
+numbers describe the same weak retriever from different protocols, and
+neither should be read as the other. **Answer: the four relevance
+metrics improved 7.6x-13.5x; catalog coverage improved 1.5x. Absolute
+retrieval quality remains weak under every protocol measured, and the
+remaining cause has not been isolated -- not a verdict on learned
 embeddings in general.**
 
 ## RQ2: Does a learned ranker add value beyond retrieval?
@@ -135,7 +145,7 @@ through more rivals for the same 10 slots.
 
 ## What this project cost to build
 
-measured, not estimated: a containerized HTTP service with
+Measured, not estimated: a containerized HTTP service with
 health/readiness separation and CI-verified failure-path behavior
 (`docs/operations/containerization.md`, `docs/operations/restart-and-failure-testing.md`); a
 `/metrics` endpoint, a rolling ML-quality tracker, structured

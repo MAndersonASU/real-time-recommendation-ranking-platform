@@ -152,8 +152,9 @@ Two properties of this choice matter:
   seeded for the same reason training is — a retrained model has to be
   reproducible, and the catalog vectors feed both training and serving.
 
-Measured effect: distinct catalog embeddings rose from 284 to 50,704,
-and every retrieval metric improved by 7.6x to 13.5x
+Measured effect: distinct catalog embeddings rose from 284 to 50,704.
+The four relevance metrics (hit rate, recall, NDCG, MRR) improved
+7.6x-13.5x; catalog coverage improved separately, by 1.5x
 (`docs/experiments/retrieval-evaluation.md`). The user tower is unchanged — it is
 still the masked mean of the item tower's vectors over a user's click
 history, so it inherits the richer item representation automatically.

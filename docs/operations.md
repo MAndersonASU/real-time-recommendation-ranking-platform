@@ -14,7 +14,7 @@ does not need Kafka at request time.
 
 - [`serving-contract.md`](operations/serving-contract.md) — request and response types
 - [`inference-path.md`](operations/inference-path.md) — retrieval, ranking and reranking in one request
-- [`serving-fallback.md`](operations/serving-fallback.md) — what happens when a stage fails
+- [`serving-fallback.md`](operations/serving-fallback.md) — fallback behavior for explicitly recognized dependency failures
 - [`serving-cache.md`](operations/serving-cache.md) — what is cached, and how stale it can be
 - [`health-checks.md`](operations/health-checks.md) — liveness and readiness
 - [`configuration.md`](operations/configuration.md) — settings and their defaults

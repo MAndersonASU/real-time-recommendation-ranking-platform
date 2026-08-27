@@ -42,7 +42,7 @@ sums, not the sum of per-stage medians.
 Candidate retrieval is the largest stage at roughly 41% of p50, ahead of
 reranking at about 30%. The Faiss search is not what costs: the
 `retrieval_ms` span covers either an index search *or* the cold-start
-popularity path, and that path reindexes the whole 50,704-item catalog
+popularity path, and that path reindexes the whole 51,282-item catalog
 over `popularity`, fills missing values and sorts it, on every request
 from a user with no usable click history. That is a full catalog sort
 against a single dense-array search, and many validation users have no

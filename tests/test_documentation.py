@@ -249,3 +249,46 @@ def test_documented_report_count_matches_the_reports_directory() -> None:
                         f"{md_id(path)} says {match.group(0)!r}, but {actual} are committed"
                     )
     assert not wrong, "; ".join(sorted(set(wrong)))
+
+
+# The item-tower content-vector fix improved the four relevance metrics
+# (hit rate, recall, NDCG, MRR) by 7.6x-13.5x, but catalog coverage --
+# also a real retrieval metric, shown in the same results table -- only
+# improved 1.5x. A blanket "every retrieval metric improved 7.6x-13.5x"
+# is false of the metric sitting right next to that claim.
+BLANKET_RETRIEVAL_IMPROVEMENT_CLAIM = re.compile(
+    r"(?i)\b(every|all)\b[^.]{0,40}retrieval\s+metric[^.]{0,60}"
+    r"\b7\.6x[^.]{0,20}13\.5x"
+)
+
+
+def test_no_blanket_retrieval_improvement_claim() -> None:
+    """'Every/all retrieval metric improved 7.6x-13.5x' must not appear.
+
+    Catalog coverage improved by 1.5x, not 7.6x-13.5x -- the correct
+    wording distinguishes "the four relevance metrics" from catalog
+    coverage rather than claiming every retrieval metric moved together.
+    """
+    offenders = []
+    for path in MARKDOWN:
+        text = prose_of(path.read_text(encoding="utf-8"))
+        for match in BLANKET_RETRIEVAL_IMPROVEMENT_CLAIM.finditer(text):
+            offenders.append(f"{md_id(path)}: {match.group(0)!r}")
+    assert not offenders, "; ".join(offenders)
+
+
+def test_blanket_retrieval_improvement_claim_pattern_fires() -> None:
+    """The pattern above actually catches the exact wording this pass
+    found and corrected in six files.
+    """
+    broken = (
+        "fixing the diagnosed cause moved every retrieval metric by "
+        "7.6x to 13.5x (hit rate@100 0.0044 -> 0.0336)"
+    )
+    assert BLANKET_RETRIEVAL_IMPROVEMENT_CLAIM.search(broken)
+
+    fixed = (
+        "fixing the diagnosed cause improved the four relevance metrics "
+        "by 7.6x-13.5x; catalog coverage improved separately, by 1.5x"
+    )
+    assert not BLANKET_RETRIEVAL_IMPROVEMENT_CLAIM.search(fixed)

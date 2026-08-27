@@ -82,8 +82,9 @@ specific, quantified cause: the item tower represented every article by
 category and subcategory alone, collapsing 51,282 items into 284
 distinct embedding vectors. That cause has since been fixed by giving
 each article a content vector from its own title and abstract —
-distinct embeddings rose to 50,704 and retrieval metrics improved 7.6x
-to 13.5x (`docs/experiments/retrieval-evaluation.md`). It is still not a strong
+distinct embeddings rose to 50,704 and the four relevance metrics
+improved 7.6x-13.5x; catalog coverage improved 1.5x
+(`docs/experiments/retrieval-evaluation.md`). It is still not a strong
 retriever in absolute terms, and `docs/experiments/serving-path-end-to-end-evaluation.md`
 reports what that means for the assembled system without rounding it up.
 

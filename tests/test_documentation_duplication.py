@@ -464,29 +464,44 @@ def _opens_lowercase(text: str) -> bool:
     return bool(first_letter) and stripped[0].islower()
 
 
+# A paragraph opener that is structural, not prose, and legitimately
+# starts however it starts: a list item, a table row, a blockquote
+# marker, a fenced-code leftover. Checked against the paragraph's first
+# line before deciding it opens lowercase by accident.
+_NON_PROSE_PARAGRAPH_START = re.compile(r"^(#|-|\*|\||>|```|\d+\.\s)")
+
+
 def lowercase_openings(markdown: str) -> list[str]:
-    """The document's first paragraph and every heading, if lowercase."""
-    lines = markdown.splitlines()
+    """Every heading, and every prose paragraph's opening line, if
+    lowercase.
+
+    Originally checked only the document's very first paragraph plus
+    headings -- a bulk rewrite dropping a sentence's first word deeper
+    in a document, past that first paragraph, was invisible to it. This
+    checks every paragraph, wherever it falls, the same way.
+    """
     hits = []
-    past_title = False
-    for line in lines:
-        if line.startswith("# ") and not past_title:
-            past_title = True
-            continue
-        if past_title and line.strip() and not line.startswith("#"):
-            if _opens_lowercase(line):
-                hits.append(f"document opens lowercase: {line.strip()[:70]!r}")
-            break  # only the document's first paragraph is checked
-    for line in lines:
-        match = re.match(r"^#{2,6}\s+(.*)", line)
-        if match and _opens_lowercase(match.group(1)):
+    for match in re.finditer(r"#{2,6}\s+(.*)", markdown):
+        if _opens_lowercase(match.group(1)):
             hits.append(f"heading opens lowercase: {match.group(1).strip()[:70]!r}")
+
+    prose = re.sub(r"```.*?```", "", markdown, flags=re.DOTALL)
+    body = prose.split("\n", 1)[1] if prose.startswith("# ") else prose
+    for paragraph in re.split(r"\n\s*\n", body):
+        stripped = paragraph.strip()
+        if not stripped:
+            continue
+        first_line = stripped.splitlines()[0]
+        if _NON_PROSE_PARAGRAPH_START.match(first_line.lstrip()):
+            continue
+        if _opens_lowercase(first_line):
+            hits.append(f"paragraph opens lowercase: {first_line.strip()[:70]!r}")
     return hits
 
 
 @pytest.mark.parametrize("path", MARKDOWN, ids=md_id)
 def test_no_lowercase_document_or_heading_openings(path: pathlib.Path) -> None:
-    """A document or heading never opens on a lowercase word."""
+    """A document, heading or paragraph never opens on a lowercase word."""
     hits = lowercase_openings(path.read_text(encoding="utf-8"))
     assert not hits, f"{md_id(path)}: " + "; ".join(hits)
 
@@ -496,16 +511,23 @@ def test_no_lowercase_document_or_heading_openings(path: pathlib.Path) -> None:
     [
         (
             "# Event Schema\n\nthe streaming pipeline turns MIND's logs into events.\n",
-            "document opens lowercase",
+            "paragraph opens lowercase",
         ),
         (
             "# Engineering Review\n\n## pip-audit caveat\n\nSome text.\n",
             "heading opens lowercase",
         ),
+        (
+            "# Event Schema\n\nFirst paragraph, fine.\n\nfirst word here is wrong.\n",
+            "paragraph opens lowercase",
+        ),
     ],
+    ids=["document-open", "heading", "later-paragraph"],
 )
 def test_lowercase_opening_is_rejected(markdown: str, expected_substring: str) -> None:
-    """Both a broken document opening and a broken heading are caught."""
+    """A broken document opening, heading, and a later paragraph deep in
+    the document are all caught -- not just the first paragraph.
+    """
     hits = lowercase_openings(markdown)
     assert any(expected_substring in h for h in hits), hits
 
@@ -516,8 +538,14 @@ def test_lowercase_opening_is_rejected(markdown: str, expected_substring: str) -
         "# Event Schema\n\nThe streaming pipeline turns MIND's logs into events.\n",
         "# Engineering Review\n\n## `pip-audit` caveat\n\nSome text.\n",
         "# Ranking Model\n\n## `recommend()` internals\n\nSome text.\n",
+        "# Event Schema\n\nFirst paragraph.\n\n- a list item can start lowercase\n",
+        "# Event Schema\n\nFirst paragraph.\n\n| a | table |\n|---|---|\n",
+        "# Event Schema\n\nFirst paragraph.\n\n> a blockquote can start lowercase\n",
     ],
 )
 def test_capitalized_or_code_opening_is_accepted(markdown: str) -> None:
-    """A capitalized opening, or a heading starting on a code span, is fine."""
+    """A capitalized opening, a heading starting on a code span, or a
+    structural paragraph opener (list item, table row, blockquote) is
+    fine.
+    """
     assert not lowercase_openings(markdown)
