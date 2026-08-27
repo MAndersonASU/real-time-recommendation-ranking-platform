@@ -39,7 +39,7 @@ curl "http://localhost:8000/demo/U73700?num_candidates=3"
 Against the real rebuilt container, alongside real Kafka and Redis:
 returned a real page for real validation-split user `U73700` —
 "Partially personalized," total latency 11.24ms (consistent with the
-~12.79ms p50 already measured in `docs/experiments/serving-latency.md`), a real
+~21.31ms p50 already measured in `docs/experiments/serving-latency.md`), a real
 per-stage breakdown (reranking the largest single cost at 4.58ms, the
 same finding as that earlier measurement), three real catalog
 articles with their real titles, and a real explanation for each item

@@ -44,13 +44,11 @@ Three states, and none of them is an untouched final split:
 | Failure modes | [`failure-analysis.md`](experiments/failure-analysis.md) | [`failure-analysis.json`](../reports/failure-analysis.json) |
 | End to end | [`serving-path-end-to-end-evaluation.md`](experiments/serving-path-end-to-end-evaluation.md) | [`end-to-end-evaluation.json`](../reports/end-to-end-evaluation.json) |
 | Explanations | [`explanation-evaluation.md`](experiments/explanation-evaluation.md) | [`explanation-evaluation.json`](../reports/explanation-evaluation.json) |
-| Serving latency | [`serving-latency.md`](experiments/serving-latency.md) | not yet published |
+| Serving latency | [`serving-latency.md`](experiments/serving-latency.md) | [`serving-latency.json`](../reports/serving-latency.json) |
 
-**Evidence status.** One legacy evaluation table, serving latency, matches its recorded
-measurement but does not yet have a committed, provenance-valid
-machine-readable report: it needs a running Redis instance, which was
-unavailable during this pass. No report was backfilled with inferred or
-false provenance.
+**Evidence status.** Every evaluation table on this page is backed by a
+committed, provenance-valid machine-readable report. No report was
+backfilled with inferred or false provenance.
 
 ## Integrity
 

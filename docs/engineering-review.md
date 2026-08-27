@@ -24,14 +24,18 @@ independent check.
 
 ## Evidence status
 
-One legacy evaluation table, serving latency, matches its recorded
-measurement but does not yet have a committed, provenance-valid
-machine-readable report: it needs a running Redis instance, which was
-unavailable during this pass. No report was backfilled with inferred or
-false provenance.
+Every evaluation table in the documentation is now backed by a
+committed, provenance-valid machine-readable report. No report was
+backfilled with inferred or false provenance.
 
-Not every headline result is report-backed yet, and not all documentation
-findings are closed.
+Publishing the last of them changed a result. The serving-latency
+measurement, re-run against the current artifact bundle, contradicts the
+table recorded on 2026-08-21: candidate retrieval is now the dominant
+stage, not reranking. The pipeline changed underneath that table, and
+`docs/experiments/serving-latency.md` records both measurements and the
+reason they differ.
+
+Not all documentation findings are closed.
 
 ## Why reports are not backfilled
 
@@ -42,13 +46,14 @@ under a current commit would assert a provenance that is not true — the
 exact failure EVAL-PROVENANCE-01 was raised about. The validator has not
 been weakened and no field has been hand-filled.
 
-Six of the seven outstanding evaluations were published exactly that way
-in this pass: the licensed-data artifacts were rebuilt from a clean
-commit, the bundle was validated, each evaluation was re-run with
-`--output-dir` pointing outside the tree, and the reports were committed
-together in a dedicated commit whose recorded `source_commit` is the
-clean commit that computed them. Serving latency needs that same
-sequence plus a running Redis instance.
+All seven outstanding evaluations were published exactly that way: the
+licensed-data artifacts were rebuilt from a clean commit, the bundle was
+validated, each evaluation was re-run with `--output-dir` pointing
+outside the tree, and the reports were committed in dedicated
+report-only commits whose recorded `source_commit` is the commit that
+computed them. Serving latency followed last, once a Redis instance was
+available; the artifact bundle was verified byte-identical to the build
+receipt before it ran, so its numbers are tied to the same build.
 
 ## Full records
 

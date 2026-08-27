@@ -88,7 +88,7 @@ needed to answer this question properly.**
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
 | Ranker features | Hit rate −2.9%, NDCG −6.1% | ~1.49ms p50 |
-| Reranking | Relevance rises (+1.8%/+1.4%), diversity/freshness fall | ~8.88ms p50 (69% of total) |
+| Reranking | Relevance rises (+1.8%/+1.4%), diversity/freshness fall | ~6.36ms p50 (~30% of total) |
 | Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
