@@ -27,8 +27,9 @@ def _normalized_popularity(popularity: pd.Series, news_ids) -> np.ndarray:
 def build_fallback_response(request: RecommendationRequest, context: ServingContext) -> RecommendationResponse:
     """A response built without needing the two-tower model, the Faiss
     index, the ranking model, or Redis -- ranks the whole catalog by
-    plain training-set popularity, exactly Phase 2's first and simplest
-    baseline. `score` here is popularity normalized into [0, 1], not a
+    plain training-set popularity, exactly the popularity baseline, the
+    first and simplest of this project's baseline evaluations.
+    `score` here is popularity normalized into [0, 1], not a
     calibrated click probability the way it is on the real path -- an
     honest difference given the contract's [0, 1] bound describes a
     range, not a guarantee of what produced the number. Both feature
@@ -70,7 +71,7 @@ def safe_recommend(
 ) -> RecommendationResponse:
     """The real path, with a safe popularity fallback if a real
     dependency it needs turns out to be unavailable. Deliberately
-    separate from Phase 7's cold-start handling inside `recommend`
+    separate from the online feature store's cold-start handling inside `recommend`
     itself: cold start answers "we don't know anything about this
     user," which the real path already handles without falling back at
     all; this answers "the real path itself cannot run right now."

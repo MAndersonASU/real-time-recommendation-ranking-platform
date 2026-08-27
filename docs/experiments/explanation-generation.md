@@ -79,7 +79,7 @@ machine-readable report existed. It is kept for the qualitative pattern
 it shows, not as a current result -- **current numbers are the 180-request
 sample in `docs/experiments/explanation-evaluation.md`**
 ([`reports/explanation-evaluation.json`](../../reports/explanation-evaluation.json)),
-where the model's rewrite is kept 0 times out of 65 attempts, not 2 of 14.
+where the model's rewrite is kept 0 times out of 61 attempts, not 2 of 14.
 
 | Outcome | Count |
 |---|---|

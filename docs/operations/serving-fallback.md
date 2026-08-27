@@ -7,7 +7,7 @@ be unavailable, instead of the request failing outright. Implementation:
 
 ## A different question than the online feature store's cold start
 
-the online feature store's cold-start handling (`docs/experiments/cold-start.md`) answers "we don't
+The online feature store's cold-start handling (`docs/experiments/cold-start.md`) answers "we don't
 know anything about this particular user" — a data problem the real
 path already handles gracefully, without falling back to anything
 simpler. This check answers a different question: "the real path itself

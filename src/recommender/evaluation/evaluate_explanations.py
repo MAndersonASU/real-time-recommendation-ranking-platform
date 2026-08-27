@@ -3,6 +3,11 @@ import re
 from pathlib import Path
 
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.evaluation.sampling import (
+    DEFAULT_SAMPLE_SEED,
+    describe_user_sample,
+    sample_user_ids,
+)
 from recommender.explanation.contract import build_explanation_requests
 from recommender.explanation.generation import (
     build_template_explanation,
@@ -81,16 +86,24 @@ def evaluate_explanations(
     context: ServingContext,
     num_users: int = DEFAULT_NUM_USERS,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Measures lexical policy compliance and how much the local model
     actually contributes beyond the safe fallback template -- both
     deliberately kept separate from recommendation Recall/NDCG/MRR,
     which measure a different property (whether the right item
     appeared in the slate, not whether a real reason was given for it).
+
+    Users are a seeded uniform sample of the validation split's distinct
+    users, not the first `num_users` to appear. An earlier version took
+    `unique()[:num_users]`, which is whichever users the split happens
+    to list first -- not a sample, and both time- and user-order-biased
+    in whatever way the split's own row order carries.
     """
     validation = load_split("validation")
     news_by_id = load_catalog().set_index("news_id")
-    real_users = validation["user_id"].dropna().unique()[:num_users]
+    real_users = sample_user_ids(validation, num_users, seed=sample_seed)
+    sampling = describe_user_sample(validation, real_users, seed=sample_seed)
 
     total = 0
     refused = 0
@@ -142,6 +155,7 @@ def evaluate_explanations(
             sum(explanation_lengths) / len(explanation_lengths) if explanation_lengths else None
         ),
         "distinct_explanations": len(distinct_explanations),
+        "sampling": sampling,
     }
 
 
@@ -152,7 +166,7 @@ def main() -> None:
     report = evaluate_explanations(context)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
-    published = publish_explanation_report(report)
+    published = publish_explanation_report(report, sampling=report["sampling"])
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 

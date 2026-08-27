@@ -91,8 +91,9 @@ together:
  that degeneracy: there are now 50,704 distinct embeddings across
  those same 51,282 items.
 2. **Retrieval improved substantially.** Hit rate@N rose from 0.0044 to
- 0.0336, a 7.6x improvement, with comparable gains across the other
- retrieval metrics.
+ 0.0336, a 7.6x improvement, with comparable 8.8x-13.5x gains across
+ recall, NDCG and MRR. Catalog coverage improved too, but by much
+ less -- 1.5x, not a comparable gain.
 3. **Absolute retrieval quality remains low.** Hit rate@N is 0.0336,
  Recall@N 0.0229 and NDCG@N 0.0060. Retrieval alone does not yet beat
  the baselines on this dataset.

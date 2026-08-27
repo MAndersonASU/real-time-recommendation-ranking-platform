@@ -74,7 +74,7 @@ def compute_durable_features(
 
 
 def recent_features_from_user_state(user_id: str, state: UserState) -> RecentUserFeatures:
-    """Adapts Phase 6's in-process UserState into the RecentUserFeatures
+    """Adapts the streaming consumer's in-process UserState into the RecentUserFeatures
     contract, so callers depend on a stable feature shape instead of the
     streaming consumer's internal state representation directly.
     """

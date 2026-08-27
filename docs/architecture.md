@@ -113,24 +113,32 @@ members agree with each other the way the coherence bundle does.
 
 ## Runtime dependencies
 
-The API requires the artifact bundle and Redis. It does not require Kafka
-at request time: only the offline replay and consumer scripts talk to
-Kafka, so API startup is not gated on broker health.
+The API requires a valid artifact bundle at startup and optionally uses
+Redis for recent state. It does not require Kafka at request time: only
+the offline replay and consumer scripts talk to Kafka, so API startup
+is not gated on broker health.
 
 | Service | Required for | Behaviour when unavailable |
 |---|---|---|
 | Artifact bundle | Startup | Startup fails; `/ready` never becomes ready |
-| Redis | Recent user state | Request succeeds; user state degrades to cold-start |
+| Redis | Recent user state | Request succeeds; falls back to popularity ranking |
 | Kafka | Offline replay and consumption only | No effect on serving |
 
-## Failure and fallback boundaries
+## Fallback behaviour for explicitly recognized dependency failures
 
 - Missing or unreadable artifact bundle stops startup rather than serving
   a silently degraded model.
-- Redis unavailability degrades a request to cold-start behaviour instead
-  of failing it ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)).
-- A failure inside retrieval, ranking or reranking falls back to
-  training-set popularity through `build_fallback_response`.
+- A Redis, two-tower or Faiss dependency failure produces the explicit
+  popularity fallback (`build_fallback_response`) -- the whole catalog
+  ranked by training-set popularity, skipping retrieval, ranking and
+  reranking entirely, not the narrower zero-norm-history cold-start
+  path that still runs the full pipeline
+  ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)).
+  A Redis dependency failure is this fallback, not the same thing as a
+  user simply having no recent history.
+- Unexpected ranking, feature-construction or reranking errors are not
+  caught by this fallback and propagate as correlated 500 responses
+  instead of a silently "successful" popularity response.
 - The explanation layer only ever consumes a finished
   `RecommendationResponse`; it cannot influence retrieval, ranking or
   reranking ([`docs/experiments/explanation-boundary.md`](experiments/explanation-boundary.md)).

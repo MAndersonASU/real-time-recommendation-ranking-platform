@@ -22,16 +22,26 @@ embedding vectors across 51,282 items — it had no way to tell two
 articles in the same category apart.
 
 That diagnosis was specific and testable, and fixing the diagnosed
-cause moved every retrieval metric by 7.6x to 13.5x (hit rate@100
-0.0044 → 0.0336; distinct embeddings 284 → 50,704). Each article now
-carries a content vector derived from its own title and abstract
+cause improved the four relevance metrics (hit rate, recall, NDCG, MRR)
+by 7.6x-13.5x (hit rate@100 0.0044 → 0.0336; distinct embeddings 284 →
+50,704); catalog coverage improved separately, by 1.5x. Each article
+now carries a content vector derived from its own title and abstract
 (`docs/experiments/retrieval-model.md`, `docs/experiments/retrieval-evaluation.md`).
 
-It is still not a working retriever in a deployable sense: the user's
-real next click is absent from a 100-item candidate set roughly 97% of
-the time. **Answer: content features produced a measured improvement (7.6x-13.5x
-across retrieval metrics). Absolute retrieval quality remains weak, and
-the remaining cause has not been isolated -- not a verdict on learned
+N=100 is the frozen candidate-list cutoff this isolated retrieval
+evaluation uses to isolate retrieval quality from ranking quality
+(`docs/experiments/retrieval-evaluation.md`); it is not what current
+serving retrieves. Current serving retrieves 1,000 candidates
+(`docs/experiments/evaluation-integrity.md`). Judged by what actually gets
+deployed, not by the N=100 evaluation: the end-to-end evaluation
+measured the real click landing among the retrieved 1,000-candidate
+pool 14.14% of the time, and the final served slate's hit rate@10 at
+0.84% (`docs/experiments/serving-path-end-to-end-evaluation.md`). Both
+numbers describe the same weak retriever from different protocols, and
+neither should be read as the other. **Answer: the four relevance
+metrics improved 7.6x-13.5x; catalog coverage improved 1.5x. Absolute
+retrieval quality remains weak under every protocol measured, and the
+remaining cause has not been isolated -- not a verdict on learned
 embeddings in general.**
 
 ## RQ2: Does a learned ranker add value beyond retrieval?
@@ -71,11 +81,11 @@ Real infrastructure cost measured; no quality benefit measurable in
 this replay sample. The ablation (`docs/experiments/ablations.md`) found identical
 hit rate (0.0) with and without recent features — but that floor was
 already independently explained: this replay population is measured at
-92.4% durable cold start and 0% live-Redis coverage
+93.6% durable cold start and 0% live-Redis coverage
 (`docs/limitations.md`), leaving no headroom for recent features to
 show a difference either way. What is measurable is the
 latency cost of having them: removing the Redis round-trip cut mean
-feature-lookup time from 0.80ms to 0.008ms, consistent with the
+feature-lookup time from 5.48ms to 0.008ms, consistent with the
 isolated Redis benchmark measured when the store was first built
 (0.29ms p50, `docs/operations/state-store.md`). **Answer: not demonstrated to
 help in this particular sample, for a reason (extreme cold start) that
@@ -88,9 +98,9 @@ needed to answer this question properly.**
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
-| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.07ms p50 |
-| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~6.36ms p50 (~30% of total) |
-| Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
+| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.73ms p50 |
+| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~9.89ms p50 (~31% of total) |
+| Recent streaming features | Unchanged in this sample | 5.48ms→0.008ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
 Candidate retrieval is now the largest latency cost in the system
@@ -135,7 +145,7 @@ through more rivals for the same 10 slots.
 
 ## What this project cost to build
 
-measured, not estimated: a containerized HTTP service with
+Measured, not estimated: a containerized HTTP service with
 health/readiness separation and CI-verified failure-path behavior
 (`docs/operations/containerization.md`, `docs/operations/restart-and-failure-testing.md`); a
 `/metrics` endpoint, a rolling ML-quality tracker, structured

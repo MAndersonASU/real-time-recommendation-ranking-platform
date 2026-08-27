@@ -22,7 +22,7 @@ REPORT_PATH = Path("data/processed/mind_small/ranking_evaluation_report.json")
 def _evaluate_by_score(rows: pd.DataFrame, score_column: str, k: int, catalog_size: int) -> dict:
     """Orders each impression's candidates by `score_column` (descending,
     ties broken by news_id for determinism) and scores it with the same
-    frozen K=10 metrics used for every Phase 2 baseline.
+    frozen K=10 metrics used for every baseline evaluation.
     """
     per_impression = {"hit_rate": [], "recall": [], "ndcg": [], "rr": []}
     recommended_items: set = set()

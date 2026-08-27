@@ -334,7 +334,7 @@ def publish_tuning_report(raw: dict, sampling: dict, output_dir=None):
     )
 
 
-def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION, output_dir=None):
+def publish_explanation_report(raw: dict, sampling: dict, output_dir=None):
     spec = {
         "report_name": "explanation-evaluation",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -366,7 +366,7 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION, outp
             ),
             "lexical_policy_passed": "produced explanations that passed the lexical policy check",
             "lexical_policy_pass_rate": (
-                "faithful / attempted. Named for what the check enforces, which is "
+                "lexical_policy_passed / attempted. Named for what the check enforces, which is "
                 "lexical, not semantic: an explanation passes when it contains no "
                 "vocabulary outside its approved template plus grammatical "
                 "scaffolding. Approved words can still be arranged into an "
@@ -389,7 +389,7 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION, outp
                 "expected and is a property of the template set, not a defect"
             ),
         },
-        "results": raw,
+        "results": {k: v for k, v in raw.items() if k != "sampling"},
         "limitations": [
             *_COMMON_LIMITATIONS,
             (
@@ -787,7 +787,7 @@ def publish_failure_analysis_report(raw, sampling=FULL_POPULATION, output_dir=No
     )
 
 
-def publish_serving_latency_report(raw, sampling=FULL_POPULATION, output_dir=None):
+def publish_serving_latency_report(raw, sampling: dict, output_dir=None):
     spec = {
         "report_name": "serving-latency",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -807,7 +807,7 @@ def publish_serving_latency_report(raw, sampling=FULL_POPULATION, output_dir=Non
             "p95_ms": "95th-percentile wall-clock milliseconds",
             "p99_ms": "99th-percentile wall-clock milliseconds",
         },
-        "results": raw,
+        "results": {k: v for k, v in raw.items() if k != "sampling"},
         "limitations": [
             *_COMMON_LIMITATIONS,
             (

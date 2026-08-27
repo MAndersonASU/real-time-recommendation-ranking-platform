@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
     """Loads the trained model, index, ranking pipeline, and durable
     cache exactly once at process start -- the same `ServingContext`
     every other real caller (tests, verify_*.py scripts) has already
-    used since Phase 8, not a second, app-specific load path.
+    used, not a second, app-specific load path.
 
     A missing model/index/ranking-pipeline file is a real, validated
     startup dependency: there's no per-request fallback for "the whole

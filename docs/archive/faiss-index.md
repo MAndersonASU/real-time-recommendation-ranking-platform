@@ -52,7 +52,7 @@ category/subcategory pairs in the catalog — every article sharing a
 category and subcategory got an identical vector, roughly 180 items per
 distinct vector on average.
 
-> **Historical result (superseded).** The measurement above dates from the category/subcategory-only item tower. That limitation was subsequently fixed by giving each article a content vector from its own title and abstract: distinct catalog embeddings rose from 284 to 50,704 and retrieval metrics improved 7.6x-13.5x. See `docs/experiments/retrieval-evaluation.md` for the current numbers and `docs/experiments/retrieval-model.md` for the change. The original figures are kept here rather than rewritten, so the record of what was measured when stays intact.
+> **Historical result (superseded).** The measurement above dates from the category/subcategory-only item tower. That limitation was subsequently fixed by giving each article a content vector from its own title and abstract: distinct catalog embeddings rose from 284 to 50,704, the four relevance metrics improved 7.6x-13.5x, and catalog coverage improved separately, by 1.5x. See `docs/experiments/retrieval-evaluation.md` for the current numbers and `docs/experiments/retrieval-model.md` for the change. The original figures are kept here rather than rewritten, so the record of what was measured when stays intact.
 
 
 With that many items tied at the exact same score, "the correct top-50"

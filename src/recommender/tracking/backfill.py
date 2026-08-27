@@ -13,7 +13,7 @@ def _numeric(d: dict) -> dict:
 def backfill() -> list[str]:
     """Logs every evaluation result already sitting in the real report
     files on disk (baseline_report.json through reranking_evaluation_
-    report.json, all Phases 2-5) as a structured run, reading the actual
+    report.json, from baseline through reranking evaluation) as a structured run, reading the actual
     numbers rather than retyping them from docs by hand. Two pairs of
     runs share a near-identical name in the source data but measure
     genuinely different things -- kept distinct here rather than
@@ -36,7 +36,7 @@ def backfill() -> list[str]:
             run_name,
             params={"k": result["k"], "split": "validation"},
             metrics=_numeric(result),
-            notes="Phase 2 -- non-learned baseline over MIND's own frozen impression candidates",
+            notes="Baseline evaluation -- non-learned baseline over MIND's own frozen impression candidates",
         )
         logged.append(run_name)
 
@@ -45,7 +45,7 @@ def backfill() -> list[str]:
         "retrieval_full_catalog_n100",
         params={"n": retrieval["n"], "split": "validation"},
         metrics=_numeric(retrieval),
-        notes="Phase 3 retrieval evaluation -- two-tower retrieval alone, full catalog, N=100",
+        notes="Retrieval evaluation -- two-tower retrieval alone, full catalog, N=100",
     )
     logged.append("retrieval_full_catalog_n100")
 
@@ -54,13 +54,13 @@ def backfill() -> list[str]:
         "retrieval_score_as_sort_key_k10",
         params={"k": ranking["retrieval_score_only"]["k"], "split": "validation"},
         metrics=_numeric(ranking["retrieval_score_only"]),
-        notes="Phase 4 ranking evaluation -- retrieval_score as sort key over the frozen candidate pool, not the full catalog",
+        notes="Ranking evaluation -- retrieval_score as sort key over the frozen candidate pool, not the full catalog",
     )
     log_run(
         "ranking_model_k10",
         params={"k": ranking["ranked"]["k"], "split": "validation"},
         metrics=_numeric(ranking["ranked"]),
-        notes="Phase 4 ranking evaluation -- trained logistic regression ranking model",
+        notes="Ranking evaluation -- trained logistic regression ranking model",
     )
     logged.extend(["retrieval_score_as_sort_key_k10", "ranking_model_k10"])
 
@@ -69,13 +69,13 @@ def backfill() -> list[str]:
         "reranking_ranked_only_k10",
         params={"k": reranking["k"], "split": "validation"},
         metrics=_numeric(reranking["ranked_only"]),
-        notes="Phase 5 reranking evaluation -- ranking model's own output, before reranking",
+        notes="Reranking evaluation -- ranking model's own output, before reranking",
     )
     log_run(
         "reranking_diverse_fresh_k10",
         params={"k": reranking["k"], "split": "validation"},
         metrics=_numeric(reranking["reranked"]),
-        notes="Phase 5 reranking evaluation -- diversity + freshness reranking applied",
+        notes="Reranking evaluation -- diversity + freshness reranking applied",
     )
     logged.extend(["reranking_ranked_only_k10", "reranking_diverse_fresh_k10"])
 

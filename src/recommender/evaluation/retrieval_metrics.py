@@ -6,7 +6,7 @@ from recommender.evaluation.metrics import dcg_at_k
 def recall_at_n_known_total(relevance: np.ndarray, true_relevant_count: int, n: int) -> float:
     """recall_at_k (metrics.py) infers "total relevant" from the passed
     array itself -- correct only when that array is the complete
-    candidate set, as it was for every Phase 2 baseline. Retrieval's
+    candidate set, as it was for every baseline evaluation. Retrieval's
     relevance array is only a top-N slice of the full catalog, so a real
     click missing from that slice would be invisible to it. This version
     takes the true click count as an explicit, independently-looked-up

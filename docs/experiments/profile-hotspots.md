@@ -1,5 +1,19 @@
 # Profiling Hotspots
 
+**Historical, pre-optimization measurement.** Dated before the fix
+described in `docs/experiments/optimization.md`, and before the Faiss
+index changed from a persisted, on-disk artifact to one rebuilt in
+memory at every startup (`docs/architecture.md`). The disk-footprint
+table below therefore lists an artifact `ServingContext` no longer
+loads from disk at all, and the 515 MB memory figure is the *before*
+number the optimization work measured itself against -- the current,
+fixed figure (448.1 MB) is in `docs/experiments/optimization.md`, and
+current request latency is in
+[`reports/serving-latency.json`](../../reports/serving-latency.json).
+Kept here as the profiling methodology and the finding that motivated
+the fix, not as a current measurement of `ServingContext` as it exists
+now.
+
 Measures where the serving path actually spends memory, disk, and CPU
 — not just wall-clock time per stage, which the per-stage latency
 breakdown (`docs/experiments/serving-latency.md`) already covered.
@@ -8,8 +22,10 @@ Implementation: `src/recommender/monitoring/profile_hotspots.py`.
 ## Three measurements
 
 - **Disk footprint** — the on-disk size of every artifact
-  `ServingContext` loads: the two-tower model, the ranking model, the
-  exact Faiss index.
+  `ServingContext` loaded at the time of this measurement: the
+  two-tower model, the ranking model, and the then-persisted exact
+  Faiss index (no longer a disk-loaded artifact today; see the notice
+  above).
 - **Memory** — real process RSS (`psutil`), measured before and after
   `build_serving_context()`, not estimated from artifact sizes.
 - **CPU vs. wall time** — `time.process_time()` alongside

@@ -23,26 +23,33 @@ happen to hold right now.
 
 ## A real, chased-down zero
 
-The first run came back with a **0.0 hit rate@10 over 500 sampled
-impressions with a real click** — worth investigating, not reporting
-blindly. The cause traces to two already-documented facts about this
-project converging on this one sample, not a new bug:
+A seeded uniform sample of 500 impressions from the whole `replay`
+split (`recommender.evaluation.sampling`) — not the first 500 rows in
+the split's own on-disk order, as an earlier version of this check
+took — still comes back with a **0.0 hit rate@10 over 500 sampled
+impressions, all 500 with a real click**. This is not an artifact of
+the earlier, biased sampling: the same zero persists under a genuinely
+representative draw. The cause traces to two already-documented facts
+about this project converging on this one sample, not a new bug:
 
-- **92.4% of the sampled replay users never appear in the `validation`
-  split** (38 of 499), so the durable feature cache — built from
-  `validation` — falls back to neutral defaults for almost everyone.
-  **0% had a live Redis record at all** (checked directly), so recent
-  features fall back too. A fully cold user's history mask is all
- zeros, which the two-tower model's mean-pooling (`docs/experiments/retrieval-model.md`) reduces to the same zero vector for every one of them —
-  every cold user gets an identical, entirely generic retrieval result.
-- Even the 38 users who *did* have durable features scored **0 of 38**
-  as well. A durable-only signal is just a dominant category match, and
-  the item tower's own vector collapse (`docs/archive/faiss-index.md`) had at
-  the time reduced the whole ~51,000-item catalog to only 284 distinct
-  vectors — roughly 180 items
-  tied within a category. Landing on the one specific article a real
-  user clicked, among that many ties, remains close to chance even with
-  partial personalization.
+- **93.6% of the sampled replay users never appear in the `validation`
+  split** (465 of 497 distinct sampled users), so the durable feature
+  cache — built from `validation` — falls back to neutral defaults for
+  almost everyone. **0% had a live Redis record at all** (checked
+  directly, `describe_online_feature_coverage`), so recent features
+  fall back too. A user with neither a durable nor a recent signal has
+  a fully empty, zero-norm history, which current retrieval detects and
+  routes to the global-popularity candidate path instead of a Faiss
+  search (`docs/operations/serving-fallback.md`) — every such cold user receives the
+  same catalog-wide popularity ranking as their candidate pool,
+  regardless of who they are.
+- Even the 32 users who *did* have durable features scored **0 hits**
+  as well -- the aggregate 0.0 hit rate over all 500 impressions makes
+  that arithmetically certain, not merely observed. A durable-only
+  signal is just a dominant category match, which narrows the
+  candidate pool by topic but still leaves many items to choose among
+  within it; landing on the one specific article a real user clicked
+  remains close to chance even with that partial personalization.
 
 ## Why this matters
 
