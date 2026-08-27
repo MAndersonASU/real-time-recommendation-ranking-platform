@@ -45,7 +45,7 @@ can't: 3.70% is far below the 12.7–39.6% coverage the real, curated MIND
 impression logs themselves showed (`docs/experiments/data-quality.md`). That gap is
 the expected, measured cost of pure popularity ranking — it repeatedly
 surfaces the same
-narrow slice of the catalog to everyone. Any later model (the retrieval model onward)
+narrow slice of the catalog to everyone. Any later model (from the retrieval model onward)
 that improves hit rate/NDCG/recall by narrowing coverage further, rather
 than widening it, hasn't actually solved the problem this baseline
 exposes; RQ3's diversity work in reranking exists specifically to address
@@ -91,7 +91,7 @@ metric measured. It does not yet answer RQ1 on its own: RQ1 specifically
 asks about *learned embeddings* (the two-tower retrieval model), and
 TF-IDF word-overlap similarity is a considerably weaker, hand-computed
 stand-in for that. What this result does establish is a second, stronger
-rung on the same ladder — the retrieval model's embedding model now has to beat this
+rung on the same ladder — the embedding model now has to beat this
 content-similarity baseline, not just the popularity one, to demonstrate
 value from learned representations.
 

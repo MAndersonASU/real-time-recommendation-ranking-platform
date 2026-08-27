@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-27 — Documentation checks
+
+- Added documentation regression checks for duplicated words and
+  component terminology introduced by bulk editorial changes. Eighteen
+  sentences a terminology rewrite had broken are kept as fixtures: each
+  must be rejected and its replacement accepted. Legitimate repetition
+  is cleared by coordination rather than by an allow-list.
+- Replaced keyword grepping for committed credentials with a scan for
+  credential shapes: provider key formats, and secret-named assignments
+  filtered by Shannon entropy. Entropy is applied only to those
+  assignments, because the repository commits SHA-256 artifact hashes by
+  design.
+
 ## 2026-08-25 — Reproducibility, evaluation reports, and constrained explanations
 
 - Retrieval quality: the item tower now derives a per-article content

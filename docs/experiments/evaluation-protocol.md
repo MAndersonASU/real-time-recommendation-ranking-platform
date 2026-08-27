@@ -1,6 +1,6 @@
 # Evaluation Protocol (Frozen)
 
-Locked 2026-08-18, after the baselines' three baselines already had results measured under it. Changing any item below after that point would
+Locked 2026-08-18, after the three baselines already had results measured under it. Changing any item below after that point would
 invalidate every comparison already made in `docs/experiments/baselines.md` — the same
 principle `docs/research-scenario.md` already applies to the research
 questions themselves.

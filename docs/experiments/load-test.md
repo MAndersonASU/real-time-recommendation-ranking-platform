@@ -43,6 +43,5 @@ request alone already uses close to five cores' worth of parallel
 compute (PyTorch, NumPy's BLAS backend, and Faiss all parallelizing
 internally). Two requests running at once already approach this
 machine's full 8-core budget; by four or more, it's fully saturated.
-This isn't a new, separate finding — it's the profiling result from the
-the preceding work, now confirmed under real concurrent load exactly as it
+This isn't a new, separate finding — it's the profiling result from the preceding work, now confirmed under real concurrent load exactly as it
 predicted.

@@ -1,6 +1,6 @@
 # Final Research Conclusions
 
-Synthesizes what every the preceding work already measured into one final
+Synthesizes what all the preceding work already measured into one final
 answer for each research question, plus the costs this project
 introduced and where the evidence deliberately stops short of a claim
 it can't support. Nothing here is a new measurement — every claim below

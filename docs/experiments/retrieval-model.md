@@ -1,6 +1,6 @@
 # Two-Tower Retrieval Model
 
-the retrieval model's first learned model. Architecture and training only — full
+The project's first learned model. Architecture and training only — full
 retrieval evaluation against the frozen protocol
 (`docs/experiments/evaluation-protocol.md`) is a separate, later evaluation pass, not
 this one. Implementation: `src/recommender/retrieval/` (`features.py`,

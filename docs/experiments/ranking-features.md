@@ -9,7 +9,7 @@ model's category/subcategory pair. Implementation:
 ## A deliberate departure from ranking retrieval's own candidates
 
 The ranking model here is evaluated against the same frozen candidate-set
-definition the baselines' baselines used (`docs/experiments/evaluation-protocol.md`) — MIND's
+definition the baselines used (`docs/experiments/evaluation-protocol.md`) — MIND's
 own impression list, K=10 — rather than against the retrieval model's own top-N
 retrieval output. This is a disclosed methodological choice, not an
 oversight: `docs/experiments/retrieval-evaluation.md` had already found and explained a
