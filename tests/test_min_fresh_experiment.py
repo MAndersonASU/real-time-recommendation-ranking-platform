@@ -1,6 +1,6 @@
 """The selection rule has to be right before it produces a number.
 
-`docs/min-fresh-experiment-protocol.md` was frozen before the experiment
+`docs/experiments/min-fresh-experiment-protocol.md` was frozen before the experiment
 ran, which only means something if the code implements the frozen rule.
 These tests pin the rule itself against synthetic outcomes, where the
 correct answer is known in advance -- so a bug in the rule cannot be
@@ -174,7 +174,7 @@ def test_the_frozen_constants_match_the_committed_protocol():
 
     from pathlib import Path
 
-    protocol = Path("docs/min-fresh-experiment-protocol.md")
+    protocol = Path("docs/experiments/min-fresh-experiment-protocol.md")
     if not protocol.exists():
         pytest.skip("protocol document not present")
     text = protocol.read_text(encoding="utf-8")

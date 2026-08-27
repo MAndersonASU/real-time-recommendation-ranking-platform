@@ -720,7 +720,7 @@ findings") had already gone stale; the real count was ten. The count is
 no longer transcribed, matching how the same document already treats
 test counts.
 
-**DOC-SETUP-ENCODING-30** — worse than described. `docs/retrieval-evaluation.md`
+**DOC-SETUP-ENCODING-30** — worse than described. `docs/experiments/retrieval-evaluation.md`
 contained three raw `0x97` bytes (cp1252 em-dashes written without
 encoding) in an otherwise UTF-8 file, making the whole document
 undecodable by any strict UTF-8 reader. Repaired. The README's
@@ -867,7 +867,7 @@ figures' sampling error is unquantified.
 **Resolved for the minimum-fresh decision specifically.** That question
 was rerun as a prospectively specified experiment over the complete
 tuning fold with user-clustered bootstrap intervals
-(`docs/min-fresh-experiment-protocol.md`,
+(`docs/experiments/min-fresh-experiment-protocol.md`,
 `reports/min-fresh-experiment.json`).
 
 The outcome is a **non-inferiority result with boundary selection**: every

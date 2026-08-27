@@ -18,7 +18,7 @@ only published once a fix is available.
 This project's default configuration is intended for local,
 single-machine development and demonstration use, not a shared or
 production deployment. Known, disclosed limitations of that default
-configuration (documented in `docs/configuration.md` and
+configuration (documented in `docs/operations/configuration.md` and
 `docker-compose.yml`) — for example, Kafka running without
 authentication — are not considered vulnerabilities on their own; a
 real bypass of an intended control, or an issue in application code

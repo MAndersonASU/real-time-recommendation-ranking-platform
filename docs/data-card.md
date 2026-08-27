@@ -21,14 +21,14 @@ reported.
   annotations, and user impression logs with click labels.
 - **MIND-large** (used only for the scale and performance work's explicitly scoped scale
   testing): the official larger release of the same schema — full
- detail and measured scaling factors: `docs/mind-large.md`.
-- **Real splits** (`docs/splits.md`): `train` (126,695 rows,
+ detail and measured scaling factors: `docs/experiments/mind-large.md`.
+- **Real splits** (`docs/experiments/splits.md`): `train` (126,695 rows,
   2019-11-09 to 2019-11-13), `validation` (30,270 rows, 2019-11-14),
   `replay` (73,152 rows, 2019-11-15, MIND's own official dev window,
  used for streaming replay and replay evaluation; no longer untouched). Split
   boundaries are time-ordered, never randomly shuffled, and a leakage
   assertion is enforced and tested.
-- **measured properties** (`docs/data-quality.md`): overall CTR
+- **measured properties** (`docs/experiments/data-quality.md`): overall CTR
   ~4.04–4.06%; only 39.6% (train) / 12.7% (dev) of catalog articles
   ever receive an impression in a given window; `news` and `sports`
   alone make up 59.1% of the catalog; user history is null on ~2–3% of
@@ -66,7 +66,7 @@ project's own source-separation rule follows directly from that term:
 the raw and validated MIND files are never committed to this
 repository, gitignored at every stage, and CI never downloads or
 touches them — every CI-verified test uses small synthetic fixtures
-instead (`docs/ci-automation.md`). Canonical source, real SHA-256
+instead (`docs/operations/ci-automation.md`). Canonical source, real SHA-256
 checksums for the files this project actually ingested, and the full
 license text review: `docs/dataset-source.md`.
 

@@ -18,7 +18,7 @@ def split_train_for_tuning(
     `validation`, which was then also used for every final reported
     metric -- model/hyperparameter-selection leakage, even though no
     gradient-based training ever touched validation directly
-    (docs/evaluation-protocol.md).
+    (docs/experiments/evaluation-protocol.md).
 
     Carved from `train` alone, by a fixed seed, so it never overlaps
     with `validation` or `replay` by construction. Any future feature
@@ -29,7 +29,7 @@ def split_train_for_tuning(
     same rows, before this fold existed -- this fold's own real value
     is confirming whether the *decisions* (not the model's fitted
     weights) hold up on data that was never used to make them, which is
-    exactly what leaked. See `docs/evaluation-integrity.md`.
+    exactly what leaked. See `docs/experiments/evaluation-integrity.md`.
     """
     impression_ids = train_rows["impression_id"].unique()
     rng = np.random.default_rng(seed)
@@ -51,7 +51,7 @@ def chronological_tuning_split_impression_ids(
     instead of `split_train_for_tuning`'s random-by-impression_id split.
 
     Built specifically to test one real, unresolved finding
-    (`docs/evaluation-integrity.md`): the random split's popularity
+    (`docs/experiments/evaluation-integrity.md`): the random split's popularity
     re-verification did not reconfirm the original validation-based
     result (AUC 0.665 vs. 0.47), and a plausible but unconfirmed
     explanation was that `train`'s own rows all sit within the same
@@ -59,7 +59,7 @@ def chronological_tuning_split_impression_ids(
     very same hours sit next to each other -- letting short-term
     popularity recency (an item hot this hour is usually still hot next
     hour) leak across the split in a way the real `validation` split (a
-    separate, later day, `docs/evaluation-protocol.md`) never could. A
+    separate, later day, `docs/experiments/evaluation-protocol.md`) never could. A
     chronological split gives `tune` the same kind of real temporal gap
     from `fit` that `validation` has from `train`, directly testing that
     explanation rather than leaving it a hypothesis.

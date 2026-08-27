@@ -27,7 +27,7 @@ def test_relevance_metrics_recall_uses_the_true_total_not_the_slate_alone():
     # The slate only shows one of the impression's real clicks -- the other
     # fell outside the slate entirely and isn't even represented as a row
     # here, the same situation the retrieval evaluation
-    # (docs/retrieval-evaluation.md) had to correct for. Passing true_relevant_count=2 must yield recall 0.5,
+    # (docs/experiments/retrieval-evaluation.md) had to correct for. Passing true_relevant_count=2 must yield recall 0.5,
     # not 1.0 (which is what inferring the total from this slate alone
     # would wrongly give).
     ordered = pd.DataFrame({"news_id": ["A", "B"], "clicked": [1, 0]})

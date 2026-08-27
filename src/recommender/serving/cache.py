@@ -14,7 +14,7 @@ DEFAULT_MAX_AGE_SECONDS = 24 * 60 * 60.0
 
 @dataclass
 class DurableFeatureCache:
-    """Durable features (`docs/online-features.md`) are computed offline
+    """Durable features (`docs/operations/online-features.md`) are computed offline
     and refreshed occasionally, not per request.
 
     Two different times matter here, and conflating them is what made an
@@ -148,7 +148,7 @@ def _latest_event_time(behaviors: pd.DataFrame) -> datetime | None:
         return None
     stamp = latest.to_pydatetime()
     # Dataset timestamps are naive-but-UTC by this project's convention
-    # (`docs/evaluation-protocol.md`); attach UTC so comparisons against
+    # (`docs/experiments/evaluation-protocol.md`); attach UTC so comparisons against
     # a real clock are between two aware values.
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 

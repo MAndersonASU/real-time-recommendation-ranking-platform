@@ -42,7 +42,7 @@ def hour_of_day(timestamp) -> int:
     Removing the feature outright would close the gap; it is kept because
     it carries the smallest coefficient in the trained model and removing
     it would invalidate every published number for a marginal input. That
-    tradeoff is recorded rather than hidden (`docs/feature-parity.md`).
+    tradeoff is recorded rather than hidden (`docs/experiments/feature-parity.md`).
     """
     stamp = pd.Timestamp(timestamp)
     return int(stamp.hour)

@@ -13,7 +13,7 @@ REPORT_PATH = Path("data/processed/mind_small/ablation_report.json")
 
 # `popularity` is already excluded from every trained ranking model
 # (recommender.ranking.train -- it scores worse than random on validation,
-# docs/ranking-model.md). Dropping `retrieval_score` on top of that
+# docs/experiments/ranking-model.md). Dropping `retrieval_score` on top of that
 # isolates the retrieval-feature ablation specifically, leaving the four
 # remaining handcrafted features untouched.
 NO_RETRIEVAL_SCORE_FEATURES = [c for c in FEATURE_COLUMNS if c not in ("popularity", "retrieval_score")]
@@ -52,7 +52,7 @@ ABLATION_MATRIX = [
             "baseline, not recomputed here."
         ),
         status="reuses_existing_tracked_run",
-        source="retrieval_score_as_sort_key_k10 (docs/ranking-evaluation.md)",
+        source="retrieval_score_as_sort_key_k10 (docs/experiments/ranking-evaluation.md)",
     ),
     AblationSpec(
         name="no_reranking",
@@ -63,7 +63,7 @@ ABLATION_MATRIX = [
             "ranked-only row of the reranking tradeoff table."
         ),
         status="reuses_existing_tracked_run",
-        source="ranking_model_k10 vs reranking_diverse_fresh_k10 (docs/reranking-evaluation.md)",
+        source="ranking_model_k10 vs reranking_diverse_fresh_k10 (docs/experiments/reranking-evaluation.md)",
     ),
     AblationSpec(
         name="no_recent_streaming_features",
@@ -75,7 +75,7 @@ ABLATION_MATRIX = [
             "replay_evaluation) with one added use_recent_features toggle."
         ),
         status="new_this_step",
-        source="ablation_no_recent_features_replay vs ablation_with_recent_features_replay (docs/ablations.md)",
+        source="ablation_no_recent_features_replay vs ablation_with_recent_features_replay (docs/experiments/ablations.md)",
     ),
     AblationSpec(
         name="approximate_index",
@@ -86,7 +86,7 @@ ABLATION_MATRIX = [
             "sweep over the candidate index."
         ),
         status="reuses_existing_tracked_run",
-        source="docs/faiss-index.md (nprobe sweep)",
+        source="docs/archive/faiss-index.md (nprobe sweep)",
     ),
 ]
 

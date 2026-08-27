@@ -10,13 +10,13 @@ TOP_N_FOR_CONCENTRATION = 10
 class QualitySignalTracker:
     """Real ML quality signals, computed over a bounded rolling window of
     actual recent responses -- distinct from the per-request operational
-    counters in `docs/operational-metrics.md`, since a score
+    counters in `docs/operations/operational-metrics.md`, since a score
     distribution, a diversity figure, or a concentration measure only
     means something in aggregate, never from a single response alone.
 
     A single instance is shared across every request FastAPI serves,
     and a plain synchronous `def` route runs in a worker thread pool
-    (docs/operational-metrics.md), so `record()` and `snapshot()` are
+    (docs/operations/operational-metrics.md), so `record()` and `snapshot()` are
     genuinely called concurrently from multiple real threads, not just
     hypothetically. A real, reproducible race existed here: `record()`
     inserting a never-seen-before `news_id` into `_recommended_counts`

@@ -52,7 +52,7 @@ received. **This is the number to judge the system by.**
 The frozen research protocol scores MIND's own supplied impression
 candidate list — a few dozen items per impression, already containing
 the click — to isolate ranking quality from retrieval quality
-(`docs/evaluation-protocol.md`, 30,270 impressions, K=10):
+(`docs/experiments/evaluation-protocol.md`, 30,270 impressions, K=10):
 
 | Stage | Hit rate@10 | NDCG@10 |
 |---|---|---|
@@ -68,7 +68,7 @@ section above is that. The learned ranking model is the clearest gain
 within this protocol; reranking trades a small, measured amount of
 relevance (−2.2% hit rate) for a diversity and freshness improvement
 (mean distinct categories per slate +15.1%, slates below the freshness
-quota −9.8% relative, `docs/reranking-evaluation.md`).
+quota −9.8% relative, `docs/experiments/reranking-evaluation.md`).
 
 Retrieval was originally diagnosed as weak in isolation and traced to a
 specific, quantified cause: the item tower represented every article by
@@ -76,13 +76,13 @@ category and subcategory alone, collapsing 51,282 items into 284
 distinct embedding vectors. That cause has since been fixed by giving
 each article a content vector from its own title and abstract —
 distinct embeddings rose to 50,704 and retrieval metrics improved 7.6x
-to 13.5x (`docs/retrieval-evaluation.md`). It is still not a strong
-retriever in absolute terms, and `docs/serving-path-end-to-end-evaluation.md`
+to 13.5x (`docs/experiments/retrieval-evaluation.md`). It is still not a strong
+retriever in absolute terms, and `docs/experiments/serving-path-end-to-end-evaluation.md`
 reports what that means for the assembled system without rounding it up.
 
 A consolidated ablation study, a real per-user-segment failure
 analysis, and the full set of open questions this evidence does and
-doesn't support are in `docs/ablations.md`, `docs/failure-analysis.md`,
+doesn't support are in `docs/experiments/ablations.md`, `docs/experiments/failure-analysis.md`,
 and `docs/conclusions.md`.
 
 ## Architecture
@@ -103,17 +103,17 @@ recommendation pipeline, using a small local model
 recommendation already made. The layer's structural boundary (it can
 only ever describe a decision already made elsewhere, never feed back
 into ranking) is enforced by the request type itself
-(`docs/explanation-boundary.md`). The factual relationship is stated
+(`docs/experiments/explanation-boundary.md`). The factual relationship is stated
 by one of a small set of approved templates filled from validated
 values — a generative model never states it. Generative rewriting
 exists but is opt-in and off by default, because the only automated
 check available for generated wording is lexical, and a lexical check
-cannot validate meaning (`docs/explanation-generation.md`,
-`docs/explanation-evaluation.md`).
+cannot validate meaning (`docs/experiments/explanation-generation.md`,
+`docs/experiments/explanation-evaluation.md`).
 
 ## What CI actually runs, and what's verified locally instead
 
-CI ([`docs/ci-automation.md`](docs/ci-automation.md)) runs four jobs on
+CI ([`docs/operations/ci-automation.md`](docs/operations/ci-automation.md)) runs four jobs on
 pushes to `main` and on pull requests targeting `main`:
 
 - **Linting, static security analysis, and the full test suite** behind
@@ -143,7 +143,7 @@ every result that depends on real data
 the evaluation reports) is produced locally by the maintainer and
 documented here. Failure paths — a stopped dependency, a missing model
 file, a restarted container — are tested the same way
-(`docs/restart-and-failure-testing.md`).
+(`docs/operations/restart-and-failure-testing.md`).
 
 ## Getting started
 
@@ -205,33 +205,37 @@ see `requirements-lock.txt`.
 
 ## Documentation index
 
-- **Research** — [`docs/research-scenario.md`](docs/research-scenario.md) (frozen questions/scope),
-  [`docs/evaluation-protocol.md`](docs/evaluation-protocol.md) (frozen metrics/split),
-  [`docs/evaluation-integrity.md`](docs/evaluation-integrity.md) (held-out evaluation leakage found and
-  fixed), [`docs/serving-path-end-to-end-evaluation.md`](docs/serving-path-end-to-end-evaluation.md),
-  [`docs/conclusions.md`](docs/conclusions.md) (final answers), [`docs/limitations.md`](docs/limitations.md),
-  [`docs/ablations.md`](docs/ablations.md), [`docs/failure-analysis.md`](docs/failure-analysis.md)
-- **Data** — [`docs/data-card.md`](docs/data-card.md), [`docs/dataset-source.md`](docs/dataset-source.md),
-  [`docs/data-quality.md`](docs/data-quality.md), [`docs/splits.md`](docs/splits.md)
-- **Modeling** — [`docs/retrieval-model.md`](docs/retrieval-model.md), [`docs/ranking-model.md`](docs/ranking-model.md),
-  [`docs/reranking-diversity.md`](docs/reranking-diversity.md), [`docs/reranking-freshness.md`](docs/reranking-freshness.md)
-- **Streaming & serving** — [`docs/event-schema.md`](docs/event-schema.md), [`docs/kafka-local.md`](docs/kafka-local.md),
-  [`docs/online-features.md`](docs/online-features.md), [`docs/inference-path.md`](docs/inference-path.md),
-  [`docs/serving-fallback.md`](docs/serving-fallback.md)
-- **Operations** — [`docs/containerization.md`](docs/containerization.md), [`docs/health-checks.md`](docs/health-checks.md),
-  [`docs/operational-metrics.md`](docs/operational-metrics.md), [`docs/dashboard.md`](docs/dashboard.md),
-  [`docs/structured-logging.md`](docs/structured-logging.md)
-- **Explanation layer** — [`docs/explanation-boundary.md`](docs/explanation-boundary.md),
-  [`docs/explanation-retrieval.md`](docs/explanation-retrieval.md), [`docs/explanation-generation.md`](docs/explanation-generation.md),
-  [`docs/explanation-evaluation.md`](docs/explanation-evaluation.md)
-- **Architecture** — [`docs/architecture.md`](docs/architecture.md) (system design, module
-  ownership, and every real design decision with its reasoning)
-- **Demonstration & reproducibility** — [[`docs/demonstration-guide.md`](docs/demonstration-guide.md),
-  [`docs/reproducibility.md`](docs/reproducibility.md), [[`docs/engineering-review-and-hardening.md`](docs/engineering-review-and-hardening.md)](docs/engineering-review-and-hardening.md)
-  (review scope, methodology, and disclosed limitations), [`CHANGELOG.md`](CHANGELOG.md)
-- **Machine-readable results** — [`reports/`](reports/) (one JSON per
-  headline table, each with metric definitions, denominators, sampling,
-  provenance and limitations)
+Five entry points. Everything else is detail beneath them.
+
+| Start here | For |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | What the system is now: components, data flow, artifact boundaries, failure behaviour |
+| [`docs/evaluation.md`](docs/evaluation.md) | The two protocols, results, integrity and limitations |
+| [`docs/operations.md`](docs/operations.md) | Streaming, serving, observability, containers |
+| [`docs/engineering-review.md`](docs/engineering-review.md) | Review status, open findings, evidence gaps |
+| [`docs/conclusions.md`](docs/conclusions.md) | What the evidence answers, and what it does not |
+
+**Research contract** — [`docs/research-scenario.md`](docs/research-scenario.md)
+(frozen questions and scope), [`docs/limitations.md`](docs/limitations.md)
+(what no number here can show).
+
+**Data governance** — [`docs/data-card.md`](docs/data-card.md),
+[`docs/dataset-source.md`](docs/dataset-source.md).
+
+**Detail** — [`docs/experiments/`](docs/experiments/) holds the individual
+experiments and measurements; [`docs/operations/`](docs/operations/) holds
+the runtime detail; [`docs/archive/`](docs/archive/) holds superseded
+historical measurements, each labelled as such.
+
+**Machine-readable results** — [`reports/`](reports/), one JSON per
+published table, each with metric definitions, denominators, sampling,
+provenance and limitations.
+
+**Also** — [`docs/architecture-decisions.md`](docs/architecture-decisions.md)
+(dated decision history),
+[`docs/reproducibility.md`](docs/reproducibility.md) (clean-environment
+verification scope), [`docs/demonstration-guide.md`](docs/demonstration-guide.md),
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

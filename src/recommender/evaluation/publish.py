@@ -119,7 +119,7 @@ def publish_retrieval_report(raw: dict, sampling: dict = FULL_POPULATION, output
             (
                 "Post-selection development evaluation: the content-aware item tower "
                 "was developed after observing validation behaviour, so this is not an "
-                "untouched final generalization estimate. docs/evaluation-protocol.md "
+                "untouched final generalization estimate. docs/experiments/evaluation-protocol.md "
                 "records the leakage-free fit-half comparison that bounds how much of "
                 "this figure that development could account for."
             ),
@@ -407,7 +407,7 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict, output_dir=No
 
     Named as an experiment rather than an evaluation because that is what
     it is: a rule declared and committed before the run, applied to its
-    output without adjustment. `docs/min-fresh-experiment-protocol.md`
+    output without adjustment. `docs/experiments/min-fresh-experiment-protocol.md`
     is the frozen protocol, and the commit that added it precedes the
     commit that produced these numbers.
     """
@@ -415,7 +415,7 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict, output_dir=No
         "report_name": "min-fresh-experiment",
         "dataset": {**MIND_DATASET, "split": "complete tuning fold carved from train"},
         "configuration": {
-            "protocol": "docs/min-fresh-experiment-protocol.md (frozen before the run)",
+            "protocol": "docs/experiments/min-fresh-experiment-protocol.md (frozen before the run)",
             "quotas_evaluated": raw["selection_rule"]["quotas_evaluated"],
             "primary_metric": "ndcg_at_10",
             "guardrail_metric": "hit_rate_at_10",

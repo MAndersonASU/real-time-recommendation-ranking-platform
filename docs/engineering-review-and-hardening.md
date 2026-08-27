@@ -146,14 +146,14 @@ generalization estimates.
 | End-to-end hit rate@10 | 0.0005 | **0.0084** |
 | End-to-end MRR | 0.000125 | **0.0048** |
 
-Protocol: K=10, frozen evaluation contract (`docs/evaluation-protocol.md`).
+Protocol: K=10, frozen evaluation contract (`docs/experiments/evaluation-protocol.md`).
 Full metric definitions and denominators: `reports/`.
 
 ### Tuning-fold evaluation
 
 Diversity cap, freshness threshold, minimum-fresh quota and retrieval
 depth were compared against alternatives on a fold carved from `train`,
-never on `validation` (`docs/evaluation-integrity.md`).
+never on `validation` (`docs/experiments/evaluation-integrity.md`).
 
 These comparisons are now run against a feature table built from a
 retrieval model trained on the fit half alone
@@ -191,7 +191,7 @@ Three further reasons the table does not settle the question:
   isolate.
 
 **That experiment has since been run**
-(`docs/min-fresh-experiment-protocol.md`, frozen before the run;
+(`docs/experiments/min-fresh-experiment-protocol.md`, frozen before the run;
 `reports/min-fresh-experiment.json`). Complete tuning fold: 25,140
 impressions, 18,227 users, 125,700 slates, five quotas on identical
 impressions, judged on held-out clicks rather than predicted score, with
@@ -216,7 +216,7 @@ benefit requirement, so once every candidate cleared the floors the
 selection fell on the largest value tested -- the boundary of the
 candidate set, not an interior optimum. That is the same
 monotone-trivial failure the diversity-cap rule made once
-(`docs/evaluation-integrity.md`), reappearing on the other side: there,
+(`docs/experiments/evaluation-integrity.md`), reappearing on the other side: there,
 a benefit-only rule always chose the largest; here, a cost-only rule did
 the same once the cost proved immeasurable.
 
@@ -321,7 +321,7 @@ concealed failures.
 
 - `CHANGELOG.md` — user-visible and architectural changes.
 - `reports/` — machine-readable evaluation results with provenance.
-- `docs/evaluation-integrity.md` — tuning-fold methodology, including
+- `docs/experiments/evaluation-integrity.md` — tuning-fold methodology, including
   two selection rules that failed and how they were replaced.
-- `docs/retrieval-evaluation.md`, `docs/serving-path-end-to-end-evaluation.md`
+- `docs/experiments/retrieval-evaluation.md`, `docs/experiments/serving-path-end-to-end-evaluation.md`
   — current measurements in context.

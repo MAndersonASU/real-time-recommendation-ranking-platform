@@ -32,7 +32,7 @@ def order_and_limit(exploded: pd.DataFrame, limit: int | None = None) -> pd.Data
 
 def load_replay_events(limit: int | None = None) -> pd.DataFrame:
     """Chronologically ordered (impression, candidate) rows from the
-    reserved `replay` split (docs/splits.md) -- MIND's official dev day,
+    reserved `replay` split (docs/experiments/splits.md) -- MIND's official dev day,
     held untouched from the start specifically for this phase.
     """
     behaviors = load_split("replay")
@@ -53,7 +53,7 @@ def sleep_seconds_for_gap(gap_seconds: float, speed: float) -> float:
 def events_for_row(row) -> tuple:
     """The two events one exploded (impression, candidate) row produces:
     an impression, always, plus either a click or a derived skip
-    (docs/event-schema.md). MIND carries no separate click timestamp, so
+    (docs/operations/event-schema.md). MIND carries no separate click timestamp, so
     both share the impression's own time rather than fabricating a delay.
     """
     timestamp = row.time.isoformat()
@@ -77,7 +77,7 @@ def replay(
     of history in about 24 real seconds. Never loaded or sent as one
     batch: each row is paced individually against the row before it, and
     every candidate produces two events -- an impression, always, plus
-    either a click or a derived skip (docs/event-schema.md) -- since MIND
+    either a click or a derived skip (docs/operations/event-schema.md) -- since MIND
     carries no separate click timestamp, both share the impression's own
     time rather than fabricating a delay.
     """

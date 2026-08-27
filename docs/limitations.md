@@ -21,7 +21,7 @@ bolted on afterward.
 ## Cold start, measured directly, not assumed
 
 the online feature store.5 built explicit fallback behavior for users with no known
-features. Replay-based evaluation (`docs/replay-evaluation.md`) measured how common that actually is in practice, using
+features. Replay-based evaluation (`docs/experiments/replay-evaluation.md`) measured how common that actually is in practice, using
 this project's own real feature stores: of 499 sampled `replay`-split
 users, **92.4% never appeared in the `validation` split** the durable
 cache is built from, and **0% had any live Redis record at all** at the
@@ -37,7 +37,7 @@ request:
 
 - **History length.** Offline training's content-similarity profile
   (`ranking/features.py`) pools a user's entire recorded history,
-  uncapped. The live path (`docs/inference-path.md`) only ever has
+  uncapped. The live path (`docs/operations/inference-path.md`) only ever has
  access to a user's last 20 recent clicks, the cap the online feature store's Redis
   store chose for latency reasons. `user_history_length` at serving
   time deliberately reads from the durable `lifetime_click_count` field
@@ -45,14 +45,14 @@ request:
   silent mismatch on top of this one.
 - **Feature staleness.** Durable features are **never refreshed**. They
   are a frozen historical snapshot of a 2019 dataset
-  (`docs/serving-cache.md`), and restarting the service reloads the same
+  (`docs/operations/serving-cache.md`), and restarting the service reloads the same
   data rather than making it newer. The 24-hour value is a staleness
   *threshold* that this snapshot exceeds permanently and by design, not
   a refresh cadence. An earlier version of this line described it as a
   cadence, which implied an automated refresh that does not exist.
   `/ready` reports the real age and states the policy.
 
-Replay-based evaluation (`docs/replay-evaluation.md`) is the first place
+Replay-based evaluation (`docs/experiments/replay-evaluation.md`) is the first place
 these two gaps were measured together on real data, rather than
 reasoned about individually.
 
@@ -62,7 +62,7 @@ MIND's impression logs are themselves the output of Microsoft's own,
 different, already-deployed recommender — a fact never stated plainly
 until now, though every evaluation in this project has depended on it.
 A user could only ever click an article that some earlier system chose
-to show them. Every metric in this project (`docs/evaluation-protocol.md` onward) measures agreement with *that* system's own past
+to show them. Every metric in this project (`docs/experiments/evaluation-protocol.md` onward) measures agreement with *that* system's own past
 selections, not true, unconditional relevance to the user. An article
 this project's model would have correctly recommended, but the original
 system never displayed, has no way to appear as a "hit" in any of these
@@ -82,7 +82,7 @@ prove. Confirming that this project's system would perform differently
 against genuinely different candidate sets — the actual question a real
 production deployment cares about — requires a live experiment (a real
 A/B test) that this project's frozen research scope (`docs/research-scenario.md`) explicitly does not attempt, and the replay-based
-evaluation (`docs/replay-evaluation.md`) was equally
+evaluation (`docs/experiments/replay-evaluation.md`) was equally
 explicit about not pretending to be one.
 
 ## New articles cannot be served without a refit

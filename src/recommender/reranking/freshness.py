@@ -2,7 +2,7 @@ import pandas as pd
 
 from recommender.data.mind import explode_impressions
 
-# Chosen from real measurement (docs/reranking-freshness.md): at a 0.5-day
+# Chosen from real measurement (docs/experiments/reranking-freshness.md): at a 0.5-day
 # (12-hour) threshold, 36.3% of all validation candidate rows count as
 # fresh and only 0.7% of impressions have zero fresh candidates available
 # at all -- common enough that a quota is almost always satisfiable,
@@ -10,7 +10,7 @@ from recommender.data.mind import explode_impressions
 #
 # This was originally a validation-based decision, later reported
 # against that same validation split -- a real form of leakage
-# (docs/evaluation-integrity.md). Independently reconfirmed against a
+# (docs/experiments/evaluation-integrity.md). Independently reconfirmed against a
 # held-out fold carved from train instead (32.3% fresh-row rate, 3.4%
 # zero-fresh-impression rate) -- the same conclusion, not just noise fit
 # to validation.
@@ -22,14 +22,14 @@ def compute_first_seen(train: pd.DataFrame, exploded: pd.DataFrame | None = None
     """Earliest impression time at which each item appears as a candidate
     in `train` -- the only per-item timestamp signal this dataset has at
     all. `news.tsv` carries no publish date (already found in
-    docs/ranking-features.md), and a `history` entry carries no timestamp
+    docs/experiments/ranking-features.md), and a `history` entry carries no timestamp
     of its own; only the surrounding impression's own time does.
 
     `exploded` lets a caller that already has `explode_impressions(train)`
     (e.g. `recommender.serving.pipeline.build_serving_context`, which also
     needs it for `compute_popularity`) pass it straight through instead of
     this function re-deriving its own copy of the same multi-million-row
-    frame (docs/profile-hotspots.md).
+    frame (docs/experiments/profile-hotspots.md).
     """
     exploded = exploded if exploded is not None else explode_impressions(train)
     return exploded.groupby("news_id")["time"].min()

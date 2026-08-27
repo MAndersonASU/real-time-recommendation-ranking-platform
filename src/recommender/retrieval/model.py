@@ -15,7 +15,7 @@ class ItemTower(nn.Module):
     only 284 distinct values across this catalog's 51,282 items, so a
     tower built from them alone emits just 284 distinct vectors and
     retrieval can only ever identify the right topic, never the right
-    article inside it (`docs/retrieval-evaluation.md`).
+    article inside it (`docs/experiments/retrieval-evaluation.md`).
     """
 
     def __init__(

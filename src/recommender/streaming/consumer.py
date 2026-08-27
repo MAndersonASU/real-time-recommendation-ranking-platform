@@ -76,7 +76,7 @@ class UserState:
     """Recent, in-process state for one user -- not a durable store; a
     low-latency store (Redis) is Phase 7's separate concern. Bounded to
     the most recent `MAX_RECENT_ITEMS` clicks, the same fixed-window idea
-    already used for offline click history (docs/retrieval-model.md), now
+    already used for offline click history (docs/experiments/retrieval-model.md), now
     built from live events instead of a pre-collected history string.
     """
 
@@ -169,7 +169,7 @@ class StreamConsumer:
         (SyncingStreamConsumer) can restore real prior state instead of
         starting empty after every restart -- an in-process-only default
         here silently overwrote a durable record with a blank one on
-        the very first event after a restart (docs/recovery-testing.md).
+        the very first event after a restart (docs/operations/recovery-testing.md).
         """
         return self.user_states.setdefault(user_id, UserState())
 

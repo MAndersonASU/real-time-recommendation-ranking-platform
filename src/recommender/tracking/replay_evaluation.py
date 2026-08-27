@@ -37,7 +37,7 @@ def evaluate_via_replay(
     query-embedding benchmark.
 
     `use_recent_features=False` runs the recent-streaming-features
-    ablation (docs/ablations.md): every call forces the online lookup to
+    ablation (docs/experiments/ablations.md): every call forces the online lookup to
     skip Redis entirely, as if no live Kafka/Redis feed existed. Each
     call's real `feature_lookup_ms` is collected via `stage_timings` so
     the ablation's latency change, not just its quality change, comes

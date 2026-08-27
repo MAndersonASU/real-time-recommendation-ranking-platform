@@ -101,7 +101,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       # A real REDIS_PASSWORD set in a local .env file is passed through
       # to this container's own environment here, so the app's Settings
-      # actually see it. See docs/configuration.md and .env.example.
+      # actually see it. See docs/operations/configuration.md and .env.example.
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       API_PORT: ${API_PORT:-8000}
     volumes:

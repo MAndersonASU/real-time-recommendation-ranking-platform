@@ -8,7 +8,7 @@ of curated screenshots. Implementation:
 ## What the page shows
 
 - **Per-stage latency** — the same six-stage breakdown
-  `docs/serving-latency.md` already measures, read directly from
+  `docs/experiments/serving-latency.md` already measures, read directly from
   `recommend()`'s own `stage_timings` for this specific request.
 - **Personalization status** — the real `durable_features_used` /
   `recent_features_used` flags on the response, labeled plainly as
@@ -16,7 +16,7 @@ of curated screenshots. Implementation:
 - **The ranked slate** — rank, real title (looked up from the same
  catalog every component uses), category, and calibrated score.
 - **A real explanation per item** — the optional explanation layer
-  (`docs/explanation-boundary.md`) called live against this request's
+  (`docs/experiments/explanation-boundary.md`) called live against this request's
   real matched signals, showing an honest "no explanation: insufficient
   evidence" line rather than a blank space when there's genuinely
   nothing to cite.
@@ -39,10 +39,10 @@ curl "http://localhost:8000/demo/U73700?num_candidates=3"
 Against the real rebuilt container, alongside real Kafka and Redis:
 returned a real page for real validation-split user `U73700` —
 "Partially personalized," total latency 11.24ms (consistent with the
-~12.79ms p50 already measured in `docs/serving-latency.md`), a real
+~12.79ms p50 already measured in `docs/experiments/serving-latency.md`), a real
 per-stage breakdown (reranking the largest single cost at 4.58ms, the
 same finding as that earlier measurement), three real catalog
 articles with their real titles, and a real explanation for each item
 ("Recommended because it matches your interest in lifestyle.") — the
-same template-fallback behavior `docs/explanation-generation.md`
+same template-fallback behavior `docs/experiments/explanation-generation.md`
 already found to be the common case for this small local model.

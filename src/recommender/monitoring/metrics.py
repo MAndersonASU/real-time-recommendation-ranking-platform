@@ -34,17 +34,17 @@ RECENT_CACHE_COUNT = Counter(
 
 # Feature-lookup latency specifically, not just total request time --
 # reuses the same stage name the per-stage latency breakdown's
-# per-request instrumentation already produces (docs/serving-latency.md).
+# per-request instrumentation already produces (docs/experiments/serving-latency.md).
 FEATURE_LOOKUP_LATENCY_SECONDS = Histogram(
     "recommend_feature_lookup_latency_seconds", "Online feature lookup stage latency"
 )
 
 # Kafka lag has a real, honest scope note: the live API never consumes
-# from Kafka (docs/restart-and-failure-testing.md confirmed and removed
+# from Kafka (docs/operations/restart-and-failure-testing.md confirmed and removed
 # that coupling entirely) --
 # only the offline streaming consumer processes from Phase 6 do. This
 # gauge exists as the metric *contract* a running consumer process would
-# report into (docs/operational-metrics.md); it has no value here
+# report into (docs/operations/operational-metrics.md); it has no value here
 # because no consumer runs continuously as part of this service.
 KAFKA_CONSUMER_LAG = Gauge(
     "recommend_kafka_consumer_lag", "Kafka consumer lag, reported by a running stream consumer"
@@ -82,7 +82,7 @@ def record_feature_lookup_latency(seconds: float) -> None:
     FEATURE_LOOKUP_LATENCY_SECONDS.observe(seconds)
 
 
-# ML quality signals (docs/ml-quality-signals.md): distinct from the
+# ML quality signals (docs/operations/ml-quality-signals.md): distinct from the
 # operational metrics above because a score distribution, diversity
 # figure, coverage fraction, or concentration measure only means
 # anything computed over many recent responses, never from one request

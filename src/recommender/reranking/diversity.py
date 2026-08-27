@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Chosen from real measurement (docs/reranking-diversity.md), not guessed:
+# Chosen from real measurement (docs/experiments/reranking-diversity.md), not guessed:
 # 53.1% of naive top-10 slates already carry 4+ items from a single
 # category on the real validation set, so a cap of 3 changes a majority of
 # slates. Near-duplicate content similarity above 0.5 covers only ~0.25%
@@ -9,7 +9,7 @@ import pandas as pd
 #
 # This was originally a validation-based decision, later reported
 # against that same validation split -- a real form of leakage
-# (docs/evaluation-integrity.md). Independently reconfirmed against a
+# (docs/experiments/evaluation-integrity.md). Independently reconfirmed against a
 # held-out fold carved from train instead (59.6% four-plus rate, 7.4%
 # single-category rate) -- the same conclusion, not just noise fit to
 # validation.

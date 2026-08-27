@@ -12,7 +12,7 @@ REPORT_PATH = Path("data/processed/mind_small/parity_verification_report.json")
 
 
 def verify_parity(min_distinct_times: int = 5) -> dict:
-    """Picks one real user from the reserved replay split (docs/splits.md)
+    """Picks one real user from the reserved replay split (docs/experiments/splits.md)
     who was shown impressions at several genuinely different times (not
     just many candidate rows within a single session -- explode_impressions
     gives every candidate in one impression the same timestamp, so row

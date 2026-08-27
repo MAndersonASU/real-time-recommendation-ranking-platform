@@ -47,7 +47,7 @@ def get_online_features(
 
     `use_recent_features=False` skips the Redis lookup entirely and
     always falls back to the same neutral default -- the recent-
-    streaming-features ablation (docs/ablations.md), simulating a system
+    streaming-features ablation (docs/experiments/ablations.md), simulating a system
     with no live Kafka/Redis feed at all rather than merely an empty one.
     """
     durable = durable_features_by_user.get(user_id)

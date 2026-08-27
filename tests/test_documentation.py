@@ -136,7 +136,9 @@ def test_documented_numbers_match_reports(report_name, keys, spec, doc_name) -> 
     value = doc
     for key in keys:
         value = value[key]
-    text = (DOCS / doc_name).read_text(encoding="utf-8")
+    matches = sorted(DOCS.rglob(doc_name))
+    assert matches, f"{doc_name} not found under docs/"
+    text = matches[0].read_text(encoding="utf-8")
     rendered = _fmt(value, spec)
     assert rendered in text, (
         f"{doc_name} does not contain {rendered} for "
@@ -156,7 +158,7 @@ def test_explanation_metric_is_named_for_what_it_measures() -> None:
 
 
 def test_review_register_tally_matches_its_headings() -> None:
-    register = DOCS / "engineering-review-register.md"
+    register = next(DOCS.rglob("engineering-review-register.md"))
     text = register.read_text(encoding="utf-8")
     headings = re.findall(r"^#{2,4} ([A-Z]+(?:-[A-Z0-9]+)+-\d+)", text, flags=re.MULTILINE)
     claimed = re.search(r"\*\*(\d+) primary findings\*\*", text)

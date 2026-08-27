@@ -77,7 +77,7 @@ Every dependency `pyproject.toml` declares was sufficient on its own —
 nothing "worked" only because it happened to already be present from
 an earlier install. No file under `data/raw/` or any real MIND content
 was needed for this to pass, confirming the CI-mirroring claim in
-`docs/ci-automation.md` holds for a genuinely fresh environment too,
+`docs/operations/ci-automation.md` holds for a genuinely fresh environment too,
 not only inside GitHub's own runners.
 
 ## Results: the containerized services, from the fresh clone
@@ -176,7 +176,7 @@ full suite passed. `pyproject.toml`'s loose lower bounds remain the
 default install path; this file is the exact-reproduction option, not a
 replacement. CI runs both, and additionally audits the locked set with
 `pip-audit` — see `.github/workflows/ci.yml` and
-`docs/ci-automation.md`.
+`docs/operations/ci-automation.md`.
 
 To regenerate after a deliberate dependency change, re-run **both**
 `pip-compile` commands above; do not hand-edit either file, since the

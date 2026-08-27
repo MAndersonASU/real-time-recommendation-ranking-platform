@@ -50,8 +50,8 @@ REPORT_PATH = Path("data/processed/mind_small/tuning_decisions_verification_repo
 # Real numbers as originally reported, measured on `validation` -- the
 # leaked measurements this verification re-checks against the tune
 # fold instead. Recorded here, not re-derived, so this report always
-# compares against the exact historical claim (docs/ranking-model.md,
-# docs/reranking-diversity.md, docs/reranking-freshness.md).
+# compares against the exact historical claim (docs/experiments/ranking-model.md,
+# docs/experiments/reranking-diversity.md, docs/experiments/reranking-freshness.md).
 ORIGINAL_VALIDATION_POPULARITY_AUC = 0.47
 ORIGINAL_VALIDATION_FOUR_PLUS_SAME_CATEGORY_RATE = 0.531
 ORIGINAL_VALIDATION_SINGLE_CATEGORY_RATE = 0.046
@@ -71,7 +71,7 @@ def verify_popularity_exclusion() -> dict:
     already-built `popularity` column re-creates the exact in-sample
     leakage the original exclusion decision itself named as the reason
     popularity looked artificially predictive in the first place
-    (docs/ranking-model.md: "it's an aggregate click count over items
+    (docs/experiments/ranking-model.md: "it's an aggregate click count over items
     that repeat ~272 times on average within train's own exploded
     rows, so it partly correlates with the very labels it's fit on").
     The first version of this check made exactly that mistake and
@@ -111,7 +111,7 @@ def verify_popularity_exclusion() -> dict:
 
 def verify_popularity_exclusion_with_temporal_split() -> dict:
     """Directly tests the one real, unresolved open question left by
-    `verify_popularity_exclusion` (`docs/evaluation-integrity.md`): does
+    `verify_popularity_exclusion` (`docs/experiments/evaluation-integrity.md`): does
     a *random* split of train's own rows let short-term popularity
     recency leak across the fit/tune boundary in a way the real
     `validation` split (a separate, later day) never could?
@@ -495,7 +495,7 @@ def _compare_freshness_threshold_values(
     behavior. Predefined selection rule, decided before looking at the
     numbers this produces: the original threshold was chosen so a
     freshness quota is "almost always satisfiable, scarce enough to
-    mean something" (docs/reranking-freshness.md) -- operationalized
+    mean something" (docs/experiments/reranking-freshness.md) -- operationalized
     here as choosing the smallest threshold whose zero-fresh-impression
     rate stays under 5% (the quota fails outright for less than 1 in 20
     impressions), preferring the smallest such threshold since a
@@ -549,7 +549,7 @@ def _compare_min_fresh_values(
     phrased in freshness terms would be cleared by every candidate and
     would collapse into "pick the largest value tried" -- the defect
     that made the first diversity-cap rule meaningless
-    (docs/evaluation-integrity.md). Relevance is what a quota actually
+    (docs/experiments/evaluation-integrity.md). Relevance is what a quota actually
     spends, so that is what the rule constrains.
     """
     news = news if news is not None else load_catalog()
@@ -661,7 +661,7 @@ def verify_freshness_threshold() -> dict:
 
 
 # The measured p99 for the whole request path is ~17 ms
-# (docs/serving-latency.md), of which Faiss search is ~1 ms. This budget
+# (docs/experiments/serving-latency.md), of which Faiss search is ~1 ms. This budget
 # is the room a deeper search may take *for the search itself* before it
 # stops being free relative to the stages around it -- stated here,
 # before the numbers below are produced, rather than chosen to justify
@@ -688,7 +688,7 @@ def verify_retrieval_depth(
     Run against the tuning fold specifically because changing retrieval
     depth is a hyperparameter decision, and this project's own history
     of making those on `validation` and then reporting against it is the
-    reason `docs/evaluation-integrity.md` exists.
+    reason `docs/experiments/evaluation-integrity.md` exists.
     """
     import time as time_module
 
@@ -775,7 +775,7 @@ def verify_retrieval_depth(
         # Index search is also not where depth actually costs: ranking
         # and reranking both scale with the candidate count, so the real
         # cost has to be read from end-to-end request latency measured
-        # separately (docs/serving-latency.md), not from this column.
+        # separately (docs/experiments/serving-latency.md), not from this column.
         "selection_rule": (
             "none -- reported as a recall/latency tradeoff for a judgment call, "
             "because the search-latency budget did not bind at any depth tried"

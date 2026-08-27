@@ -46,7 +46,7 @@ shown, not necessarily the current design. For current architecture see
   count faster than the complexity justifies.
 - **2026-08-21** — Added `recommender.tracking`, a tenth subpackage, for
   a plain JSONL experiment log
-  ([`docs/experiment-tracking.md`](experiment-tracking.md)). MLflow —
+  ([`docs/experiments/experiment-tracking.md`](experiments/experiment-tracking.md)). MLflow —
   named in the original stack outline as a conditional addition — was
   evaluated with a dependency dry run and rejected: it would downgrade
   the pinned pandas version and add roughly 60 transitive packages for a
@@ -54,7 +54,7 @@ shown, not necessarily the current design. For current architecture see
   need justifies.
 - **2026-08-22** — Added `recommender.explanation`, an eleventh
   subpackage, for the optional generative explanation layer
-  ([`docs/explanation-boundary.md`](explanation-boundary.md)). Kept
+  ([`docs/experiments/explanation-boundary.md`](experiments/explanation-boundary.md)). Kept
   separate from `recommender.serving` deliberately: the explanation layer
   only ever consumes a finished `RecommendationResponse`, and a shared
   package could make it easy to accidentally give it access to

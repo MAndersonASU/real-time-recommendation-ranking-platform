@@ -199,7 +199,7 @@ def health() -> dict:
 
 @app.get("/ready")
 def ready() -> dict:
-    """Readiness, separated from liveness (docs/health-checks.md).
+    """Readiness, separated from liveness (docs/operations/health-checks.md).
     "Ready" means the model, index, and ranking pipeline actually loaded
     -- the one dependency with no per-request fallback, so a caller
     hitting this service before it finishes loading needs a real 503,
@@ -241,7 +241,7 @@ def ready() -> dict:
 @app.get("/metrics")
 def metrics() -> Response:
     """Real operational metrics for this process, in Prometheus's own
-    text format (docs/operational-metrics.md) -- request rate, errors,
+    text format (docs/operations/operational-metrics.md) -- request rate, errors,
     latency, candidate counts, fallback rate, and durable/recent cache
     hit rates, all recorded from the one place a response is actually
     produced below, never a second, separately-tracked copy.
@@ -253,7 +253,7 @@ def metrics() -> Response:
 def dashboard() -> Response:
     """A compact, human-readable view of the few numbers that actually
     reveal whether this system is healthy and whether recommendation
-    behavior is drifting (docs/dashboard.md) -- read live from the same
+    behavior is drifting (docs/operations/dashboard.md) -- read live from the same
     in-process metric objects `/metrics` exposes, not a second store.
     """
     return Response(content=render_dashboard_html(), media_type="text/html")
@@ -325,7 +325,7 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
         tracker.record(response)
         update_quality_gauges(tracker.snapshot())
 
-        # The user id is hashed, not logged raw (docs/structured-logging.md):
+        # The user id is hashed, not logged raw (docs/operations/structured-logging.md):
         # enough for an operator to correlate every log line for one user
         # while debugging, without the real identifier ever sitting in a
         # log file.

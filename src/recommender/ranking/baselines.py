@@ -15,7 +15,7 @@ def compute_popularity(behaviors: pd.DataFrame, exploded: pd.DataFrame | None = 
     needs it for `compute_first_seen`) pass it straight through instead of
     this function re-deriving its own copy -- found to cost ~210MB of real,
     wasted memory re-exploding the same multi-million-row impression log a
-    second time (docs/profile-hotspots.md).
+    second time (docs/experiments/profile-hotspots.md).
     """
     exploded = exploded if exploded is not None else explode_impressions(behaviors)
     return exploded.groupby("news_id")["clicked"].sum()
