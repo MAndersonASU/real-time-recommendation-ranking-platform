@@ -8,11 +8,58 @@ from recommender.evaluation.sampling import (
     describe_sample,
     sample_impression_ids,
 )
+from recommender.features.cold_start import get_online_features
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext
 
 DEFAULT_NUM_IMPRESSIONS = 500
+
+
+def describe_online_feature_coverage(
+    context: ServingContext,
+    num_impressions: int = DEFAULT_NUM_IMPRESSIONS,
+    replay: pd.DataFrame | None = None,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
+) -> dict:
+    """For the same seeded impression sample `evaluate_via_replay` uses,
+    reports how many of the sampled replay users have durable features
+    (built from `validation`) and how many have a live Redis record --
+    the two facts the cold-start explanation in
+    `docs/experiments/replay-evaluation.md` actually depends on, and
+    which previously had no committed, reproducible script computing
+    them at all.
+
+    Uses `get_online_features` directly rather than re-deriving the
+    fallback logic, so this can never silently disagree with what
+    `recommend()` itself does when it looks a user up.
+    """
+    replay = replay if replay is not None else load_split("replay")
+    selected_ids = sample_impression_ids(replay, num_impressions, seed=sample_seed)
+    sampling = describe_sample(replay, selected_ids, seed=sample_seed)
+    sampled = replay[replay["impression_id"].isin(selected_ids)]
+    users = sampled["user_id"].drop_duplicates().tolist()
+
+    durable_present = 0
+    recent_present = 0
+    for user_id in users:
+        lookup = get_online_features(
+            user_id, context.durable_cache.features_by_user, context.redis_client
+        )
+        durable_present += int(not lookup.durable_is_fallback)
+        recent_present += int(not lookup.recent_is_fallback)
+
+    total = len(users)
+    return {
+        "sampled_users": total,
+        "durable_present": durable_present,
+        "durable_absent": total - durable_present,
+        "durable_absent_rate": (total - durable_present) / total if total else None,
+        "recent_present": recent_present,
+        "recent_absent": total - recent_present,
+        "recent_absent_rate": (total - recent_present) / total if total else None,
+        "sampling": sampling,
+    }
 
 
 def evaluate_via_replay(
