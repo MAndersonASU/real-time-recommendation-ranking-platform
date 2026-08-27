@@ -1,0 +1,52 @@
+{
+  "artifacts": {
+    "faiss_exact.index": "b8dce7eecafef25276ceb336d379f652773dec05726af899b3568cb26d843873",
+    "faiss_ivf.index": "9077c73bf521d1a6b7acab486ef57f7c450eae6299c8d0e716581810f35b6883",
+    "item_content.npz": "dbfba306a94f536d78d765f650e6b9c55aa22b75b4031c9f5461f8fb1404c2e0",
+    "ranking/train.parquet": "f186d8a727a4e3720617567a7055b95e9c2add5859b2a1c0d4f838330a4484d9",
+    "ranking/validation.parquet": "ea54171453cc4cb3466490b75953c2bdfdfb0cc1d84554dbec56ae0c4da2dd69",
+    "ranking_model.skops": "df87cee0e68048eb2acd4ebff83efc1aae2b0ebd5bff97c4ac71697033e21fa8",
+    "serving_bundle.json": "75e037df4b8cf656e5892bd606db875a15450c5299ea95f9569cff29486270f2",
+    "splits/replay/behaviors.parquet": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "splits/train/behaviors.parquet": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "splits/validation/behaviors.parquet": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b",
+    "train/news.parquet": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "two_tower_model.pt": "0fdc2b141f14ef3767a513c45608bf1ed2925dbce6bd7b730d6611d7806729f9"
+  },
+  "build_commit": {
+    "commit": "e9a039551816cd11314d89ba87de1d9ad0f200ef",
+    "working_tree_clean": true
+  },
+  "build_procedure": {
+    "script": "rebuild.sh",
+    "script_sha256": "f8c0736c2aa80c49f8a62e357463ec0932d2d39ed07dfd32d993cc529f7c7cf2"
+  },
+  "byte_reproducible_artifacts": [
+    "train/news.parquet",
+    "splits/train/behaviors.parquet",
+    "splits/validation/behaviors.parquet",
+    "splits/replay/behaviors.parquet",
+    "item_content.npz",
+    "two_tower_model.pt"
+  ],
+  "environment": {
+    "dependency_lock_sha256": "ae4fa8551ce0ea742b7c39382650c6b54acf50ce2615dc6fd8fe0b785e36cb6b",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "notes": [
+    "Artifacts listed under byte_reproducible_artifacts rebuild to identical bytes from this commit and these seeds.",
+    "ranking_model.skops is not byte-reproducible: skops writes bytes that differ on every save. Retraining on identical input yields identical coefficients and intercept, verified to zero difference, but a different file hash. Treat its hash as file integrity, not as evidence of a model change."
+  ],
+  "receipt_name": "artifact-build",
+  "schema_version": 1,
+  "seeds": {
+    "content_transform_seed": 42,
+    "retrieval_train_seed": 42
+  },
+  "timing": {
+    "finished": "2026-08-27T02:19:59Z",
+    "receipt_written": "2026-08-27T02:20:01.920776+00:00",
+    "started": "2026-08-27T02:05:27Z"
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "dbfba306a94f",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "df87cee0e680",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "e9a039551816cd11314d89ba87de1d9ad0f200ef"
+  },
+  "configuration": {
+    "candidate_source": "MIND's supplied candidate list for each impression, not the full catalog",
+    "k": 10
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "validation",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "impressions_analyzed": 30270,
+    "k": 10
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Scored against MIND's supplied candidate list for each impression rather than the full catalog, so these are not full-catalog retrieval numbers.",
+    "Labels come from exposure-biased MIND logs: an item recorded as not clicked may never have been shown.",
+    "Post-selection development evaluation on the validation split. No untouched final split remains, so these are not generalization estimates.",
+    "A miss is disagreement with MIND's logged click, not evidence the served slate was worse."
+  ],
+  "metric_definitions": {
+    "by_category_match": "miss rate grouped by whether the clicked item's category matched the user's dominant category",
+    "by_clicked_item_coldness": "miss rate grouped by how recently the clicked item entered the catalog",
+    "by_user_history_length": "miss rate grouped by the user's prior interaction count",
+    "impressions": "impressions in this group",
+    "impressions_analyzed": "impressions the analysis was computed over",
+    "k": "size of the served Top-K slate",
+    "miss_rate": "share of impressions in this group that missed",
+    "n": "impressions in this group",
+    "overall_miss_rate": "share of impressions with no clicked item in the served Top-K"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.evaluation.failure_analysis",
+    "generated_at": "2026-08-27T02:29:48.517645+00:00",
+    "source_commit": "e9a039551816cd11314d89ba87de1d9ad0f200ef",
+    "working_tree_clean": true
+  },
+  "report_name": "failure-analysis",
+  "results": {
+    "by_category_match": {
+      "category_did_not_match": {
+        "miss_rate": 0.34989053092501365,
+        "n": 21924
+      },
+      "category_matched_history": {
+        "miss_rate": 0.28696381500119816,
+        "n": 8346
+      }
+    },
+    "by_clicked_item_coldness": {
+      "cold_item_never_clicked_in_train": {
+        "miss_rate": 0.2764326857366006,
+        "n": 20486
+      },
+      "warm_item": {
+        "miss_rate": 0.45002044153720355,
+        "n": 9784
+      }
+    },
+    "by_user_history_length": {
+      "0": {
+        "miss_rate": 0.43911917098445596,
+        "n": 772
+      },
+      "1-5": {
+        "miss_rate": 0.3534345953298572,
+        "n": 4411
+      },
+      "20+": {
+        "miss_rate": 0.32182263996730687,
+        "n": 14682
+      },
+      "6-20": {
+        "miss_rate": 0.3308986064392119,
+        "n": 10405
+      }
+    },
+    "impressions_analyzed": 30270,
+    "k": 10,
+    "overall_miss_rate": 0.3325404691113314
+  },
+  "sampling": {
+    "method": "no sampling -- every eligible impression in the split was evaluated",
+    "seed": null
+  },
+  "schema_version": 2
+}

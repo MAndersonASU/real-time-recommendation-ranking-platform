@@ -32,6 +32,12 @@ EXPECTED_REPORTS = (
     "tuning-decisions",
     "explanation-evaluation",
     "min-fresh-experiment",
+    "baseline-evaluation",
+    "ranking-evaluation",
+    "reranking-evaluation",
+    "ablation",
+    "stage-comparison",
+    "failure-analysis",
 )
 
 

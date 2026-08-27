@@ -757,7 +757,7 @@ fixture non-degenerate, not by silencing the warning.
 
 ## Status summary
 
-All five published reports are generated from a clean source commit and
+All eleven published reports are generated from a clean source commit and
 record it, together with a verified-clean working tree. The tuning
 comparisons ran against the leakage-free fit-half feature table
 (`tune_fold_leakage: false`), and the report identifies that bundle by
@@ -907,7 +907,7 @@ the status below will be updated once that check has run.
 
 STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 
-Seven legacy evaluation tables match their recorded measurements but do not yet have committed, provenance-valid machine-readable reports. Their reports require clean-tree artifact reconstruction and full recomputation. No report was backfilled with inferred or false provenance.
+One legacy evaluation table, serving latency, matches its recorded measurement but does not yet have a committed, provenance-valid machine-readable report: it needs a running Redis instance, which was unavailable during this pass. No report was backfilled with inferred or false provenance.
 
 Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
 2 accepted limitations. The minimum-fresh quota is retained at 2 as a
