@@ -38,8 +38,10 @@ curl "http://localhost:8000/demo/U73700?num_candidates=3"
 
 Against the real rebuilt container, alongside real Kafka and Redis:
 returned a real page for real validation-split user `U73700` —
-"Partially personalized," total latency 11.24ms (consistent with the
-~21.31ms p50 already measured in `docs/experiments/serving-latency.md`), a real
+"Partially personalized," total latency 11.24ms (well under the
+~31.44ms p50 already measured in `docs/experiments/serving-latency.md` --
+one request's own latency naturally varies below and above an
+aggregate p50), a real
 per-stage breakdown for this one request (reranking the largest single
 cost at 4.58ms here; the aggregate 100-user measurement in that same
 document found candidate retrieval, not reranking, to be the largest

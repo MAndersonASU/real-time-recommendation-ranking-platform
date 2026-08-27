@@ -78,35 +78,40 @@ data." Each call's real `feature_lookup_ms` is captured via
 `stage_timings` so the latency side of this ablation, not just its
 quality side, is measured directly rather than estimated.
 
-**Results**, same 500-impression real replay sample used both with
-and without the toggle, logged as `ablation_no_recent_features_replay`
-and `ablation_with_recent_features_replay`:
+**Results**, same seeded 500-impression real replay sample used in both
+arms (`recommender.tracking.recent_features_ablation`, which asserts
+both arms drew the identical sample before reporting anything), logged
+as `ablation_recent_features_replay_paired`:
 
 | | With recent features | Without recent features |
 |---|---|---|
 | Hit rate@10 | 0.0 | 0.0 |
-| Mean feature-lookup latency | 0.80ms | 0.008ms |
+| Mean feature-lookup latency | 5.48ms | 0.008ms |
 
 **Zero quality cost, for a reason already on record, not a new
 finding**: this replay population was already measured at the
-cold-start floor (`docs/limitations.md`, `docs/experiments/replay-evaluation.md`) —
-near-total absence
-of durable/recent feature overlap collapses the two-tower embedding to
-a near-identical vector regardless, so there is no headroom left for
-recent features to lose. The latency side is real and unambiguous: a
-~100x drop in mean feature-lookup time, consistent in order of
-magnitude with the isolated Redis round-trip latency measured when the
-low-latency store was first built (`docs/operations/state-store.md`, 0.29ms
-p50/1.12ms p99).
+cold-start floor (`docs/limitations.md`, `docs/experiments/replay-evaluation.md`) --
+93.6% of sampled users have no durable features and 0% have a live
+Redis record, so a user with neither signal has a zero-norm history in
+both arms alike. Current retrieval detects that and routes to the
+global-popularity candidate path instead of a Faiss search
+(`docs/operations/serving-fallback.md`) -- both arms hand that same
+cold user the identical catalog-wide popularity candidate pool
+regardless of the toggle, so there is no headroom left for
+`use_recent_features` to change anything about it. The latency side is
+real and unambiguous: a ~685x drop in mean feature-lookup time
+(5.48ms → 0.008ms), consistent in order of magnitude with the isolated
+Redis round-trip latency measured when the low-latency store was first
+built (`docs/operations/state-store.md`, 0.29ms p50/1.12ms p99).
 
 ## Consolidated quality-latency tradeoff table
 
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured (same code path) |
-| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.07ms p50 (ranking stage) |
-| Reranking | Relevance rises (hit rate ≈+2.3%, NDCG ≈+1.7%), but mean distinct categories 5.42→4.70 and slates below the freshness quota 74.0%→82.0% | ~6.36ms p50 (~30% of total request time) |
-| Recent streaming features | Unchanged (0.0→0.0 hit rate, already at the cold-start floor) | 0.80ms→0.008ms mean feature lookup |
+| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.73ms p50 (ranking stage) |
+| Reranking | Relevance rises (hit rate ≈+2.3%, NDCG ≈+1.7%), but mean distinct categories 5.42→4.70 and slates below the freshness quota 74.0%→82.0% | ~9.89ms p50 (~31% of total request time) |
+| Recent streaming features | Unchanged (0.0→0.0 hit rate, already at the cold-start floor) | 5.48ms→0.008ms mean feature lookup |
 | Cache/index settings | Recall vs. exact drops to 0.624 at nprobe=8 (0.891 at nprobe=32) | ~12.6x faster than exact search at nprobe=8 (5.0μs vs. 63.1μs) |
 
 Every relevance number above comes from the same frozen K=10/validation

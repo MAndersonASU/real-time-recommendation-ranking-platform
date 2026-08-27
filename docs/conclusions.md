@@ -81,11 +81,11 @@ Real infrastructure cost measured; no quality benefit measurable in
 this replay sample. The ablation (`docs/experiments/ablations.md`) found identical
 hit rate (0.0) with and without recent features — but that floor was
 already independently explained: this replay population is measured at
-92.4% durable cold start and 0% live-Redis coverage
+93.6% durable cold start and 0% live-Redis coverage
 (`docs/limitations.md`), leaving no headroom for recent features to
 show a difference either way. What is measurable is the
 latency cost of having them: removing the Redis round-trip cut mean
-feature-lookup time from 0.80ms to 0.008ms, consistent with the
+feature-lookup time from 5.48ms to 0.008ms, consistent with the
 isolated Redis benchmark measured when the store was first built
 (0.29ms p50, `docs/operations/state-store.md`). **Answer: not demonstrated to
 help in this particular sample, for a reason (extreme cold start) that
@@ -98,9 +98,9 @@ needed to answer this question properly.**
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
-| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.07ms p50 |
-| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~6.36ms p50 (~30% of total) |
-| Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
+| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.73ms p50 |
+| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~9.89ms p50 (~31% of total) |
+| Recent streaming features | Unchanged in this sample | 5.48ms→0.008ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
 Candidate retrieval is now the largest latency cost in the system

@@ -90,8 +90,8 @@ the dataset itself.
   window) limits how much real personalization signal exists for most
   users.
 - Near-total cold start was measured directly in this project's own
-  replay-based evaluation (92.4% of a real sampled user set never
-  appeared in the durable feature cache; 0% had a live Redis record at
-  measurement time) — a property of how this project's online stores
+  replay-based evaluation (93.6% of a real, seeded sample of replay
+  users never appeared in the durable feature cache; 0% had a live
+  Redis record at measurement time) — a property of how this project's online stores
   were populated for research purposes, not a claim about the dataset
   itself.

@@ -31,15 +31,21 @@ Measured after the lexical policy gate was rebuilt as a closed-vocabulary
 check (`docs/experiments/explanation-boundary.md`) — the model's rewrite must now
 consist only of words already in the template plus a small, fixed set
 of grammatical connectives, not just avoid unfamiliar capitalized words.
+Users are a seeded uniform sample of the validation split's distinct
+users (`recommender.evaluation.sampling`), not the first 60 to appear;
+an earlier version of this evaluation took the first 60, which is why
+this sample's exact counts differ from a previous version of this page
+even though the users evaluated and the totals they produce are drawn
+from the same 180-recommendation shape (60 users x 3 candidates).
 
 | Metric | Value |
 |---|---|
 | Total recommendations evaluated | 180 |
-| Refused (no supporting evidence) | 115 (63.9%) |
-| Attempted explanations | 65 |
-| Lexical-policy pass rate | 100% (65/65) |
+| Refused (no supporting evidence) | 119 (66.1%) |
+| Attempted explanations | 61 |
+| Lexical-policy pass rate | 100% (61/61) |
 | Model rewrite used | 0 (0.0% of attempted) |
-| Template fallback used | 65 (100.0% of attempted) |
+| Template fallback used | 61 (100.0% of attempted) |
 | Mean explanation length | 53.2 characters |
 | Distinct explanation strings | 2 |
 
@@ -48,7 +54,7 @@ Generated from [`reports/explanation-evaluation.json`](../../reports/explanation
 ## Interpretation and limitations
 
 No violations were detected in this evaluated sample under the
-documented checks — all 65 attempted explanations passed both the
+documented checks — all 61 attempted explanations passed both the
 serving-path gate and the separate, differently-designed verification. That is a statement about this sample under these
 checks, not a claim that no rewrite could ever slip through: the
 blacklist above is a fixed, hand-curated list, not an exhaustive model
@@ -58,13 +64,13 @@ fabrication built entirely from already-permitted words.
 
 **The stricter gate changed measured model behaviour, not just its
 theoretical bound.** In the default configuration the generative
-rewriting path is off, so model-authored rewrites are 0 of 65
+rewriting path is off, so model-authored rewrites are 0 of 61
 attempted and the deterministic template supplies every shown
-explanation (65/65). Under the earlier, weaker gate the same local
+explanation (61/61). Under the earlier, weaker gate the same local
 model produced accepted rewrites; the closed-vocabulary gate stopped
 accepting wording that merely avoided an unfamiliar capitalized word.
 
-**Only 2 distinct explanation strings appeared across 65 attempted
+**Only 2 distinct explanation strings appeared across 61 attempted
 explanations, a disclosed limitation**: since the fallback template is
 built from category and content-similarity flags alone, users who
 share a dominant category receive an identical sentence. Explanations

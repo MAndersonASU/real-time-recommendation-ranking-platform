@@ -40,8 +40,8 @@ bolted on afterward.
 
 The online feature store built explicit fallback behavior for users with no known
 features. Replay-based evaluation (`docs/experiments/replay-evaluation.md`) measured how common that actually is in practice, using
-this project's own real feature stores: of 499 sampled `replay`-split
-users, **92.4% never appeared in the `validation` split** the durable
+this project's own real feature stores: of a seeded sample of 497 distinct
+`replay`-split users, **93.6% never appeared in the `validation` split** the durable
 cache is built from, and **0% had any live Redis record at all** at the
 time of that measurement. Cold start here isn't a rare corner case to
 handle defensively — for a system whose online feature stores haven't
