@@ -21,26 +21,51 @@ import pandas as pd
 DEFAULT_SAMPLE_SEED = 20260825
 
 
+def _seeded_choice(eligible: pd.Index, size: int, seed: int) -> pd.Index:
+    """Up to `size` values drawn uniformly without replacement, seeded.
+
+    Uniform rather than stratified: an eligible population here is
+    either a single day's impressions or a split's distinct users, and
+    neither has a natural stratum a uniform draw would systematically
+    under-cover. Sorting the result keeps downstream iteration order
+    stable regardless of draw order.
+    """
+    if len(eligible) <= size:
+        return eligible.sort_values()
+    rng = np.random.default_rng(seed)
+    chosen = rng.choice(eligible.to_numpy(), size=size, replace=False)
+    return pd.Index(chosen).sort_values()
+
+
 def sample_impression_ids(
     frame: pd.DataFrame,
     size: int,
     seed: int = DEFAULT_SAMPLE_SEED,
     id_column: str = "impression_id",
 ) -> pd.Index:
-    """Selects up to `size` impression ids uniformly at random, seeded.
-
-    Uniform rather than stratified: the eligible population here is a
-    single day's impressions, so there is no natural stratum that a
-    uniform draw would systematically under-cover. Sorting the result
-    keeps downstream iteration order stable regardless of draw order.
-    """
+    """Selects up to `size` impression ids uniformly at random, seeded."""
     eligible = pd.Index(frame[id_column].drop_duplicates())
-    if len(eligible) <= size:
-        return eligible.sort_values()
+    return _seeded_choice(eligible, size, seed)
 
-    rng = np.random.default_rng(seed)
-    chosen = rng.choice(eligible.to_numpy(), size=size, replace=False)
-    return pd.Index(chosen).sort_values()
+
+def sample_user_ids(
+    frame: pd.DataFrame,
+    size: int,
+    seed: int = DEFAULT_SAMPLE_SEED,
+    id_column: str = "user_id",
+) -> pd.Index:
+    """Selects up to `size` distinct user ids uniformly at random, seeded.
+
+    A bounded per-user evaluation (one full `recommend()` call per user,
+    as explanation and latency evaluation both run) used to take
+    `unique()[:num_users]` or `drop_duplicates().head(num_users)` --
+    whichever users happen to sort first, or first appear in the split,
+    not a representative draw. This replaces both with the same seeded,
+    reproducible, digestible selection `sample_impression_ids` already
+    gives impression-level evaluations.
+    """
+    eligible = pd.Index(frame[id_column].dropna().unique())
+    return _seeded_choice(eligible, size, seed)
 
 
 def describe_sample(
@@ -77,6 +102,43 @@ def describe_sample(
 
     if user_column in selected.columns:
         description["distinct_users"] = int(selected[user_column].nunique())
+    if time_column in selected.columns and not selected.empty:
+        times = pd.to_datetime(selected[time_column], errors="coerce")
+        description["time_range"] = {
+            "start": str(times.min()),
+            "end": str(times.max()),
+        }
+    return description
+
+
+def describe_user_sample(
+    frame: pd.DataFrame,
+    selected_ids: pd.Index,
+    seed: int = DEFAULT_SAMPLE_SEED,
+    id_column: str = "user_id",
+    time_column: str = "time",
+) -> dict:
+    """Describes a user-level selection well enough to interpret and
+    reproduce it -- the same fields `describe_sample` reports for an
+    impression-level sample, named for what was actually sampled here
+    (users, not impressions) rather than reusing impression-shaped field
+    names that would misdescribe what a reader is looking at.
+    """
+    selected = frame[frame[id_column].isin(selected_ids)]
+    eligible_count = int(frame[id_column].nunique())
+
+    description = {
+        "method": "seeded uniform random without replacement",
+        "seed": seed,
+        "eligible_users": eligible_count,
+        "selected_users": len(selected_ids),
+        "distinct_users": len(selected_ids),
+        "selected_fraction": (len(selected_ids) / eligible_count) if eligible_count else None,
+        "selected_ids_sha256": hashlib.sha256(
+            ",".join(str(i) for i in sorted(selected_ids)).encode()
+        ).hexdigest(),
+    }
+
     if time_column in selected.columns and not selected.empty:
         times = pd.to_datetime(selected[time_column], errors="coerce")
         description["time_range"] = {

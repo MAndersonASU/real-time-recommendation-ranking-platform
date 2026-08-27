@@ -3,6 +3,11 @@ import pandas as pd
 
 from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import TOP_K, load_split
+from recommender.evaluation.sampling import (
+    DEFAULT_SAMPLE_SEED,
+    describe_sample,
+    sample_impression_ids,
+)
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext
@@ -16,6 +21,7 @@ def evaluate_via_replay(
     k: int = TOP_K,
     replay: pd.DataFrame | None = None,
     use_recent_features: bool = True,
+    sample_seed: int = DEFAULT_SAMPLE_SEED,
 ) -> dict:
     """Runs the real, full recommend() pipeline -- retrieval, ranking,
     reranking, all of it -- against real historical impressions from the
@@ -34,7 +40,13 @@ def evaluate_via_replay(
     Sampled to `num_impressions`, not the full ~73k-impression split,
     since each one is a real, full pipeline call -- the same accepted
     sampling tradeoff `build_index.py` already made for retrieval's own
-    query-embedding benchmark.
+    query-embedding benchmark. The sample is a seeded uniform draw of
+    impression ids over the whole split, restored to chronological
+    `(time, impression_id)` order before replay -- an earlier version
+    took `replay.head(num_impressions)`, the first impression rows in
+    the split's own on-disk order, which is not a representative sample
+    of the day and is not even guaranteed to be the chronologically
+    earliest rows.
 
     `use_recent_features=False` runs the recent-streaming-features
     ablation (docs/experiments/ablations.md): every call forces the online lookup to
@@ -44,7 +56,12 @@ def evaluate_via_replay(
     from an actual measurement of this exact run.
     """
     replay = replay if replay is not None else load_split("replay")
-    exploded = explode_impressions(replay.head(num_impressions))
+    selected_ids = sample_impression_ids(replay, num_impressions, seed=sample_seed)
+    sampling = describe_sample(replay, selected_ids, seed=sample_seed)
+    sampled = replay[replay["impression_id"].isin(selected_ids)].sort_values(
+        ["time", "impression_id"]
+    )
+    exploded = explode_impressions(sampled)
 
     hits = 0
     impressions_with_clicks = 0
@@ -84,4 +101,5 @@ def evaluate_via_replay(
         "mean_feature_lookup_ms": (
             float(np.mean(feature_lookup_ms_samples)) if feature_lookup_ms_samples else None
         ),
+        "sampling": sampling,
     }
