@@ -1,9 +1,8 @@
 # Inference Path
 
-Wires everything built since Phase 1 into one real, callable path: online
+Wires everything built since data ingestion into one real, callable path: online
 features → user embedding → candidate retrieval → ranking → reranking →
-a Top-K response validated against the serving contract (`docs/serving-
-contract.md`). Implementation: `src/recommender/serving/pipeline.py`.
+a Top-K response validated against the serving contract (`docs/serving-contract.md`). Implementation: `src/recommender/serving/pipeline.py`.
 
 ## Load once, not per request
 
@@ -17,7 +16,7 @@ re-fits anything.
 
 ## The one place this project's retrieval quality actually gets used live
 
-Every offline evaluation since Phase 2 ranked the same frozen candidate
+Every offline evaluation since the baselines ranked the same frozen candidate
 set — MIND's own impression list — because retrieval evaluation
 (`docs/retrieval-evaluation.md`) found the retrieval
 model's own top-N badly weakened by a 284-distinct-vector limitation in
@@ -36,10 +35,10 @@ clean slate.
 ## A disclosed asymmetry between the live path and offline training
 
 The two-tower embedding and the content-similarity profile here only
-ever see a user's last 20 recent clicks, since that is the cap Phase 7's
+ever see a user's last 20 recent clicks, since that is the cap the online feature store's
 low-latency store chose (`docs/state-store.md`). Offline training's own
 content profile (`ranking/features.py`) pools a user's entire history
-string, uncapped. This is a real, disclosed consequence of Phase 7's own
+string, uncapped. This is a real, disclosed consequence of the online feature store's own
 latency/storage tradeoff, not an oversight — `user_history_length` uses
 the durable `lifetime_click_count` specifically because that field, and
 only that field, still carries the same uncapped meaning training used.
@@ -52,5 +51,5 @@ that has never existed anywhere. Every response validated against the
 typed contract, returned exactly the requested count, and the unknown
 user correctly came back with both feature flags false. Measured,
 single-request, single-threaded latency: **12.3ms p50, 15.5ms p99** —
-this phase's own rigorous per-stage latency breakdown belongs to
+this component's own rigorous per-stage latency breakdown belongs to
 `docs/serving-latency.md`, not this document.

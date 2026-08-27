@@ -6,15 +6,17 @@
 - Citation: Wu et al., ACL 2020, "MIND: A Large-scale Dataset for News Recommendation"
 - Official site: https://msnews.github.io/
 - Versions used: MIND-small for development; MIND-large only for
-  justified, explicitly-scoped scale testing (Phase 10), per
+ justified, explicitly-scoped scale testing (the scale and performance work), per
   [`docs/research-scenario.md`](research-scenario.md)
 
-## Canonical source (verified 2026-08-16)
+## Download source (verified 2026-08-16)
 
-The dataset's original 2019 Azure Blob Storage host is no longer the
-maintained distribution point. The current canonical mirror, confirmed
-against the `recommenders-team/recommenders` library's own `mind.py`
-loader, is Hugging Face:
+This project downloaded MIND from the Recommenders Hugging Face mirror,
+confirmed against the `recommenders-team/recommenders` library's own
+`mind.py` loader. The official MIND site and the Microsoft Research
+License remain the authoritative sources for dataset identity and
+licensing; Microsoft also distributes MIND through Azure Open Datasets.
+The files this project actually fetched were:
 
 - MIND-small train: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_train.zip`
 - MIND-small dev: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_dev.zip`
@@ -22,10 +24,12 @@ loader, is Hugging Face:
 - MIND-large dev: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDlarge_dev.zip`
 
 Total size across the Hugging Face-hosted files: approximately 1.89 GB.
+The checksums recorded below cover exactly these downloaded files and do
+not assert anything about other distributions of MIND.
 
 Downloading via msnews.github.io additionally requires interactively
 accepting the Microsoft Research License Terms (a checkbox agreement)
-before the official download links activate. This step cannot be
+before the official download links activate. This check cannot be
 automated from a scripted ingestion pipeline.
 
 ## License

@@ -1,7 +1,7 @@
 # Operational Metrics
 
 Real, live Prometheus-format metrics exposed at `GET /metrics`, recorded
-from the one place a response is actually produced. Implementation:
+from the one place a response is produced. Implementation:
 `src/recommender/monitoring/metrics.py`, wired into
 `src/recommender/serving/app.py`.
 
@@ -17,7 +17,7 @@ from the one place a response is actually produced. Implementation:
 - **`recommend_fallback_total`** — real fallback rate, driven by a new
   `on_fallback` hook on `safe_recommend()` rather than inferred from the
   response's own feature flags. That distinction matters: a genuine
-  cold-start response (Phase 7) can legitimately have both
+ cold-start response (the online feature store) can legitimately have both
   `durable_features_used` and `recent_features_used` set to `False`
   without ever touching the fallback path — inferring "fallback" from
   those flags would have conflated two different, real situations.
@@ -33,7 +33,7 @@ from the one place a response is actually produced. Implementation:
 ## Kafka lag has an honest scope note, not a fabricated number
 
 `recommend_kafka_consumer_lag` exists as a Gauge — the metric *contract*
-a running stream consumer would report into — but it has no real value
+a running stream consumer would report into — but it has no value
 here, because the live API never consumes from Kafka at request time
 (`docs/restart-and-failure-testing.md` confirmed and removed that exact
 coupling). Reporting a
@@ -42,7 +42,7 @@ gauge is the honest version: the shape a real consumer process would
 fill in, left at its default until one actually runs continuously as
 part of this service.
 
-## A real gap found and fixed while verifying this against the live container
+## A gap found and fixed while verifying this against the live container
 
 The first real request against the rebuilt container showed
 `feature_lookup_latency_seconds_sum` stuck at `0.0` — the metric was

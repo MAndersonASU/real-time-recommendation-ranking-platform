@@ -1,6 +1,6 @@
 # Retrieval-Only vs Ranked
 
-The comparison this phase was built toward: on the exact same candidates —
+The comparison this component was built toward: on the exact same candidates —
 the frozen `validation` split, MIND's own per-impression candidate list,
 K=10 (`docs/evaluation-protocol.md`) — does the trained ranking model
 (`docs/ranking-model.md`) order them better than the two-tower model's own
@@ -14,12 +14,12 @@ features the ranking model has beyond a raw retrieval score — category
 match, content similarity, history length, hour of day — not from a
 different candidate set or protocol.
 
-## Real result
+## Results
 
 | Metric | Retrieval score only | Ranked |
 |---|---|---|
 | Hit rate@10 | 0.6689 | 0.6828 |
-| Recall@10 | 0.5801 | 0.5975 |
+| Recall@10 | 0.5864 | 0.5999 |
 | NDCG@10 | 0.3518 | 0.3671 |
 | MRR | 0.3084 | 0.3347 |
 | Catalog coverage@10 | 0.0698 | 0.0712 |
@@ -35,7 +35,7 @@ alone, given the same candidates.
 | Metric | Popularity | Content similarity | Collaborative | Retrieval score only | Ranked |
 |---|---|---|---|---|---|
 | Hit rate@10 | 0.5697 | 0.6557 | 0.5709 | 0.6689 | **0.6828** |
-| Recall@10 | 0.5034 | 0.5743 | 0.5046 | 0.5801 | **0.5975** |
+| Recall@10 | 0.5034 | 0.5743 | 0.5046 | 0.5864 | **0.5999** |
 | NDCG@10 | 0.2830 | 0.3526 | 0.2847 | 0.3518 | **0.3671** |
 | MRR | 0.2484 | 0.3236 | 0.2509 | 0.3084 | **0.3347** |
 | Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 | 0.0698 | 0.0712 |
@@ -43,23 +43,23 @@ alone, given the same candidates.
 The ranked model beats every baseline in `docs/baselines.md` on every
 metric except catalog coverage, where it's within rounding of the
 content-similarity baseline's already-strongest result. This is the
-strongest result on record across both phases, and it did not require
+strongest result on record so far, and it did not require
 abandoning anything already built — it's a five-feature linear model
-sitting on top of work from three separate phases (a popularity count from
-Phase 2, a TF-IDF profile from Phase 2, a trained embedding score from
-Phase 3).
+sitting on top of three separate components (a popularity count from
+the baselines, a TF-IDF profile from the baselines, a trained embedding score from
+the retrieval model).
 
 ## One more honest observation, not a new mystery
 
 `retrieval_score` alone performs respectably here (0.6689 hit rate) —
-noticeably better than it did in Phase 3's own full-catalog retrieval
+noticeably better than it did in the full-catalog retrieval
 evaluation as it then stood (0.0044 hit rate at N=100; now 0.0336 after the item-tower fix, `docs/retrieval-evaluation.md`). That
 is not a contradiction; it's exactly what the tied-vector limitation
-already found in Phase 3 (`docs/faiss-index.md`) predicts. Searching the
+already found in the retrieval model ([`docs/faiss-index.md`](faiss-index.md)) predicts. Searching the
 full 51,282-item catalog, that limitation is severe — the model can only
 identify a category cluster, then has no way to pick the right item among
 however many share that cluster's identical vector. Restricted instead to
-one impression's roughly 37 candidates (this phase's evaluation, by the
+one impression's roughly 37 candidates (this component's evaluation, by the
 disclosed design choice in `docs/ranking-features.md`), the same coarse
 category signal has far fewer competing items to distinguish between, so
 it does meaningfully better — still a coarse signal, just operating over a
@@ -68,7 +68,7 @@ readings of the same underlying model; they are not directly comparable to
 each other because they answer different questions over different
 candidate pools.
 
-## Phase 4 close
+## the ranking model close
 
 RQ2 — how much does a dedicated ranking model improve quality over
 retrieval scores alone — has a clear, positive, quantified answer for this

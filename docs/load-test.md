@@ -14,7 +14,7 @@ underneath a single request. A process pool would hand each concurrent
 request its own separate resource allocation illusion and hide exactly
 the contention this test needs to surface.
 
-## Real result: throughput never rises, latency scales almost linearly
+## Results: throughput never rises, latency scales almost linearly
 
 | Concurrency | Throughput (req/s) | p50 | p95 | p99 |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@ Zero errors at every level tested.
 Throughput is flat — roughly 62–74 requests per second regardless of
 how many concurrent requests are in flight — while p50 latency scales
 almost perfectly linearly with concurrency (14 → 61 → 114 → 210 →
-391 ms, each step tracking the concurrency multiplier closely). That is
+391 ms, each operation tracking the concurrency multiplier closely). That is
 the textbook signature of a CPU-bound system that is already saturated:
 adding more concurrent work doesn't produce more completed work per
 second, it only makes every request wait longer for the same fixed
@@ -44,5 +44,5 @@ compute (PyTorch, NumPy's BLAS backend, and Faiss all parallelizing
 internally). Two requests running at once already approach this
 machine's full 8-core budget; by four or more, it's fully saturated.
 This isn't a new, separate finding — it's the profiling result from the
-previous step, now confirmed under real concurrent load exactly as it
+the preceding work, now confirmed under real concurrent load exactly as it
 predicted.

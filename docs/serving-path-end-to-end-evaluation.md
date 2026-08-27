@@ -2,7 +2,7 @@
 
 `docs/ranking-features.md` already discloses a deliberate methodological
 choice: the ranking model is evaluated against MIND's own frozen
-impression candidate list, not against Phase 3 retrieval's own top-N
+impression candidate list, not against the retrieval model's own top-N
 output, specifically to isolate RQ1 (is retrieval any good) from RQ2
 (does ranking improve on a candidate set). That choice is real, still
 valid for what it measures, and is not changed here.
@@ -23,9 +23,9 @@ This is a name change from an earlier version of this document, which
 called this a "deployment-representative" evaluation. That term
 overstated what it measures: this is a real run of the serving code
 path against real historical data with real, reconstructed point-in-
-time state — not a claim about real production traffic, real request
+time state — not a claim about serving-path traffic, real request
 concurrency, real Kafka/Redis latency, or the real cadence a durable-
-feature batch job would actually run on.
+feature batch job would run on.
 
 ## What it does
 
@@ -44,7 +44,7 @@ retrieval's own top-N evaluation (`recall_at_n_known_total`,
 top-N slice of the full catalog, not the complete frozen impression
 list the original protocol scores).
 
-## Real result
+## Results
 
 K=10, 5,000 impressions drawn by seeded uniform sampling from the
 30,270-impression validation split
@@ -122,7 +122,7 @@ a competitive recommender.
 ### A real evaluation bug found and fixed while producing these numbers
 
 An earlier version of this evaluation reported 8.2% recent-feature
-coverage and 0.6% catalog coverage. Both were artifacts of a real bug
+coverage and 0.6% catalog coverage. Both were artifacts of a bug
 in the harness, not properties of the serving path.
 
 The isolated state store started empty for every user, so any
@@ -197,7 +197,7 @@ query — are fixed and covered by regression tests proving chronological
 state evolution, isolation from the shared serving context, determinism,
 correct seeding, and the absence of future leakage.
 
-What this evaluation still does *not* establish: real production traffic
+What this evaluation still does *not* establish: serving-path traffic
 patterns, concurrency, or infrastructure latency; a durable-feature
 refresh cadence matching any real deployment plan; or that the ranking
 quality reported above is adequate for any real use. It is reported

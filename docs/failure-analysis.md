@@ -8,9 +8,9 @@ grouped by three properties already computed as real ranking-model
 input features. Implementation:
 `src/recommender/evaluation/failure_analysis.py`.
 
-## Real result: overall
+## Results: overall
 
-30,270 impressions analyzed, the identical reranked production slate
+30,270 impressions analyzed, the identical reranked served slate
 every other evaluation in this project scores. **Overall miss rate:
 33.2%** (consistent with the tracked hit rate of 0.6675 for the reranked
 system, `docs/reranking-evaluation.md`).
@@ -27,7 +27,7 @@ system, `docs/reranking-evaluation.md`).
 Monotonic and unsurprising: the less history a user has, the more often
 the system misses. Consistent with every earlier finding about sparse
 per-user history in this dataset (`docs/data-quality.md`) and with
-Phase 7's own disclosed asymmetry between offline and online history
+the online feature store's own disclosed asymmetry between offline and online history
 depth.
 
 ## By clicked-item coldness
@@ -71,4 +71,4 @@ actionable segment here is user history length: a genuinely new user
 misses 11.6 percentage points more often than a well-established one,
 a concrete, quantified argument for where a future improvement (a
 stronger cold-start policy, not a general model change) would help
-most, feeding directly into the conclusions this phase closes with.
+most, feeding directly into the conclusions this component closes with.

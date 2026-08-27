@@ -1,7 +1,7 @@
 # Data Quality Profile
 
 Concise EDA over the ingested MIND-small train/dev splits, scoped to the
-measurements later phases actually depend on rather than a general
+measurements later work depends on rather than a general
 exploration. Methodology: `src/recommender/data/profile.py`, run against
 the ingestion pipeline's Parquet output (`src/recommender/data/ingest.py`).
 The report itself is a local, gitignored, reproducible artifact — the
@@ -22,7 +22,7 @@ findings below are transcribed from an actual run, not estimated.
 Most of the news catalog available in a given window is never actually
 shown: only 39.6% of train-window articles (20,288 of 51,282) receive at
 least one impression; dev is more extreme at 12.7% (5,369 of 42,416).
-Candidate retrieval (Phase 3) and coverage metrics need to account for a
+Candidate retrieval (the retrieval model) and coverage metrics need to account for a
 catalog far larger than what any single window's impressions exercise.
 
 ## Click balance
@@ -30,7 +30,7 @@ catalog far larger than what any single window's impressions exercise.
 Overall click-through rate: 4.04% (train), 4.06% (dev) — roughly one click
 per 25 impressed items. Confirms the severe class imbalance a retrieval or
 ranking model trained on raw impression labels will face, and directly
-motivates Phase 3's explicit negative-sampling design rather than training
+motivates the retrieval model's explicit negative-sampling design rather than training
 on every impressed item as-is.
 
 ## Impression size
@@ -44,7 +44,7 @@ pull the mean above the typical case.
 
 Interactions per user: median 2 (train) / 1 (dev), max 62 (train) / 18
 (dev). Most users in a given window interact only once or twice — direct
-evidence for how thin per-user history typically is, relevant to Phase 7's
+evidence for how thin per-user history typically is, relevant to the online feature store's
 cold-start handling.
 
 ## Category distribution
@@ -52,7 +52,7 @@ cold-start handling.
 17 categories, heavily concentrated: `news` and `sports` alone account for
 59.1% of train-window articles (58.5% in dev). The remaining 15 categories
 share the rest, several (`kids`, `middleeast`, and one of `northamerica`/
-`games` depending on the window) with single-digit counts. Phase 5's
+`games` depending on the window) with single-digit counts. reranking's
 diversity control needs to account for this imbalance rather than assume a
 roughly even category split.
 

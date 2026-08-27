@@ -13,7 +13,7 @@ impression and click counts, and last-event-time directly from a raw
 event list using plain Python. The point of a parity check is confirming
 two *separately written* implementations of the same feature definition
 agree — reusing the online code here would make the test pass by
-construction and prove nothing about whether the online path is actually
+construction and prove nothing about whether the online path is
 correct. This is what the field calls a training-serving skew check:
 the online (serving) computation and the offline (training-time)
 computation of the same feature must never quietly diverge.

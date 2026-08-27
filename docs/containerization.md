@@ -7,7 +7,7 @@ wrapping the recommendation pipeline. Implementation: `Dockerfile`,
 
 ## The first real API process this project has stood up
 
-Every step since Phase 8 called `recommend()`/`safe_recommend()`
+Every component since the serving path called `recommend()`/`safe_recommend()`
 directly, as a Python function — real, but never reachable over a
 network. `app.py` is a thin FastAPI wrapper: one `POST /recommend`
 endpoint validated by the exact same `RecommendationRequest`/
@@ -28,7 +28,7 @@ mounted as a read-only volume in `docker-compose.yml` instead, treating
 model artifacts the way this project has always treated them: real,
 external, versioned separately from the code that consumes them.
 
-## Configuration, minimally, ahead of its own dedicated step
+## Configuration, minimally, ahead of its own dedicated component
 
 The API container needs to reach Redis by its Compose service name
 (`redis`), not `localhost` — the address every other caller in this
@@ -42,7 +42,7 @@ own, later job.
 ## Verified by actually building and running it
 
 The image was built and started via `docker compose up`, alongside the
-real Kafka and Redis containers this project has run since Phases 6 and
-7, and a real HTTP request against the running container's
+real Kafka and Redis containers this project has run since the streaming pipeline and online
+feature store were built, and a real HTTP request against the running container's
 `/recommend` endpoint returned a valid, contract-conforming response —
 not just a file written and assumed to work.

@@ -5,7 +5,7 @@ system costs, holding everything else fixed. This project has five real
 components worth isolating: retrieval features, the ranker's own
 handcrafted features, reranking, recent streaming features, and the
 approximate index. Three of the five were already measured as a side
-effect of earlier phases comparing pipeline stages against each other;
+effect of earlier work comparing pipeline stages against each other;
 this document names all five in one place and adds real code for the two
 that were never actually isolated on their own.
 Implementation: `src/recommender/evaluation/ablations.py`.
@@ -24,10 +24,10 @@ Implementation: `src/recommender/evaluation/ablations.py`.
 
 Sorting by raw retrieval score alone, serving the ranking model's own
 slate with no reranking pass, and searching an approximate index instead
-of an exact one are exactly what earlier phases already measured while
+of an exact one are exactly what earlier evaluations already measured while
 comparing pipeline stages to each other (`docs/ranking-evaluation.md`,
 `docs/reranking-evaluation.md`, `docs/faiss-index.md`). Recomputing
-them here would produce the same real numbers under a new name, with a
+them here would produce the same numbers under a new name, with a
 real chance of quietly drifting from the tracked originals if anything in
 the surrounding code changed since they were first measured.
 
@@ -37,13 +37,13 @@ the surrounding code changed since they were first measured.
 `retrieval_score` dropped from its own input features, keeping
 `category_match`, `content_similarity`, `user_history_length`, and
 `hour_of_day` unchanged. It calls the exact same training and scoring
-path the real production ranking model uses
+path the serving-path ranking model uses
 (`recommender.ranking.train.train_ranking_model`,
 `recommender.evaluation.evaluate_ranking._evaluate_by_score`) with a
 different feature-column list, rather than a second, separately written
 routine that could drift from the real one.
 
-**Real result** (same 30,270 validation impressions, K=10), logged as
+**Results** (same 30,270 validation impressions, K=10), logged as
 `ablation_no_retrieval_score_k10`:
 
 | Metric | Full ranking model | Retrieval feature removed | Change |
@@ -76,7 +76,7 @@ data." Each call's real `feature_lookup_ms` is captured via
 `stage_timings` so the latency side of this ablation, not just its
 quality side, is measured directly rather than estimated.
 
-**Real result**, same 500-impression real replay sample used both with
+**Results**, same 500-impression real replay sample used both with
 and without the toggle, logged as `ablation_no_recent_features_replay`
 and `ablation_with_recent_features_replay`:
 
@@ -101,7 +101,7 @@ p50/1.12ms p99).
 
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
-| Retrieval features | Hit rate −3.1%, NDCG −3.4% | None measured (same code path) |
+| Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured (same code path) |
 | Ranker features | Hit rate −2.9%, NDCG −6.1% | ~1.49ms p50 (ranking stage) |
 | Reranking | Relevance rises (hit rate +1.8%, NDCG +1.4%), but mean distinct categories 5.33→4.50 and slates below the freshness quota 4.8%→13.3% | ~8.88ms p50 (69% of total request time) |
 | Recent streaming features | Unchanged (0.0→0.0 hit rate, already at the cold-start floor) | 0.80ms→0.008ms mean feature lookup |
@@ -109,5 +109,5 @@ p50/1.12ms p99).
 
 Every relevance number above comes from the same frozen K=10/validation
 protocol (`docs/evaluation-protocol.md`); every latency number comes
-from a real measurement already on record or captured directly in this
-step, never estimated.
+from a measurement already on record or captured directly in this
+analysis, never estimated.

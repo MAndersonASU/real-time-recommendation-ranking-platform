@@ -3,21 +3,21 @@
 A local, instruction-tuned model (`google/flan-t5-small`, 77M
 parameters, Apache 2.0, no external API) turns retrieved support
 context into a short "why recommended" sentence. What actually reached
-production here was shaped directly by real, measured model behavior,
+production here was shaped directly by measured model behavior,
 not by the first design that seemed reasonable. Implementation:
 `src/recommender/explanation/generation.py`.
 
 ## The real refusal rule
 
 `has_sufficient_evidence` refuses outright, with no model call at all,
-unless at least one of two real signals supports the recommendation:
+unless at least one of two signals supports the recommendation:
 the item's category matching the user's own dominant history category,
 or a real, non-negligible content-similarity score. A recommendation
 resting entirely on the learned retrieval score alone — already
 diagnosed as weak on its own (`docs/conclusions.md`, RQ1) — has no
 real, human-checkable evidence an explanation could honestly cite.
 
-## Three real attempts, in order, and what each one actually produced
+## Three real attempts, in order, and what each one produced
 
 **Attempt 1 — free generation from the article's own title and
 abstract.** Real output on real recommended items included at least
@@ -27,7 +27,7 @@ tell my male boyfriends I'm pregnant"* — a fabricated word substitution,
 not a paraphrase. Other outputs were merely redundant restatements of
 the title rather than an explanation of why it was recommended.
 Rejected: an explanation layer that can invent a fact defeats the
-purpose of the whole phase.
+purpose of the whole component.
 
 **Attempt 2 — a fill-in-the-blank prompt that withheld the article's
 title entirely**, so there was nothing article-specific left to
@@ -60,7 +60,7 @@ of grammatical connectives — a stricter check than an earlier version
 of this gate used, which only flagged unfamiliar *capitalized* words; a
 follow-up review found real, reproduced fabrications that check missed
 entirely, since a fabricated claim does not have to be capitalized to
-be one (`docs/explanation-evaluation.md` has the current real result).
+be one (`docs/explanation-evaluation.md` has the current Results).
 If
 the rewrite fails, the response falls back to the unmodified template.
 That fallback is unconditional and factually correct by construction;
@@ -68,7 +68,7 @@ the gate that decides whether to use the rewrite instead is a real,
 tested check against a documented set of failure modes, not a proof
 that no fabrication could ever pass it.
 
-## Real result across 15 real recommendations, 5 real users
+## Results across 15 real recommendations, 5 real users
 
 | Outcome | Count |
 |---|---|
@@ -83,7 +83,7 @@ genuine cases where the rewrite happened to retain the real category
 word (`"It is a good choice for a tv show."`, category `tv`). The
 other 12 dropped the required fact and fell back to the template,
 consistent with attempt 3's finding above. **This is reported plainly
-as a real limitation of this small local model at this task, not
+as a limitation of this small local model at this task, not
 smoothed over**: its practical, verified contribution here is a
 minority-case wording variation on top of a deterministic sentence that
 does the actual explanatory work, not a fully generative capability.

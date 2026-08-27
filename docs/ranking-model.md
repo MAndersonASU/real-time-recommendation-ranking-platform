@@ -1,6 +1,6 @@
 # Ranking Model
 
-Phase 4's first ranking model, over the six features defined in
+the ranking model's first ranking model, over the six features defined in
 `docs/ranking-features.md`. Deliberately not a neural model at this
 stage — logistic regression, so every fitted weight can be read and
 sanity-checked directly rather than inferred from behavior alone.
@@ -17,7 +17,7 @@ Implementation: `src/recommender/ranking/train.py`.
   probabilities away from the real ~4% base rate, and honest probabilities
   are exactly what a calibration check needs.
 
-## A feature that measured worse than useless, found before trusting the result
+## A feature that measured negatively correlated on validation, found before trusting the result
 
 The first fit, using all six features, showed a striking train/validation
 gap: AUC 0.7185 on `train`, 0.5654 on `validation` — barely above chance.
@@ -46,7 +46,7 @@ the persisted feature table for transparency, excluded via
 `MODEL_FEATURE_COLUMNS` in `train.py`). Refit on the remaining five
 features:
 
-## Real result (five features, popularity excluded)
+## Results (five features, popularity excluded)
 
 | | Train | Validation |
 |---|---|---|

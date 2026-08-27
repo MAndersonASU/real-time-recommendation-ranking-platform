@@ -2,12 +2,12 @@
 
 RQ3 explicitly names freshness alongside diversity
 (`docs/research-scenario.md`), so this control is in scope — but the
-guide's own caveat for this step is to use time-aware boosts "only when
+guide's own caveat for this check is to use time-aware boosts "only when
 supported by the research objective," and the harder question came first:
 does this dataset actually contain what a freshness signal needs?
 Implementation: `src/recommender/reranking/freshness.py`.
 
-## The real limitation, confirmed again
+## The limitation, confirmed again
 
 `news.tsv` has no publish-date field at all — already found when article
 freshness was considered as a ranking feature (`docs/ranking-features.md`).
@@ -67,7 +67,7 @@ A quota, deliberately, rather than adding a freshness term to the score
 and re-sorting: a quota guarantees an exact, known number of fresh items
 in the final slate, directly stated and verified; a soft boost only
 changes the result indirectly, through however it interacts with every
-other score component. One disclosed simplification: the swap-in step
+other score component. One disclosed simplification: the swap-in this operation
 does not re-check the diversity policy's category cap, so this runs as its own
 separate, independently testable pass rather than a single combined rule.
 

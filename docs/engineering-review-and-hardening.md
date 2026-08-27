@@ -17,7 +17,8 @@ limitations remain open.
 | | |
 |---|---|
 | **Baseline commit** | `cd8a4d776ad81b47313e2761e2ba9c3918293c26` |
-| **Review period** | 2026-08-24 to 2026-08-25 |
+| **Last updated** | 2026-08-26 |
+| **Review period** | 2026-08-24 to 2026-08-26 |
 | **Environments** | Windows 11 (development), `python:3.11-slim` containers (clean-environment checks), Ubuntu GitHub Actions (CI) |
 
 **Components examined**: the serving request path, the offline and
@@ -91,7 +92,7 @@ reproduced by public CI, which runs against synthetic artifacts only.
   import, and a stale number in prose misreports with more authority
   than no number at all. An earlier version of this document said "six"
   and was wrong within a few commits.
-- **pip-audit**: runs as a blocking CI step against the hash-verified
+- **pip-audit**: runs as a blocking CI check against the hash-verified
   lock. See the caveat below regarding `torch`.
 - **Container test**: the `api-container-test` job builds the real
   image, waits on its health check, asserts a non-root user, and makes
@@ -120,7 +121,7 @@ torch  Dependency not found on PyPI and could not be audited: torch (2.13.0+cpu)
 
 The CPU-only wheel comes from PyTorch's own index and carries a local
 version identifier that has no PyPI entry, so the advisory database
-cannot be queried for it. This is a real consequence of the CPU-only
+cannot be queried for it. This is a consequence of the CPU-only
 choice: the largest dependency in the tree is version-pinned and
 hash-verified but not advisory-scanned. It is recorded here rather than
 left implicit in a "no known vulnerabilities" line.

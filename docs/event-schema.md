@@ -1,9 +1,9 @@
 # Event Schema
 
-Phase 6 turns MIND's behavior logs from a finished table into a stream of
+the streaming pipeline turns MIND's behavior logs from a finished table into a stream of
 individual interaction events — what a real system would receive one at a
-time, in order, as it happens. This step defines the message format every
-later Phase 6 component (Kafka broker, replay producer, streaming
+time, in order, as it happens. This check defines the message format every
+the streaming components (Kafka broker, replay producer, streaming
 consumer) shares. Implementation: `src/recommender/streaming/schema.py`.
 
 ## Four event types, and an honest gap
@@ -23,7 +23,7 @@ separate from "the user clicked it" — no dwell time, no scroll depth,
 nothing. The replay producer (`docs/replay-producer.md`) only ever emits `impression`,
 `click`, and the derived `skip`. `view` stays in the schema as a defined,
 unpopulated type — the same disclosed-limitation pattern already applied
-to article freshness in Phase 4 and Phase 5.
+to article freshness in the ranking model and reranking.
 
 ## Fields on every event
 

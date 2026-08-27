@@ -1,7 +1,7 @@
 # Retrieval Evaluation
 
 The two-tower model plus exact Faiss search, run against the same frozen
-`validation` split as all three Phase 2 baselines
+`validation` split as all three baselines
 (`docs/evaluation-protocol.md`) — but a genuinely different task: searching
 the full 51,282-item catalog rather than ranking a roughly 37-item
 pre-filtered candidate list. Evaluated at N=100 (the retrieval-stage
@@ -12,7 +12,7 @@ approximate index, to isolate model quality from the index's already-
 measured approximation cost (`docs/faiss-index.md`). Implementation:
 `src/recommender/evaluation/evaluate_retrieval.py`.
 
-## Real result
+## Results
 
 30,270 validation impressions, N=100. The "before" column is the
 category/subcategory-only item tower this project originally shipped;
@@ -77,14 +77,28 @@ the result now is the modest capacity of a 32-dimensional two-tower
 model trained on a single day of interactions, which is a different and
 smaller claim than the original diagnosis.
 
-## Honest answer to RQ1
+## Interpretation: RQ1
 
 RQ1 asks how much learned embeddings and candidate retrieval improve
-recommendation quality over simple baselines. The honest answer from this
-implementation is: **not demonstrated, and for a specific, diagnosed
-reason** — not because learned embeddings are inherently weaker than the
-Phase 2 baselines, but because this particular item tower's feature set
-is too coarse to support item-level retrieval at all. That is a real,
-falsifiable finding about *this* architecture, not a verdict on learned
-embeddings in general, and it points directly at what a follow-up
-architecture would need to fix to give RQ1 a fair test.
+recommendation quality over simple baselines. Four statements hold
+together:
+
+1. **The original collapse was fixed.** The item tower once embedded only
+ category and subcategory, producing 284 distinct catalog embeddings
+ for 50,704 articles. Per-article content vectors removed that
+ degeneracy; distinct embeddings now match the catalog size.
+2. **Retrieval improved substantially.** Hit rate@N rose from 0.0044 to
+ 0.0336, a 7.6x improvement, with comparable gains across the other
+ retrieval metrics.
+3. **Absolute retrieval quality remains low.** Hit rate@N is 0.0336,
+ Recall@N 0.0229 and NDCG@N 0.0060. Retrieval alone does not yet beat
+ the baselines on this dataset.
+4. **The remaining gap is not the old defect.** Whatever explains the
+ current ceiling, it is not the 284-vector collapse, which is measurably
+ gone. Naming a cause would require an experiment this project has not
+ run.
+
+These are post-selection development results under the candidate-list
+protocol, not a final generalization estimate; no untouched evaluation
+split remains. See [`docs/evaluation-protocol.md`](evaluation-protocol.md)
+for what that protocol does and does not support.

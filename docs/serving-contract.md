@@ -9,11 +9,15 @@ reranking → response) is built. Implementation:
 
 A request and response shape decided while writing the endpoint tends to
 follow whatever the code happens to produce, rather than what a caller
-actually needs. Defining `RecommendationRequest`, `RecommendedItem`, and
-`RecommendationResponse` first, with real validation, forces every field
-and its constraints to be decided deliberately and gives the later
-integration step (`docs/inference-path.md`, once written) a fixed target
-to build toward instead of a moving one.
+needs. `RecommendationRequest`, `RecommendedItem` and
+`RecommendationResponse` were defined first, with validation, so every
+field and its constraints were decided deliberately. That gave the
+integration described in [`docs/inference-path.md`](inference-path.md) a
+fixed target to build toward rather than a moving one.
+
+The contract is implemented. `POST /recommend` serves it through FastAPI,
+alongside `/health`, `/ready`, `/metrics`, `/dashboard` and
+`/demo/{user_id}`.
 
 ## Pydantic, not a plain dataclass
 
@@ -31,7 +35,7 @@ built) is built around it rather than a general-purpose framework.
 
 - `RecommendationRequest.num_candidates` is capped at 50 and must be
   positive — an unbounded request could ask for the entire catalog,
-  which is a real cost/latency risk this contract closes off at the door
+ which is a cost/latency risk this contract closes off at the door
   rather than downstream.
 - `RecommendedItem.score` is constrained to `[0, 1]` because the ranking
   model (`docs/ranking-model.md`) is a calibrated logistic regression
@@ -39,7 +43,7 @@ built) is built around it rather than a general-purpose framework.
   would mean something upstream is already broken, not a valid case a
   caller has to handle.
 - `RecommendationResponse.durable_features_used` /
-  `recent_features_used` surface Phase 7's cold-start fallback signal
+ `recent_features_used` surface the online feature store's cold-start fallback signal
   (`OnlineFeatureLookup.durable_is_fallback` / `recent_is_fallback`,
   `docs/cold-start.md`) directly in the response, inverted to read from
   the caller's point of view — so a heavily-fallback recommendation

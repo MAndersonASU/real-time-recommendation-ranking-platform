@@ -9,7 +9,7 @@ the stage immediately before it. Implementation:
 ## The same governed contract throughout
 
 Every stage compared here was evaluated on the identical protocol: K=10,
-the same 30,270 validation impressions, frozen since Phase 2
+the same 30,270 validation impressions, frozen since the baselines
 (`docs/evaluation-protocol.md`). A delta between adjacent rows reflects
 exactly the one stage that changed, not a different evaluation
 population or a different K creeping in unnoticed.
@@ -17,12 +17,12 @@ population or a different K creeping in unnoticed.
 ## The comparison against the best baseline, not the weakest
 
 Content similarity — not popularity, not collaborative filtering — is
-the anchor, since it beat both of the others on every metric in Phase 2.
+the anchor, since it beat both of the other baselines on every metric.
 Comparing the pipeline's cumulative gain against the weakest baseline
 would overstate how much retrieval, ranking, and reranking actually add
 on top of the best pre-existing approach.
 
-## Real result
+## Results
 
 | Stage | Hit rate@10 | Recall@10 | NDCG@10 | Δ hit rate | Δ NDCG |
 |---|---|---|---|---|---|
@@ -34,13 +34,13 @@ on top of the best pre-existing approach.
 ## A nuance only visible once the numbers sit side by side
 
 Retrieval alone slightly *beats* content similarity on hit rate and
-recall, but slightly *loses* to it on NDCG — a small, real regression
+recall, but slightly *loses* to it on NDCG — a small, regression
 that was true in the underlying report files all along, but invisible
-until this step put both rows next to each other. It means retrieval
+until this check put both rows next to each other. It means retrieval
 finds a true click inside its top-10 slightly more often, but on
 average ranks that click a little lower within the slate than content
 similarity's own ordering does. The ranking model then more than
 recovers that ground on every metric, and reranking spends part of
 ranking's own gain on diversity and freshness — the same tradeoff
-Phase 5 already measured, now visible in the same table as everything
+reranking already measured, now visible in the same table as everything
 that came before and after it.

@@ -4,7 +4,7 @@ Recommendation quality (hit rate, recall, NDCG, MRR) measures whether
 the right item appeared in a slate. None of those numbers say anything
 about whether an explanation attached to that item is honest or
 useful — a different property, measured here with its own metrics,
-never folded into the ranking numbers tracked since Phase 2.
+never folded into the ranking numbers tracked since the baselines.
 Implementation: `src/recommender/evaluation/evaluate_explanations.py`.
 
 ## The metrics
@@ -18,7 +18,7 @@ Implementation: `src/recommender/evaluation/evaluate_explanations.py`.
   check (a hand-curated blacklist of fabrication-indicator words) than
   the generation module's own gate (a closed-vocabulary whitelist), not
   a second copy of the same lexical assumption — an earlier version of
-  this evaluation shared the production gate's exact design and
+ this evaluation shared the serving-path gate's exact design and
   therefore its exact blind spot (`docs/explanation-boundary.md`).
 - **Model-contribution rate** — of the explanations shown, how many
   are the local model's own rewrite versus the safe fallback template,
@@ -27,7 +27,7 @@ Implementation: `src/recommender/evaluation/evaluate_explanations.py`.
 
 ## Result, 60 real validation users, 180 real recommendations
 
-Measured after the faithfulness gate was rebuilt as a closed-vocabulary
+Measured after the lexical policy gate was rebuilt as a closed-vocabulary
 check (`docs/explanation-boundary.md`) — the model's rewrite must now
 consist only of words already in the template plus a small, fixed set
 of grammatical connectives, not just avoid unfamiliar capitalized words.
@@ -35,37 +35,36 @@ of grammatical connectives, not just avoid unfamiliar capitalized words.
 | Metric | Value |
 |---|---|
 | Total recommendations evaluated | 180 |
-| Refused (no supporting evidence) | 15 (8.3%) |
-| Attempted explanations | 165 |
-| Lexical-policy pass rate | 100% (165/165) |
-| Model rewrite used | 12 (7.3% of attempted) |
-| Template fallback used | 153 (92.7% of attempted) |
-| Mean explanation length | 55.1 characters |
-| Distinct explanation strings | 9 |
+| Refused (no supporting evidence) | 115 (63.9%) |
+| Attempted explanations | 65 |
+| Lexical-policy pass rate | 100% (65/65) |
+| Model rewrite used | 0 (0.0% of attempted) |
+| Template fallback used | 65 (100.0% of attempted) |
+| Mean explanation length | 53.2 characters |
+| Distinct explanation strings | 2 |
 
-## What this shows, and its real limitations
+Generated from [`reports/explanation-evaluation.json`](../reports/explanation-evaluation.json).
+
+## Interpretation and limitations
 
 No violations were detected in this evaluated sample under the
-documented checks — every one of the 165 attempted explanations passed
-both the production gate and the independent, differently-designed
-verification. That is a statement about this sample under these
+documented checks — all 65 attempted explanations passed both the
+serving-path gate and the separate, differently-designed verification. That is a statement about this sample under these
 checks, not a claim that no rewrite could ever slip through: the
 blacklist above is a fixed, hand-curated list, not an exhaustive model
-of every way a fabrication could be worded, and a real weakness of any
+of every way a fabrication could be worded. A known weakness of any
 closed-vocabulary or blacklist check is that it will not catch a
 fabrication built entirely from already-permitted words.
 
-**The stricter gate visibly changed real model behavior, not just its
-theoretical bound.** Model-authored rewrites dropped from 20/165
-(12.1%) under the previous, weaker gate to 12/165 (7.3%) here — the
-same real local model, run against the same real data, producing
-fewer accepted rewrites once the gate stopped accepting anything that
-merely avoided an unfamiliar capitalized word. This is the practical
-effect of preferring the safer design: in the large majority of real
-cases (92.7%), the deterministic template is what gets shown, not a
-model paraphrase.
+**The stricter gate changed measured model behaviour, not just its
+theoretical bound.** In the default configuration the generative
+rewriting path is off, so model-authored rewrites are 0 of 65
+attempted and the deterministic template supplies every shown
+explanation (65/65). Under the earlier, weaker gate the same local
+model produced accepted rewrites; the closed-vocabulary gate stopped
+accepting wording that merely avoided an unfamiliar capitalized word.
 
-**Only 9 distinct explanation strings appeared across 165 attempted
+**Only 2 distinct explanation strings appeared across 65 attempted
 explanations, a disclosed limitation**: since the fallback template is
 built from category and content-similarity flags alone, users who
 share a dominant category receive an identical sentence. Explanations

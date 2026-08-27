@@ -1,74 +1,74 @@
 # Architecture
 
-Status: Phase 0 — target architecture and module ownership defined. Data,
-modeling, streaming, and serving components are not yet implemented; this
-document describes design intent, not built behavior. Sections will be
-updated to describe implemented, verified behavior as each phase completes.
+Current state of the implemented system. Every component described here
+exists in `src/recommender/` and is exercised by tests. Dated design
+history has moved to
+[`docs/architecture-decisions.md`](architecture-decisions.md).
 
 ## System overview
 
-The system has two paths that share models and artifacts but run on
-different cadences: an offline/batch path that learns durable models from
-historical data, and an online/streaming path that serves recommendations
-using those models plus recent user state. Each stage is planned to be
-owned by exactly one package under `src/recommender/`.
+Two paths share models and artifacts but run on different cadences: an
+offline path that learns durable models from historical data, and an
+online path that serves recommendations using those models plus recent
+user state. Each stage is owned by exactly one package under
+`src/recommender/`.
 
-| Path | Stage | Planned module | Responsibility |
+| Path | Stage | Module | Responsibility |
 |---|---|---|---|
-| Offline | Ingestion & governance | `recommender.data` | Load MIND, enforce schema, keep raw/licensed data local-only |
-| Offline | Feature pipeline | `recommender.features` | Vectorized feature construction; shared contract with the online path |
-| Offline | Candidate retrieval | `recommender.retrieval` | Two-tower embedding model, Faiss candidate index |
-| Offline | Ranking | `recommender.ranking` | Personalized ranking model scoring retrieved candidates |
-| Offline | Reranking policy | `recommender.reranking` | Diversity/freshness slate construction after ranking |
-| Both | Evaluation | `recommender.evaluation` | Metric definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) shared by offline evaluation and online replay |
-| Online | Event streaming | `recommender.streaming` | Historical replay, Kafka producer/consumer, recent user state |
-| Online | Serving | `recommender.serving` | Typed recommendation API integrating retrieval, ranking, reranking |
+| Offline | Ingestion and governance | `recommender.data` | Loads MIND, enforces schema, keeps licensed data local-only |
+| Offline | Feature pipeline | `recommender.features` | Vectorized feature construction shared with the online path |
+| Offline | Candidate retrieval | `recommender.retrieval` | Two-tower embedding model, Faiss `IndexFlatIP` candidate index |
+| Offline | Ranking | `recommender.ranking` | Popularity, content and collaborative baselines plus the learned ranking model |
+| Offline | Reranking policy | `recommender.reranking` | Diversity and freshness slate construction after ranking |
+| Both | Evaluation | `recommender.evaluation` | Metric definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) plus report publication |
+| Online | Event streaming | `recommender.streaming` | Historical replay, Kafka producer and consumer, recent user state |
+| Online | Serving | `recommender.serving` | Typed recommendation API integrating retrieval, ranking and reranking |
 | Both | Observability | `recommender.monitoring` | Structured logging, operational and quality metrics |
-| Offline | Experiment tracking | `recommender.tracking` | Structured, queryable log of evaluation runs across phases (`docs/experiment-tracking.md`) |
+| Offline | Experiment tracking | `recommender.tracking` | JSONL log of evaluation runs ([`docs/experiment-tracking.md`](experiment-tracking.md)) |
+| Online | Explanation | `recommender.explanation` | Bounded explanation of an already-selected recommendation |
 
 ## Data flow
 
 ```
-Offline / batch (planned)
+Offline
 governed MIND dataset (data/, local-only, licensed)
-   -> validation (schema + business rules)
-   -> Parquet/DuckDB analytical tables
-   -> concise EDA
+   -> schema and business-rule validation
+   -> Parquet / DuckDB analytical tables
    -> feature pipeline
    -> baselines (popularity, content-similarity, collaborative)
-   -> embedding retrieval model (two-tower) -> Faiss candidate index
-   -> personalized ranking model
+   -> two-tower retrieval model -> Faiss candidate index
+   -> learned ranking model
+   -> reranking policy
    -> evaluation against the frozen contract (docs/research-scenario.md)
-   -> model/artifact registry
+   -> versioned artifact bundle + published reports
 
-Online / streaming (planned)
+Online
 historical interaction replay
    -> Kafka
    -> stream consumer
-   -> recent user features/state
+   -> recent user state in Redis
    -> candidate retrieval -> ranking -> reranking
    -> recommendation API
    -> user event feedback -> Kafka
 ```
 
-The same two paths, showing where they share models and where they diverge:
-
 ```mermaid
 flowchart TD
-    subgraph OFFLINE["Offline / batch"]
+    subgraph OFFLINE["Offline"]
         A["MIND dataset<br/>data/ (local-only)"] -->|"recommender.data"| B["Validated Parquet/DuckDB tables"]
         B -->|"recommender.features"| C["Feature pipeline"]
         C --> D["Baselines<br/>popularity / content / collaborative"]
         C -->|"recommender.retrieval"| E["Two-tower embeddings<br/>Faiss candidate index"]
-        E -->|"recommender.ranking"| F["Personalized ranking model"]
-        F -->|"recommender.evaluation"| G["Evaluation<br/>frozen contract"]
-        G --> H["Model / artifact registry"]
+        E -->|"recommender.ranking"| F["Learned ranking model"]
+        F -->|"recommender.reranking"| R["Reranking policy"]
+        R -->|"recommender.evaluation"| G["Evaluation<br/>frozen contract"]
+        G --> H["Artifact bundle + reports/"]
     end
 
-    subgraph ONLINE["Online / streaming"]
+    subgraph ONLINE["Online"]
         I["Historical interaction replay"] -->|"recommender.streaming"| J["Kafka"]
         J --> K["Stream consumer"]
-        K --> L["Recent user features/state"]
+        K --> L["Recent user state (Redis)"]
         L --> M["Candidate retrieval -> ranking"]
         M -->|"recommender.reranking"| N["Reranking"]
         N -->|"recommender.serving"| O["Recommendation API"]
@@ -78,88 +78,78 @@ flowchart TD
     H -.->|"served models"| M
 ```
 
-### Module ownership (`src/recommender/`)
+## Artifact boundaries
 
-The eight subpackages created during initial repository setup map directly
-onto the stages above; each currently contains only an `__init__.py` and
-will gain real code as its owning phase starts, per the project's
-lazy-dependency policy. A ninth subpackage, `recommender.evaluation`, was
-added in Phase 2 — see the design-decisions log below for why it wasn't
-part of the original eight.
+The offline path produces a versioned bundle that the online path loads
+read-only. Nothing in the serving path writes to it.
+
+| Artifact | Produced by | Consumed by |
+|---|---|---|
+| Two-tower retrieval model | `recommender.retrieval` | Serving, evaluation |
+| Item content vectors (`.npz`) | `recommender.retrieval` | Retrieval, ranking features |
+| Faiss `IndexFlatIP` index | `recommender.retrieval` | Serving, evaluation |
+| Item catalog | `recommender.data` | Serving, reranking |
+| Ranking model | `recommender.ranking` | Serving, evaluation |
+| Bundle manifest (SHA-256 per file) | `recommender.retrieval` | Startup validation |
+
+Every bundle member is checksummed in the manifest, and the API validates
+those checksums during startup rather than trusting the filenames.
+
+## Runtime dependencies
+
+The API requires the artifact bundle and Redis. It does not require Kafka
+at request time: only the offline replay and consumer scripts talk to
+Kafka, so API startup is not gated on broker health.
+
+| Service | Required for | Behaviour when unavailable |
+|---|---|---|
+| Artifact bundle | Startup | Startup fails; `/ready` never becomes ready |
+| Redis | Recent user state | Request succeeds; user state degrades to cold-start |
+| Kafka | Offline replay and consumption only | No effect on serving |
+
+## Failure and fallback boundaries
+
+- Missing or unreadable artifact bundle stops startup rather than serving
+  a silently degraded model.
+- Redis unavailability degrades a request to cold-start behaviour instead
+  of failing it ([`docs/serving-fallback.md`](serving-fallback.md)).
+- A failure inside retrieval, ranking or reranking falls back to
+  training-set popularity through `build_fallback_response`.
+- The explanation layer only ever consumes a finished
+  `RecommendationResponse`; it cannot influence retrieval, ranking or
+  reranking ([`docs/explanation-boundary.md`](explanation-boundary.md)).
+
+## Known limitations
+
+- All labels come from exposure-biased MIND logs; see
+  [`docs/limitations.md`](limitations.md).
+- No untouched final evaluation split remains; validation is
+  post-selection development evaluation
+  ([`docs/evaluation-protocol.md`](evaluation-protocol.md)).
+- Commit-failure behaviour against a live broker is not fully verified
+  ([`docs/recovery-testing.md`](recovery-testing.md)).
+- There is no production deployment. The container stack is a local
+  demonstration.
 
 ## Cross-cutting controls
 
-- Feature consistency between training and serving (verified in Phase 7)
+- Feature consistency between training and serving, verified in the
+  online feature store
 - Deterministic configuration and artifact versioning
-- Structured logging and operational metrics (Phase 12)
-- Latency, throughput, cache hit rate, and failure monitoring
-- Offline quality evaluation and replay-based online simulation, both
-  measured against the single frozen contract in
+- Structured logging and operational metrics
+- Latency, throughput, cache hit rate and failure monitoring
+- Offline quality evaluation and replay-based simulation, both measured
+  against the frozen contract in
   [`docs/research-scenario.md`](research-scenario.md)
 - Containerized local execution and CI verification
 
 ## Complexity boundary
 
-Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, and a
-formal feature store remain explicitly out of scope unless a measured
-requirement justifies adding one. A small, local, instruction-tuned
-model was added for the optional explanation layer
-(`docs/explanation-boundary.md`) — it explains an already-selected
-recommendation and never participates in retrieval, ranking, or
-reranking decisions.
-
-## Design decisions log
-
-- **2026-08-15** — Fresh start: the prior local checkout and GitHub repo no
-  longer existed when this phase began; nothing carried forward from any
-  earlier attempt.
-- **2026-08-15** — Python pinned to 3.11, not the machine's system-default
-  3.14, since PyTorch, Faiss, and TorchRec (needed from Phase 3 onward)
-  typically lag behind the newest CPython release.
-- **2026-08-15** — Dependencies are added only when the phase that needs
-  them starts, rather than declared up front, to avoid stale or unused
-  pins accumulating over a long-running project.
-- **2026-08-15** — `.gitignore`'s initial `data/` pattern was unanchored
-  and matched `src/recommender/data/` (a real source package) in addition
-  to the intended root-level dataset folder. Caught by reading `git
-  status` after staging, before the first commit; fixed by anchoring the
-  pattern to `/data/`.
-- **2026-08-15** — CI runs on `ubuntu-latest` rather than mirroring local
-  Windows development, since the codebase is pure Python with no
-  OS-specific behavior at this stage. Revisit if a future dependency
-  (Faiss, a Kafka client) introduces platform-specific build requirements.
-- **2026-08-15** — The research contract (`docs/research-scenario.md`) was
-  frozen before any repository or code existed, including an explicit
-  separation between N (retrieval-stage candidate count) and K (served
-  Top-K), since RQ1 and RQ2 evaluate different quantities and must not be
-  conflated in later reporting.
-- **2026-08-16** — Added `recommender.evaluation`, a ninth subpackage not
-  present in the original eight-package skeleton design. Metric
-  definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) don't belong to
-  any single existing package: they're not the ranking model itself
-  (`recommender.ranking`), and they're consumed by both the offline
-  evaluation path and the online replay path, so folding them into either
-  one would misattribute ownership. A dedicated package keeps the metric
-  contract in one place that both paths import from.
-- **2026-08-16** — The Phase 2 baselines (popularity, and the content/
-  collaborative baselines to follow) live in `recommender/ranking/
-  baselines.py`, inside the package already planned for Phase 4's learned
-  ranking model, rather than a new tenth package. A popularity ranker and
-  a learned ranker do the same conceptual job — order a fixed set of
-  candidates — so they share a module rather than each baseline earning
-  its own top-level package, which would multiply the module count faster
-  than the actual complexity justifies.
-- **2026-08-21** — Added `recommender.tracking`, a tenth subpackage, for
-  a plain JSONL experiment log (`docs/experiment-tracking.md`). MLflow —
-  named in this project's original stack outline as a conditional
-  addition — was evaluated with a real dependency dry run and rejected:
-  it would downgrade the pinned pandas version and add roughly 60
-  transitive packages for a solo project with about a dozen real
-  experiments, more machinery than the actual need justifies.
-- **2026-08-22** — Added `recommender.explanation`, an eleventh
-  subpackage, for the optional generative explanation layer
-  (`docs/explanation-boundary.md`). Kept separate from
-  `recommender.serving` deliberately: the explanation layer only ever
-  consumes an already-finished `RecommendationResponse`, and a shared
-  package could make it easy to accidentally give it access to
-  in-progress ranking state it should never see.
+Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec and a
+formal feature store remain out of scope unless a measured requirement
+justifies adding one; see
+[`docs/distributed-evaluation.md`](distributed-evaluation.md). A small,
+local, instruction-tuned model backs the optional explanation layer
+([`docs/explanation-boundary.md`](explanation-boundary.md)); it explains
+an already-selected recommendation and never participates in retrieval,
+ranking or reranking decisions.

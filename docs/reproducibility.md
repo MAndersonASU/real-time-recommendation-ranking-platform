@@ -1,13 +1,25 @@
-# Reproducibility Verification
+# Clean-environment installation and serving verification
 
 The README's "Getting started" instructions are a claim until someone
-actually starts from nothing and checks them. This document records a
-real, independent verification: a genuine second `git clone` into an
-empty directory, a brand-new virtual environment, a from-scratch
-dependency install, the full test suite, and the real containerized
-service — not a re-run inside the already-working development copy.
+starts from nothing and checks them. This document records a
+maintainer-run check from a second `git clone` into an empty directory:
+a new virtual environment, a dependency install, the full test suite,
+and the containerized service — not a re-run inside the already-working
+development copy. It was not performed by an independent third party.
 
-## What was actually done
+## Scope: what this does and does not establish
+
+| Aspect | Verified here? |
+|---|---|
+| **Environment reproducibility** — a clean clone installs and its tests pass | Yes |
+| **Artifact portability** — previously generated artifacts load and serve in a fresh clone | Yes |
+| **Experiment reproducibility** — training and evaluation rebuilt from the licensed download | No |
+
+The offline artifacts were copied into the clean clone rather than
+regenerated, so nothing here re-derives any published metric. Licensed
+data was never copied and never redistributed.
+
+## What was done
 
 1. `git clone` the public repository into a directory that had never
    held any part of this project before.
@@ -20,26 +32,26 @@ service — not a re-run inside the already-working development copy.
    indexes, splits, reports — never the raw licensed dataset itself)
    copied into the fresh clone's `data/` directory, then
    `docker compose up -d --build` from that same fresh clone.
-5. Real requests against the freshly built container:
+5. Live requests against the freshly built container:
    `GET /ready` and `GET /demo/{user_id}`.
 
-## A real reproducibility bug this check actually found
+## A reproducibility defect this check found
 
-The first attempt at step 2 failed outright:
+The virtual-environment creation failed outright:
 `ERROR: Package 'recommender' requires a different Python: 3.14.2 not
 in '<3.12,>=3.11'`. The README's "Getting started" section said
 `python -m venv .venv` with no mention of which Python version that
 command needs to resolve to — on this machine, plain `python` resolves
-to 3.14, not the pinned 3.11 the project actually requires (chosen
+to 3.14, not the pinned 3.11 the project requires (chosen
 originally because PyTorch, Faiss, and this project's other heavier
 dependencies typically lag behind the newest CPython release). This
 was a real, silent assumption baked into every earlier setup in this
 project (the working development environment already had a 3.11 venv
-from Phase 0, so the gap was never surfaced until a genuinely fresh
+from the research contract, so the gap was never surfaced until a genuinely fresh
 environment was checked). Fixed by adding the explicit version
 requirement to the README's quickstart.
 
-## Real result: the suite passes with no licensed data
+## Results: the suite passes with no licensed data
 
 The full suite runs from a clean clone with no `data/` directory
 present, which is what a public clone actually receives. Verified in a
@@ -68,17 +80,17 @@ was needed for this to pass, confirming the CI-mirroring claim in
 `docs/ci-automation.md` holds for a genuinely fresh environment too,
 not only inside GitHub's own runners.
 
-## Real result: the containerized services, from the fresh clone
+## Results: the containerized services, from the fresh clone
 
 The original repository's running containers were stopped first (to
 free the fixed host ports and container names both copies use), then
 `docker compose up -d --build` was run directly from the fresh clone.
-Real result: `recommender-kafka`, `recommender-redis`, and
+Results: `recommender-kafka`, `recommender-redis`, and
 `recommender-api` all reported healthy; `GET /ready` returned
 `{"ready": true, ...}`; `GET /demo/U73700` returned the same real
 ranked slate and explanations as the original build (per-stage latency
 within normal machine-timing variance of the numbers already recorded
-in `docs/professional-demonstration.md`). The original repository's
+in `docs/demonstration-guide.md`). The original repository's
 own containers were rebuilt and restored afterward.
 
 ## Exact dependency versions (requirements-lock.txt)
@@ -127,7 +139,7 @@ what was resolved here. That is a stronger guarantee than version
 pinning alone: a plain `pip freeze` lock pins *which* version to fetch
 but cannot detect that the artifact behind that version changed.
 
-Two real problems this file has caught, both worth recording rather than
+Two problems this file has caught, both worth recording rather than
 quietly fixing:
 
 - An earlier version omitted `skops` entirely — added to

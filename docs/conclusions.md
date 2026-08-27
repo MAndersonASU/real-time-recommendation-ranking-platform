@@ -1,16 +1,17 @@
 # Final Research Conclusions
 
-Synthesizes what every earlier phase already measured into one final
-answer for each research question, plus the real costs this project
+Synthesizes what every the preceding work already measured into one final
+answer for each research question, plus the costs this project
 introduced and where the evidence deliberately stops short of a claim
 it can't support. Nothing here is a new measurement — every claim below
 traces back to a specific already-published doc or a run already
-logged in `data/processed/mind_small/experiment_log.jsonl`
+logged locally in `data/processed/mind_small/experiment_log.jsonl`,
+which is not committed; the published equivalents are in `reports/`
 (`docs/experiment-tracking.md`).
 
 ## RQ1: Do learned embeddings help retrieval?
 
-A real, measured improvement over the original architecture, still
+A measured improvement over the original architecture, still
 short of competitive retrieval quality.
 
 The first answer recorded here was "not demonstrated": full-catalog
@@ -39,13 +40,15 @@ Yes, clearly, the strongest positive result in this project. Over the
 same frozen candidate pool, the ranking model beat sorting by raw
 retrieval score alone on every relevance metric (hit rate 0.6828 vs.
 0.6689, NDCG 0.3671 vs. 0.3518 — `docs/ranking-evaluation.md`), and
-beat every one of Phase 2's non-learned baselines too. The
+beat every non-learned baseline too. The
 retrieval-feature ablation (`docs/ablations.md`) confirms this isn't
 just the ranker's other features doing the work: removing
-`retrieval_score` from the ranker's own inputs cost real ground (hit
-rate −3.1%, NDCG −3.4%), so the two-tower signal is genuinely useful
-input to a ranker even where it was too weak to drive full-catalog
-retrieval alone. **Answer: yes, unambiguously.**
+`retrieval_score` from the ranker's own inputs cost measurable ground
+(hit rate −3.5%, NDCG −3.4%), so the two-tower signal is useful input to
+a ranker even where it was too weak to drive full-catalog retrieval
+alone. **Answer: development evidence under the candidate-list protocol
+supports this.** No untouched final split remains, so this is not a
+generalization estimate.
 
 ## RQ3: Does reranking improve diversity and freshness?
 
@@ -69,7 +72,7 @@ hit rate (0.0) with and without recent features — but that floor was
 already independently explained: this replay population is measured at
 92.4% durable cold start and 0% live-Redis coverage
 (`docs/limitations.md`), leaving no headroom for recent features to
-show a difference either way. What is real and unambiguous is the
+show a difference either way. What is measurable is the
 latency cost of having them: removing the Redis round-trip cut mean
 feature-lookup time from 0.80ms to 0.008ms, consistent with the
 isolated Redis benchmark measured when the store was first built
@@ -83,7 +86,7 @@ needed to answer this question properly.**
 
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
-| Retrieval features | Hit rate −3.1%, NDCG −3.4% | None measured |
+| Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
 | Ranker features | Hit rate −2.9%, NDCG −6.1% | ~1.49ms p50 |
 | Reranking | Relevance rises (+1.8%/+1.4%), diversity/freshness fall | ~8.88ms p50 (69% of total) |
 | Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
@@ -105,9 +108,9 @@ shown in one place rather than argued about qualitatively. Full detail:
 | + Reranking (diversity/freshness) | 0.6675 | −0.0153 |
 
 Ranking is where most of the pipeline's real, cumulative gain over the
-strongest non-learned baseline actually comes from. Retrieval alone
-adds a small amount on hit rate but *loses* ground on NDCG (−0.0080,
-`docs/experiment-tracking.md`) — true in the underlying numbers the
+strongest non-learned baseline comes from. Retrieval alone
+adds a small amount on hit rate but *loses* ground on NDCG (−0.0008,
+[`docs/stage-comparison.md`](stage-comparison.md)) — true in the underlying numbers the
 whole time, only visible once every stage sat side by side in one
 table. Reranking spends part of the ranking model's gain, deliberately,
 on the diversity/freshness improvement documented under RQ3.
@@ -118,8 +121,7 @@ Overall miss rate 33.2% across 30,270 real impressions. Misses
 concentrate predictably by user history depth (43.5% for a cold-start
 user vs. 31.9% for a well-established one) and by whether the clicked
 item's category matched the user's own dominant history category
-(35.1% vs. 28.3%) — both consistent with what the ranking model was
-actually built to use. One counter-intuitive result was chased down
+(35.1% vs. 28.3%) — both consistent with what the ranking model was built to use. One counter-intuitive result was chased down
 rather than reported at face value: items never clicked in training
 miss *less* often than items that were, explained not by the model
 treating them differently (its own predicted score is nearly identical
@@ -129,7 +131,7 @@ through more rivals for the same 10 slots.
 
 ## What this project cost to build
 
-Real, measured, not estimated: a containerized HTTP service with
+measured, not estimated: a containerized HTTP service with
 health/readiness separation and CI-verified failure-path behavior
 (`docs/containerization.md`, `docs/restart-and-failure-testing.md`); a
 `/metrics` endpoint, a rolling ML-quality tracker, structured
@@ -139,8 +141,8 @@ request-correlated JSON logging, and a compact operational dashboard
 concurrency behavior and two evidence-justified optimizations that
 measurably improved throughput and memory footprint
 (`docs/optimization.md`). None of this was added speculatively — every
-piece traces to a real, measured need identified in the phase that
-built it.
+piece traces to a measured need identified by the work that built
+it.
 
 ## Where the evidence deliberately stops
 
@@ -149,11 +151,13 @@ built it.
   measures agreement with MIND's own already-deployed system's past
   choices, never a genuinely different candidate set's real outcome
   (`docs/limitations.md`).
-- **Whether richer item features would break the retrieval tie
-  ceiling** (RQ1) is a documented hypothesis, not a tested one —
-  reopening the item tower's architecture was explicitly judged a
-  materially larger change than any single step's scope, every time it
-  came up.
+- **Richer item features were implemented and evaluated.** The item
+ tower was reopened and given per-article content vectors; distinct
+ catalog embeddings rose from 284 to 50,704 and retrieval metrics
+ improved 7.6x-13.5x
+ ([`docs/retrieval-evaluation.md`](retrieval-evaluation.md)). That
+ removed the tie ceiling. Absolute retrieval quality remains low, and
+ what explains the remaining gap is untested.
 - **Whether recent streaming features would show measurable value**
   against a population with continuous real traffic, rather than the
   extreme cold start this project's replay sample happens to have, is
@@ -162,5 +166,5 @@ built it.
   optimized (`docs/optimization.md`, `docs/distributed-evaluation.md`)
   but never tested against a workload large enough to make horizontal
   scaling or a sharded embedding table (TorchRec) actually necessary —
-  the real, measured bottleneck throughout was single-machine CPU
+ the measured bottleneck throughout was single-machine CPU
   saturation, not embedding table size.

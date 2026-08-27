@@ -1,14 +1,14 @@
 # Diversity Reranking
 
 The first reranking policy: a slate-level decision layer, separating "how
-relevant is this item" (the ranking model, Phase 4) from "is this the
-right slate to show, as a set" (this step and the next).
+relevant is this item" (the ranking model, the ranking model) from "is this the
+right slate to show, as a set" (this check and the next).
 Implementation: `src/recommender/reranking/diversity.py`.
 
 ## Measured before building anything
 
 Rather than pick a category cap or similarity threshold by guesswork, the
-naive ranked top-10 (Phase 4's own output, unchanged) was measured directly
+naive ranked top-10 (the ranking model's own output, unchanged) was measured directly
 across 3,000 real validation impressions:
 
 - **53.1%** of slates already carry 4 or more items from a single
@@ -32,7 +32,7 @@ secondary safeguard.
 a k-item slate in one constrained pass, then (if needed) a second,
 unconstrained pass:
 
-1. Sort all candidates by ranking score, descending — Phase 4's ordering,
+1. Sort all candidates by ranking score, descending — the ranking model's ordering,
    untouched at this point.
 2. Add each candidate to the slate in that order, skipping it if its
    category has already reached a cap of 3 items in the slate, or if it's
@@ -45,8 +45,8 @@ unconstrained pass:
    slightly less diverse full one, so the constraints reorder the slate;
    they never shrink it.
 
-Every step is a rule that could be explained out loud in one sentence —
-the "transparent slate-level logic" the phase calls for, in contrast to a
+Every rule could be explained out loud in one sentence —
+the "transparent slate-level logic" the design calls for, in contrast to a
 learned reranking model whose behavior would need to be reverse-engineered
 case by case.
 

@@ -1,4 +1,4 @@
-# Professional Demonstration
+# Demonstration guide
 
 `GET /demo/{user_id}` on the real, already-running recommendation
 service — one real request traced end to end, not a mockup or a set
@@ -14,7 +14,7 @@ of curated screenshots. Implementation:
   `recent_features_used` flags on the response, labeled plainly as
   fully personalized, partially personalized, or cold start.
 - **The ranked slate** — rank, real title (looked up from the same
-  catalog every phase uses), category, and calibrated score.
+ catalog every component uses), category, and calibrated score.
 - **A real explanation per item** — the optional explanation layer
   (`docs/explanation-boundary.md`) called live against this request's
   real matched signals, showing an honest "no explanation: insufficient
@@ -30,7 +30,7 @@ version that ran the pipeline once for the numbers and separately
 re-derived anything for the page would risk the two silently
 disagreeing — this can't, since there's only one call.
 
-## Real, unmocked verification
+## Runtime verification
 
 ```bash
 curl "http://localhost:8000/demo/U73700?num_candidates=3"
@@ -41,7 +41,7 @@ returned a real page for real validation-split user `U73700` —
 "Partially personalized," total latency 11.24ms (consistent with the
 ~12.79ms p50 already measured in `docs/serving-latency.md`), a real
 per-stage breakdown (reranking the largest single cost at 4.58ms, the
-same real finding as that earlier measurement), three real catalog
+same finding as that earlier measurement), three real catalog
 articles with their real titles, and a real explanation for each item
 ("Recommended because it matches your interest in lifestyle.") — the
 same template-fallback behavior `docs/explanation-generation.md`

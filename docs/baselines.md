@@ -1,6 +1,6 @@
 # Baselines
 
-Reproducible results for each baseline defined in Phase 2, evaluated
+Reproducible results for each defined baseline, evaluated
 against the frozen `validation` split (`docs/splits.md`) using the
 metrics from `docs/research-scenario.md` and
 `src/recommender/evaluation/metrics.py`. K=10 throughout. Methodology for
@@ -43,15 +43,15 @@ can't: 3.70% is far below the 12.7–39.6% coverage the real, curated MIND
 impression logs themselves showed (`docs/data-quality.md`). That gap is
 the expected, measured cost of pure popularity ranking — it repeatedly
 surfaces the same
-narrow slice of the catalog to everyone. Any later model (Phase 3 onward)
+narrow slice of the catalog to everyone. Any later model (the retrieval model onward)
 that improves hit rate/NDCG/recall by narrowing coverage further, rather
 than widening it, hasn't actually solved the problem this baseline
-exposes; RQ3's diversity work in Phase 5 exists specifically to address
+exposes; RQ3's diversity work in reranking exists specifically to address
 this trade-off.
 
 Runtime: the evaluation loop (a Python-level `groupby` over 30,270
 impressions) took about 41 seconds locally. Left as-is rather than
-optimized — Phase 10 is where profiling and performance work belongs, and
+optimized — the scale and performance work is where profiling and performance work belongs, and
 optimizing a one-off local evaluation script before it's ever been a
 measured bottleneck would be solving a problem that doesn't exist yet.
 
@@ -86,12 +86,12 @@ profiling.
 purely lexical content signal (word overlap via TF-IDF, nothing trained)
 outperforms recommending the same popular items to everyone, on every
 metric measured. It does not yet answer RQ1 on its own: RQ1 specifically
-asks about *learned embeddings* (Phase 3's two-tower retrieval model), and
+asks about *learned embeddings* (the retrieval model's two-tower retrieval model), and
 TF-IDF word-overlap similarity is a considerably weaker, hand-computed
 stand-in for that. What this result does establish is a second, stronger
-rung on the same ladder — Phase 3's embedding model now has to beat this
+rung on the same ladder — the retrieval model's embedding model now has to beat this
 content-similarity baseline, not just the popularity one, to demonstrate
-real value from learned representations.
+value from learned representations.
 
 ## Collaborative baseline
 
@@ -122,7 +122,7 @@ validation *users* having a known factor. News
 articles churn fast enough that most of what's a candidate on any given
 day simply wasn't old enough to have accumulated click history during the
 training window. With roughly 71% of each impression's candidates scoring
-`-inf` — no real signal at all — this baseline can only meaningfully rank
+`-inf` — no signal at all — this baseline can only meaningfully rank
 the minority of candidates it has actual information about, and the rest
 fall back to an arbitrary (alphabetical) order among themselves. On
 average that's still usually enough real candidates to mostly fill a

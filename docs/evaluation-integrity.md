@@ -33,10 +33,11 @@ has been corrected.
 seeded fold from `train`'s own rows, split by `impression_id` so one
 impression's candidates never span both halves. Any future feature or
 hyperparameter decision should be checked against this fold — never
-against `validation`, which is reserved for final reporting only, from
-this point forward. `src/recommender/evaluation/
-verify_tuning_decisions.py` re-runs the same three original
-measurements against this fold instead of validation.
+against `validation`. Validation has already been used for selection, so
+it is post-selection development evaluation rather than an untouched
+final estimate; no untouched final split remains.
+`src/recommender/evaluation/verify_tuning_decisions.py` re-runs the same
+three original measurements against this fold instead of validation.
 
 This does not retroactively change what the already-reported numbers
 in `docs/baselines.md` and elsewhere measure — those numbers are what
@@ -44,7 +45,7 @@ they are, computed under the conditions actually used. What changes is
 that any future decision has real, disjoint, held-out infrastructure to
 use instead of reaching for validation again.
 
-## Real result: two of three decisions independently reconfirmed
+## Results: two of three decisions independently reconfirmed
 
 | Decision | Original (validation) | Tune fold | Confirmed? |
 |---|---|---|---|
@@ -57,7 +58,7 @@ Both the diversity cap and the freshness threshold hold up under a
 genuinely disjoint, held-out re-check. The original decisions were not
 simply noise fit to validation.
 
-## Real finding: evidence supports a recency-leakage explanation for the popularity discrepancy
+## finding: evidence supports a recency-leakage explanation for the popularity discrepancy
 
 An earlier version of this document reported the single-feature
 popularity AUC check as a real, unresolved discrepancy. Measured with
@@ -73,8 +74,7 @@ artificially predictive in the first place):
 This held even after correcting an initial version of this check that
 used in-sample popularity by mistake (see the docstring in
 `verify_tuning_decisions.py` for that first, incorrect attempt and why
-it was wrong). The remaining, plausible explanation: `split_train_for_
-tuning` splits `train`'s own rows *randomly* by impression_id, so a
+it was wrong). The remaining, plausible explanation: `split_train_for_tuning` splits `train`'s own rows *randomly* by impression_id, so a
 "fit" impression and a "tune" impression can sit right next to each
 other in real time — letting short-term popularity recency (an item
 hot this hour is usually still hot next hour) leak across the split in
@@ -100,19 +100,18 @@ validation result (0.47) — this result supports the recency-leakage
 hypothesis, not a controlled experiment that isolates recency as the
 sole variable (fit and tune also differ in which users and impressions
 land on each side of a chronological boundary versus a random one, a
-real confound this check does not separately rule out). It is real
-evidence in favor of that explanation, not proof of it.
+real confound this check does not separately rule out). It is evidence in favor of that explanation, not proof of it.
 
 ## Comparing against real alternatives, not just the chosen value's own behavior
 
 The diversity check's own "naive top-10" scores now come from a
 ranking model refit on the fit half of the tuning fold only — never
 seeing these tuning rows at all, unlike an earlier version of this
-check, which reused the already-trained production model (fit on *all*
+check, which reused the already-trained serving-path model (fit on *all*
 of `train`, including these same rows).
 
 Both checks also now compare the currently-configured value against
-real alternatives, run through the actual production algorithm
+real alternatives, run through the actual current ranking implementation
 (`build_diverse_slate`, `apply_freshness_quota`), with a selection rule
 decided *before* looking at the resulting numbers
 (`verify_diversity_cap`, `verify_freshness_threshold` in
@@ -151,13 +150,15 @@ diversity and a tight budget can rule it out.
 
 Measured on the tuning fold:
 
+Generated from [`reports/tuning-decisions.json`](../reports/tuning-decisions.json).
+
 | Cap | Mean slate relevance | Mean distinct categories |
 |---|---|---|
-| 1 | 0.475 | 7.72 |
-| 2 | 0.533 | 5.83 |
-| **3 (configured)** | **0.573** | **5.06** |
-| 5 | 0.597 | 4.52 |
-| No cap | 0.611 | 4.22 |
+| 1 | 0.498 | 7.52 |
+| 2 | 0.552 | 5.69 |
+| **3 (configured)** | **0.579** | **5.07** |
+| 5 | 0.602 | 4.57 |
+| No cap | 0.614 | 4.24 |
 
 The rule's answer now genuinely depends on how much relevance a
 diversity gain is judged to be worth:
@@ -173,22 +174,24 @@ That spread is the point. The budget is a product decision, not
 something this data can settle, and fixing a single value after seeing
 the table would be exactly the post-hoc rule-fitting this document
 exists to prevent. What can be said honestly: cap=3 is the choice a 90%
-relevance budget produces, it sits mid-range in a real measured
+relevance budget produces, it sits mid-range in a measured
 tradeoff, and nothing here shows it to be wrong.
 
-**Retrieval depth: a real change, decided on the tuning fold.**
+**Retrieval depth: a change, decided on the tuning fold.**
 
 Retrieval depth — how many candidates the serving path pulls from the
 index before ranking — was 50 out of 51,282 items. Measured on the
 tuning fold (`verify_retrieval_depth`):
 
+Generated from [`reports/tuning-decisions.json`](../reports/tuning-decisions.json).
+
 | Depth | Clicked item reached the ranker | Search p99 |
 |---|---|---|
-| 50 (was configured) | 5.8% | 0.34 ms |
-| 100 | 7.8% | 0.38 ms |
-| 200 | 10.6% | 0.47 ms |
-| 500 | 15.4% | 0.99 ms |
-| **1000 (now configured)** | **20.9%** | **0.89 ms** |
+| 50 (was configured) | 6.2% | 0.34 ms |
+| 100 | 9.3% | 0.39 ms |
+| 200 | 11.9% | 0.47 ms |
+| 500 | 15.8% | 0.78 ms |
+| **1000 (now configured)** | **21.5%** | **2.27 ms** |
 
 Ranking cannot promote an item retrieval never surfaced, so this was a
 hard ceiling on the whole pipeline.
@@ -216,7 +219,7 @@ against `validation` is the exact mistake this document records.
 - **The diversity cap**: the flawed rule was replaced by a
   relevance-budget rule that genuinely discriminates between cap values.
   cap=3 is what a 90% relevance budget selects, and it sits mid-range in
-  a real measured tradeoff. The budget itself remains a product
+ a measured tradeoff. The budget itself remains a product
   judgment, not something this data settles — which is a narrower and
   more honest claim than "reconfirmed".
 - **Retrieval depth**: raised from 50 to 1,000 on tuning-fold evidence,

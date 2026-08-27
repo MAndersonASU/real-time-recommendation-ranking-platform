@@ -62,10 +62,10 @@
     "A lexical pass rate is not a semantic guarantee: approved words can be reordered into unsupported claims, as tests/test_explanation_generation.py demonstrates directly."
   ],
   "metric_definitions": {
-    "attempted": "recommendations an explanation was actually produced for -- the denominator for faithfulness_rate",
+    "attempted": "recommendations an explanation was actually produced for -- the denominator for lexical_policy_pass_rate",
     "distinct_explanations": "count of unique explanation strings produced. A low number is expected and is a property of the template set, not a defect",
-    "faithful": "produced explanations that passed the lexical policy check",
-    "faithfulness_rate": "faithful / attempted. Named for what the check enforces, which is lexical, not semantic: an explanation passes when it contains no vocabulary outside its approved template plus grammatical scaffolding. Approved words can still be arranged into an unsupported claim, and tests/test_explanation_generation.py demonstrates exactly that. A rate of 1.0 means every explanation stayed inside the approved vocabulary, not that every explanation is true.",
+    "lexical_policy_passed": "produced explanations that passed the lexical policy check",
+    "lexical_policy_pass_rate": "faithful / attempted. Named for what the check enforces, which is lexical, not semantic: an explanation passes when it contains no vocabulary outside its approved template plus grammatical scaffolding. Approved words can still be arranged into an unsupported claim, and tests/test_explanation_generation.py demonstrates exactly that. A rate of 1.0 means every explanation stayed inside the approved vocabulary, not that every explanation is true.",
     "mean_explanation_length_chars": "mean character length of produced explanations",
     "model_contribution_rate": "model_rewrite_used / attempted",
     "model_rewrite_used": "explanations whose wording came from the local generative model. Zero in the default configuration, where rewriting is off",
@@ -84,8 +84,8 @@
   "results": {
     "attempted": 65,
     "distinct_explanations": 2,
-    "faithful": 65,
-    "faithfulness_rate": 1.0,
+    "lexical_policy_passed": 65,
+    "lexical_policy_pass_rate": 1.0,
     "mean_explanation_length_chars": 53.215384615384615,
     "model_contribution_rate": 0.0,
     "model_rewrite_used": 0,

@@ -2,7 +2,7 @@
 
 AUC (`docs/ranking-model.md`) only measures whether the ranking model puts
 clicked candidates above unclicked ones — it says nothing about whether a
-predicted "8% chance of a click" happens roughly 8% of the time. This step
+predicted "8% chance of a click" happens roughly 8% of the time. This check
 checks that separate property directly, plus the score distribution and
 feature correlations, on real validation predictions from the trained
 model. Implementation: `src/recommender/ranking/calibration.py`.
@@ -18,7 +18,7 @@ buckets would leave most of them nearly empty. `expected_calibration_error`
 reduces the table to one size-weighted number: the average gap between
 predicted and observed across all ten groups.
 
-## Real result: calibration
+## Results: calibration
 
 | Decile | Mean predicted | Observed rate | Rows |
 |---|---|---|---|
@@ -40,7 +40,7 @@ direct payoff of the decision made while training
 fit on the true label distribution keeps predicted probabilities honest,
 and this check confirms that held rather than just assuming it.
 
-## Real result: score distribution and feature correlations
+## Results: score distribution and feature correlations
 
 Predicted probabilities across all 1,222,429 validation rows: mean 0.0406
 (matching the ~3.83% validation click rate), std 0.0265, ranging from

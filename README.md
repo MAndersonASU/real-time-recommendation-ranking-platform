@@ -13,11 +13,13 @@ Dataset (MIND).
 A five-stage pipeline — embedding-based candidate retrieval, a learned
 ranking model, diversity/freshness reranking, real-time streaming
 features, and containerized serving — evaluated end to end against a
-frozen research protocol, with every claim below traced to a specific
-report or test in this repository. `docs/research-scenario.md` defines
+frozen research protocol. Headline numbers below are traced to a
+committed report under [`reports/`](reports/) or to a test in this
+repository; narrative documents carry additional detail that is not
+always separately reported. `docs/research-scenario.md` defines
 the five research questions this project set out to answer;
 `docs/conclusions.md` answers all five from the evidence gathered
-across every phase.
+across every component.
 
 ## Measured results
 
@@ -111,7 +113,8 @@ cannot validate meaning (`docs/explanation-generation.md`,
 
 ## What CI actually runs, and what's verified locally instead
 
-CI (`docs/ci-automation.md`) runs four jobs on every push:
+CI ([`docs/ci-automation.md`](docs/ci-automation.md)) runs four jobs on
+pushes to `main` and on pull requests targeting `main`:
 
 - **Linting, static security analysis, and the full test suite** behind
   a coverage floor, installed from `pyproject.toml`'s flexible lower
@@ -136,7 +139,7 @@ What CI does *not* do: load the licensed MIND dataset. The trained
 model, Faiss index, and ranking pipeline all depend on it
 (`docs/data-card.md`), and this project has never redistributed it. So
 every result that depends on real data
-(`docs/professional-demonstration.md`, `docs/reproducibility.md`, and
+(`docs/demonstration-guide.md`, `docs/reproducibility.md`, and
 the evaluation reports) is produced locally by the maintainer and
 documented here. Failure paths — a stopped dependency, a missing model
 file, a restarted container — are tested the same way
@@ -145,9 +148,12 @@ file, a restarted container — are tested the same way
 ## Getting started
 
 Requires **Python 3.11** specifically (PyTorch, Faiss, and Transformers
-here lag behind the newest CPython release) — check with `python
---version` first, or use a version manager / launcher (`py -3.11` on
+here lag behind the newest CPython release) — check with `python --version` first, or use a version manager / launcher (`py -3.11` on
 Windows) if your default `python` resolves to something newer.
+
+There are three separate entry points, with different prerequisites.
+
+**1. Public tests — no dataset required.**
 
 ```bash
 git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platform.git
@@ -157,14 +163,41 @@ py -3.11 -m venv .venv
 # Windows (Git Bash):     source .venv/Scripts/activate
 # macOS / Linux:          source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q            # runs from a clean clone; the licensed dataset is not needed
+pytest -q
 ruff check .
-docker compose up    # starts Kafka, Redis, and the API (needs the real dataset mounted at ./data)
 ```
 
-Verified end to end from a genuinely fresh clone, including a real
-reproducibility bug this exact check found and fixed:
-`docs/reproducibility.md`. For an exact, fully-pinned dependency
+**2. Containerized demonstration — synthetic artifacts, no licensed data.**
+
+Builds the API image and starts it against generated stand-in artifacts,
+the same way CI does. This verifies wiring, health checks and response
+shapes; it does not reproduce any evaluation number.
+
+> **This overwrites real artifacts.** `recommender.data.synthetic` writes
+> its stand-ins to the same paths the offline build uses
+> (`data/processed/mind_small/`), including `news.parquet`,
+> `train.parquet`, `validation.parquet`, `item_content.npz`,
+> `two_tower_model.pt` and `ranking_model.skops`. Run it only in a clone
+> with no trained artifacts, or back that directory up first.
+
+```bash
+python -m recommender.data.synthetic          # seeded stand-in artifacts
+docker compose up -d --build api              # API only; no Kafka/Redis needed
+```
+
+**3. Licensed-data training and serving.**
+
+Requires a local MIND download under `./data` (see
+[`docs/dataset-source.md`](docs/dataset-source.md)) and a full offline
+build. A clean clone does not contain the trained retrieval model,
+content vectors, catalog, ranking model or bundle manifest, so
+`docker compose up` cannot serve real recommendations until those are
+generated locally.
+
+Installation and serving were verified from a clean clone using
+previously generated local artifacts. Licensed-data training and
+evaluation were not reproduced from download in that check — see
+[`docs/reproducibility.md`](docs/reproducibility.md). For an exact, fully-pinned dependency
 install instead of the flexible resolution `pyproject.toml`'s lower
 bounds allow (which resolves to the latest compatible versions, not to
 the lower bounds themselves),
@@ -172,33 +205,36 @@ see `requirements-lock.txt`.
 
 ## Documentation index
 
-- **Research** — `docs/research-scenario.md` (frozen questions/scope),
-  `docs/evaluation-protocol.md` (frozen metrics/split),
-  `docs/evaluation-integrity.md` (held-out evaluation leakage found and
-  fixed), `docs/serving-path-end-to-end-evaluation.md`,
-  `docs/conclusions.md` (final answers), `docs/limitations.md`,
-  `docs/ablations.md`, `docs/failure-analysis.md`
-- **Data** — `docs/data-card.md`, `docs/dataset-source.md`,
-  `docs/data-quality.md`, `docs/splits.md`
-- **Modeling** — `docs/retrieval-model.md`, `docs/ranking-model.md`,
-  `docs/reranking-diversity.md`, `docs/reranking-freshness.md`
-- **Streaming & serving** — `docs/event-schema.md`, `docs/kafka-local.md`,
-  `docs/online-features.md`, `docs/inference-path.md`,
-  `docs/serving-fallback.md`
-- **Operations** — `docs/containerization.md`, `docs/health-checks.md`,
-  `docs/operational-metrics.md`, `docs/dashboard.md`,
-  `docs/structured-logging.md`
-- **Explanation layer** — `docs/explanation-boundary.md`,
-  `docs/explanation-retrieval.md`, `docs/explanation-generation.md`,
-  `docs/explanation-evaluation.md`
-- **Architecture** — `docs/architecture.md` (system design, module
+- **Research** — [`docs/research-scenario.md`](docs/research-scenario.md) (frozen questions/scope),
+  [`docs/evaluation-protocol.md`](docs/evaluation-protocol.md) (frozen metrics/split),
+  [`docs/evaluation-integrity.md`](docs/evaluation-integrity.md) (held-out evaluation leakage found and
+  fixed), [`docs/serving-path-end-to-end-evaluation.md`](docs/serving-path-end-to-end-evaluation.md),
+  [`docs/conclusions.md`](docs/conclusions.md) (final answers), [`docs/limitations.md`](docs/limitations.md),
+  [`docs/ablations.md`](docs/ablations.md), [`docs/failure-analysis.md`](docs/failure-analysis.md)
+- **Data** — [`docs/data-card.md`](docs/data-card.md), [`docs/dataset-source.md`](docs/dataset-source.md),
+  [`docs/data-quality.md`](docs/data-quality.md), [`docs/splits.md`](docs/splits.md)
+- **Modeling** — [`docs/retrieval-model.md`](docs/retrieval-model.md), [`docs/ranking-model.md`](docs/ranking-model.md),
+  [`docs/reranking-diversity.md`](docs/reranking-diversity.md), [`docs/reranking-freshness.md`](docs/reranking-freshness.md)
+- **Streaming & serving** — [`docs/event-schema.md`](docs/event-schema.md), [`docs/kafka-local.md`](docs/kafka-local.md),
+  [`docs/online-features.md`](docs/online-features.md), [`docs/inference-path.md`](docs/inference-path.md),
+  [`docs/serving-fallback.md`](docs/serving-fallback.md)
+- **Operations** — [`docs/containerization.md`](docs/containerization.md), [`docs/health-checks.md`](docs/health-checks.md),
+  [`docs/operational-metrics.md`](docs/operational-metrics.md), [`docs/dashboard.md`](docs/dashboard.md),
+  [`docs/structured-logging.md`](docs/structured-logging.md)
+- **Explanation layer** — [`docs/explanation-boundary.md`](docs/explanation-boundary.md),
+  [`docs/explanation-retrieval.md`](docs/explanation-retrieval.md), [`docs/explanation-generation.md`](docs/explanation-generation.md),
+  [`docs/explanation-evaluation.md`](docs/explanation-evaluation.md)
+- **Architecture** — [`docs/architecture.md`](docs/architecture.md) (system design, module
   ownership, and every real design decision with its reasoning)
-- **Demonstration & reproducibility** — `docs/professional-demonstration.md`,
-  `docs/reproducibility.md`, `docs/engineering-review-and-hardening.md`
-  (review scope, methodology, and disclosed limitations), `CHANGELOG.md`
+- **Demonstration & reproducibility** — [[`docs/demonstration-guide.md`](docs/demonstration-guide.md),
+  [`docs/reproducibility.md`](docs/reproducibility.md), [[`docs/engineering-review-and-hardening.md`](docs/engineering-review-and-hardening.md)](docs/engineering-review-and-hardening.md)
+  (review scope, methodology, and disclosed limitations), [`CHANGELOG.md`](CHANGELOG.md)
+- **Machine-readable results** — [`reports/`](reports/) (one JSON per
+  headline table, each with metric definitions, denominators, sampling,
+  provenance and limitations)
 
 ## License
 
 MIT — see [`LICENSE`](LICENSE). The MIND dataset itself is governed by
 Microsoft's own research license, not this project's — see
-`docs/data-card.md`.
+[`docs/data-card.md`](docs/data-card.md).

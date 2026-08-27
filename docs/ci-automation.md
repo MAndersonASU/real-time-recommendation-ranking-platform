@@ -60,7 +60,7 @@ meaningless, and every quality number this project publishes still comes
 from local runs against the real licensed data
 (`docs/serving-path-end-to-end-evaluation.md`).
 
-## A real bug found while wiring this up
+## A bug found while wiring this up
 
 `verify_connectivity.py` used one fixed topic name and one fixed
 consumer group across every call, and never committed its offset.

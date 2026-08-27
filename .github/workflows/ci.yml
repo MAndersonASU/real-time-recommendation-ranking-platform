@@ -123,7 +123,7 @@ jobs:
       # skipped here is this project itself, skipped on purpose. The two
       # flags contradict each other. Removing it does not weaken
       # vulnerability detection -- pip-audit still exits non-zero when it
-      # finds an actual advisory, which is what makes this step blocking.
+      # finds an advisory, which is what makes this check blocking.
       - name: Audit locked dependencies for known vulnerabilities
         run: pip-audit --skip-editable
 

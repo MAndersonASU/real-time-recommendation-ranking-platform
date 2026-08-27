@@ -1,4 +1,4 @@
-# Audit Register
+# Engineering Review Register
 
 Stable identifiers for every review finding, so an item cannot be
 accidentally closed because a number was reused between review rounds.
@@ -85,7 +85,7 @@ The four schema-version-1 reports were removed rather than re-stamped:
 re-labelling them under the new contract is exactly the defect this
 closes.
 
-**Done** All four reports are generated from clean source commit
+**Done** All published reports are generated from clean source commit
 `125e32a` and published in commit `37e6510`, each recording that source
 commit and a verified-clean tree.
 
@@ -232,8 +232,7 @@ checksum now covers schema version, shape, dtype, length-prefixed
 ordered ids, and matrix bytes. Length prefixing matters: without it
 `["ab", "c"]` and `["a", "bc"]` serialise identically.
 
-A pre-schema artifact is still verified against the weaker digest it was
-actually written with, so "unverifiable" and "corrupt" stay distinct
+A pre-schema artifact is still verified against the weaker digest it was written with, so "unverifiable" and "corrupt" stay distinct
 claims.
 
 **Existing artifacts were upgraded, not rebuilt**
@@ -255,7 +254,7 @@ fixed as ARTIFACT-MIGRATION-46 below.
 
 ## ARTIFACT-MIGRATION-46 — Migration tool could bless a foreign content matrix
 **Severity** High · **Status** verified closed
-**Fix commits** `3b9c8d4`, and the receipt correction below
+**Fix commits** `3b9c8d4`, receipt correction `2548f21`
 **Tests** `tests/test_content_artifact_migration.py` (9 cases)
 **CI** run 33006941509
 
@@ -694,9 +693,9 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 | ID | Title | Status |
 |---|---|---|
 | DOC-METRIC-PROMINENCE-23 | Candidate-list metrics more prominent than end-to-end | verified closed |
-| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | verified closed |
-| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | verified closed |
-| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | verified closed |
+| DOC-RERANK-CONTRADICTION-24 | README and reranking doc disagree | reopened 2026-08-26; addressed, pending independent check |
+| DOC-RETRIEVAL-SUPERSEDED-25 | Superseded retrieval conclusions remain | reopened 2026-08-26; addressed, pending independent check |
+| DOC-UNTOUCHED-TERM-26 | "Untouched" split terminology inaccurate | reopened 2026-08-26; addressed, pending independent check |
 | DOC-MINFRESH-EVIDENCE-27 | Minimum-fresh comparison claimed but absent from committed report | verified closed |
 | DOC-BANDIT-COUNTS-28 | Hardcoded Bandit counts go stale | verified closed |
 | DOC-OVERCLAIM-29 | Claims stronger than implementation | verified closed |
@@ -758,7 +757,7 @@ fixture non-degenerate, not by silencing the warning.
 
 ## Status summary
 
-All four published reports are generated from a clean source commit and
+All twelve published reports are generated from a clean source commit and
 record it, together with a verified-clean working tree. The tuning
 comparisons ran against the leakage-free fit-half feature table
 (`tune_fold_leakage: false`), and the report identifies that bundle by
@@ -831,7 +830,7 @@ None was fixed by weakening a check.
 
 ### How to read the counts
 
-The headline tally counts the **22 primary findings** in this register
+The headline tally counts the **23 primary findings** in this register
 (`EVAL-*`, `STREAM-*`, `ARTIFACT-*`, `MANIFEST-*`, `FEATURE-*`,
 `SUPPLY-*`, `API-*`, `SCHEMA-*`) and nothing else.
 
@@ -842,9 +841,9 @@ project that no fix is planned for. Counting them alongside findings
 would make "accepted limitation" ambiguous between "a finding we chose
 not to fix" and "a documented characteristic".
 
-### Not closed
+### Partially closed by scope
 
-One primary finding remains open:
+One primary finding is partially closed by an explicit scope decision:
 
 - **STREAM-COMMIT-04** — commit-failure behaviour is tested against a
   fake broker, not a real one. The retry-and-stop control flow is
@@ -897,8 +896,16 @@ This project is **not** in a state where all audit findings are closed.
 
 ## Review status
 
-No further remediation is currently planned. STREAM-COMMIT-04 remains
-partially closed by an explicit scope decision.
+A documentation review on 2026-08-26 reopened
+DOC-RERANK-CONTRADICTION-24, DOC-RETRIEVAL-SUPERSEDED-25 and
+DOC-UNTOUCHED-TERM-26, which had been marked closed on incomplete
+evidence, and raised further documentation findings covering stale
+metric tables, stale architecture and serving-contract text, an
+unrenamed explanation metric, and overstated reproducibility and CI
+claims. Those are addressed in this pass and await an independent check;
+the status below will be updated once that check has run.
+
+STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 
 Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
 2 accepted limitations. The minimum-fresh quota is retained at 2 as a

@@ -1,7 +1,6 @@
 # Evaluation Protocol (Frozen)
 
-Locked 2026-08-18, after Phase 2's three baselines already had real
-results measured under it. Changing any item below after that point would
+Locked 2026-08-18, after the baselines' three baselines already had results measured under it. Changing any item below after that point would
 invalidate every comparison already made in `docs/baselines.md` — the same
 principle `docs/research-scenario.md` already applies to the research
 questions themselves.
@@ -18,8 +17,8 @@ questions themselves.
   disclosed here. Fixed going forward: any future such decision uses
   `recommender.evaluation.tuning_fold`, a held-out fold carved from
   `train`, never validation.
-- **`replay` (2019-11-15)**: reserved for Phase 6 streaming replay and
-  Phase 9 evaluation, and used exactly that way —
+- **`replay` (2019-11-15)**: designated for streaming replay and replay
+ evaluation, and used exactly that way —
   `recommender.tracking.replay_evaluation.evaluate_via_replay` has
   already run against it (`docs/replay-evaluation.md`). **Correction**:
   an earlier version of this document called it "untouched by any
@@ -39,12 +38,12 @@ questions themselves.
 - **Catalog size for coverage**: the `train` split's `news.parquet` row
   count (51,282) — the same catalog both `train` and `validation` draw
   from.
-- **Candidate set (Phase 2 baselines only)**: exactly the items listed in
+- **Candidate set (the baselines only)**: exactly the items listed in
   MIND's own `impressions` field for that row. No candidate generation
   happens at this stage. This definition does not automatically extend to
-  Phase 3: a real retrieval system generates its own candidate sets from
+ the retrieval model: a real retrieval system generates its own candidate sets from
   the full catalog rather than reusing MIND's pre-built impression lists,
-  so Phase 3 needs its own explicit candidate-set definition rather than
+ so the retrieval model needs its own explicit candidate-set definition rather than
   silently inheriting this one.
 
 ## Enforced, not just documented
@@ -52,7 +51,7 @@ questions themselves.
 `src/recommender/evaluation/contract.py` centralizes the split paths, the
 catalog path, and `TOP_K` as the single source every evaluation script
 imports from. `src/recommender/evaluation/evaluate_baseline.py` was
-refactored in this step to import from it instead of redefining its own
+refactored in this check to import from it instead of redefining its own
 copies of these values — verified to produce bit-for-bit identical results
 to the pre-refactor numbers already published in `docs/baselines.md`.
 `tests/test_contract.py` asserts the frozen values directly, so an

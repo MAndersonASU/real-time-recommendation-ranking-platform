@@ -30,7 +30,7 @@ ids are already synthetic, not real names, but logging the raw value
 repeatedly across every request would still let anyone with log access
 reconstruct one user's entire request history verbatim. A truncated
 SHA-256 (`hash_user_id`) gives an operator exactly what debugging
-actually needs — "these log lines are the same user" — without ever
+needs — "these log lines are the same user" — without ever
 writing the reversible, raw identifier to a log file. Deterministic on
 purpose (the same input always hashes the same way), so correlation
 across many log lines still works.
@@ -39,8 +39,7 @@ The fallback path (`safe_recommend`, `src/recommender/serving/fallback.py`)
 uses the same `hash_user_id` helper when it logs the reason a request
 fell back to popularity ranking — it previously logged the raw
 `user_id` directly on that path, inconsistent with the primary
-`recommend_served` line above. `tests/test_serving_fallback.py::
-test_safe_recommend_never_logs_the_raw_user_id` asserts the raw value
+`recommend_served` line above. `tests/test_serving_fallback.py::test_safe_recommend_never_logs_the_raw_user_id` asserts the raw value
 never appears in that log record.
 
 ## Real JSON, not a formatted string

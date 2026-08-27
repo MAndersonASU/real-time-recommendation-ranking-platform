@@ -112,9 +112,9 @@ services:
       redis:
         condition: service_healthy
       # Not kafka: the live API never consumes from or produces to Kafka
-      # at request time (only the offline replay/consumer scripts from
-      # Phase 6 do), so blocking API startup on Kafka's health would be
-      # a real, unnecessary coupling -- found and removed while testing
+      # at request time (only the offline replay and consumer scripts
+      # do), so blocking API startup on Kafka's health would be an
+      # unnecessary coupling -- found and removed while testing
       # what a Kafka interruption should and shouldn't affect.
     healthcheck:
       # No curl/wget in the slim base image -- urllib is already there.

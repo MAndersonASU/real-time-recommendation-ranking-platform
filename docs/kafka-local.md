@@ -1,7 +1,7 @@
 # Running Kafka Locally
 
 A real message broker, brought up in Docker, that the replay producer and
-the streaming consumer (built next in this phase) talk to independently
+the streaming consumer talk to independently
 through — neither ever calls the other directly. Implementation:
 `docker-compose.yml`,
 `src/recommender/streaming/kafka_client.py`,
@@ -15,23 +15,23 @@ Kafka-plus-Zookeeper pair. KRaft is modern Kafka's own built-in
 replacement for Zookeeper: one moving part instead of two, with nothing
 lost for a single-node local setup. The same complexity-boundary judgment
 already applied throughout this project — the simpler, modern option when
-it's genuinely equivalent for the actual need.
+it's genuinely equivalent for the need.
 
 Bring up: `docker compose up -d`. Health-checked via
 `kafka-broker-api-versions.sh` until the container reports `healthy`
 before anything tries to connect.
 
 `kafka_client.py` provides three small, reusable helpers every later
-Phase 6 component builds on: `build_producer`, `build_consumer` (manual
-offset commits — `enable.auto.commit: False` — deliberately, since Step
-6.5's recovery tests need direct control over exactly when an offset
+the streaming pipeline builds on: `build_producer`, `build_consumer` (manual
+offset commits — `enable.auto.commit: False` — deliberately, since the
+recovery tests need direct control over exactly when an offset
 counts as processed), and `ensure_topic`.
 
 ## Real verification, not assumed
 
 `verify_connectivity.py` produces one real message to a real topic on a
 real running broker and consumes it back, raising rather than reporting a
-false pass if no broker is reachable. Real result:
+false pass if no broker is reachable. Results:
 
 ```json
 {

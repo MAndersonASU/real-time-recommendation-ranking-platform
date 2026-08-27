@@ -7,15 +7,14 @@ didn't actually point to.
 
 ## Fix 1: share one exploded impression log instead of three
 
-`compute_popularity` (Phase 2) and `compute_first_seen` (Phase 5) were
-each written independently, in different phases, for their own
+`compute_popularity` (the baselines) and `compute_first_seen` (reranking) were
+each written independently, at different times, for their own
 standalone use — and each called `explode_impressions(train)` on its
 own. `build_serving_context` called both, so the same ~4.6-million-row
 impression log was fully re-exploded three times over. Both functions
-now accept an optional, already-exploded `DataFrame`; `build_serving_
-context` explodes once and passes the same frame to both.
+now accept an optional, already-exploded `DataFrame`; `build_serving_context` explodes once and passes the same frame to both.
 
-**Real, measured before/after** (`profile_hotspots.py`, same machine,
+**measured before/after** (`profile_hotspots.py`, same machine,
 same run conditions):
 
 | | Before | After |
@@ -41,7 +40,7 @@ process expects to serve many concurrent requests, not minimize one
 request's isolated wall time, leaving concurrency entirely to the
 request-level thread pool is the right tradeoff.
 
-**Real, measured before/after**, same load test, concurrency 4 (the
+**measured before/after**, same load test, concurrency 4 (the
 level with the clearest signal):
 
 | | Before | After |
@@ -56,7 +55,7 @@ machine's fundamental 8-core ceiling: at concurrency 16, throughput is
 effectively unchanged (67.2 vs. 72.8 req/s) and at 32 it's within noise
 of the unfixed baseline. Going further — smaller embeddings, quantized
 inference, or actually scaling horizontally across more processes or
-machines — is real work with a real cost, and nothing measured so far
+machines — is real work with a cost, and nothing measured so far
 demonstrates this project's traffic ever needs it. That's exactly why
 it isn't attempted here: the evidence justifies these two fixes, and
 stops justifying anything past them.

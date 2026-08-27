@@ -38,5 +38,5 @@ covers them without any new code: `popularity.get(nid, 0)`
 in `ranking/features.py` gives an item with no interaction history a
 popularity of zero rather than raising, and the content-similarity path
 skips any item missing from the TF-IDF vocabulary the same way. This
-step's own contribution is specifically the user-level lookup — the one
+document's own contribution is specifically the user-level lookup — the one
 gap that was still open.

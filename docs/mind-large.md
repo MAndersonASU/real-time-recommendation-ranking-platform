@@ -11,14 +11,14 @@ any metric. Implementation: `src/recommender/data/verify_mind_large.py`.
 MIND-small (`docs/dataset-source.md`), verified with the same
 `zipfile.testzip()` integrity check used for every earlier ingestion run.
 The real proof
-this step asks for isn't a new script — it's that `ingest_split`, the
-exact function this project has used unmodified since Phase 1, runs
+this check asks for isn't a new script — it's that `ingest_split`, the
+exact function this project has used unmodified since data ingestion, runs
 against these larger files and produces valid output with zero code
 changes. It does: schema validation (`recommender.data.schema`) still
 passes, and the same Parquet output shape lands in
 `data/processed/mind_large/`.
 
-## Real numbers, both splits
+## numbers, both splits
 
 | Split | News rows | News scale | Behaviors rows | Behaviors scale | Extract | Ingest |
 |---|---|---|---|---|---|---|
@@ -30,22 +30,22 @@ passes, and the same Parquet output shape lands in
 The catalog barely grows (about 2×) while interaction volume grows far
 faster (5–14×) — MIND-large has roughly the same relative article
 count as MIND-small, but a much denser interaction log per article.
-That has real, direct consequences for later phases: catalog coverage
+That has real, direct consequences for later work: catalog coverage
 percentages (`docs/data-quality.md`) will almost certainly look
 different at this scale, since the same or similar number of articles
-now absorbs several times more impressions each. This step doesn't
+now absorbs several times more impressions each. This check doesn't
 re-run those measurements — that would mean changing what "catalog
-coverage" measures, exactly what this step is scoped not to do — but
+coverage" measures, exactly what this check is scoped not to do — but
 the asymmetry itself is a genuine, previously unmeasured fact about how
 the official large release actually differs from the small one, beyond
 just "bigger."
 
-## What this step deliberately does not do
+## What this check deliberately does not do
 
 Retraining the two-tower and ranking models on the full MIND-large
-corpus is out of scope here. This step's job, stated plainly by its own
+corpus is out of scope here. This check's job, stated plainly by its own
 name, is validating that the pipeline *can process* the larger dataset
-— not re-running every phase's evaluation at the new scale, which would
+— not re-running every component's evaluation at the new scale, which would
 risk quietly redefining what each metric measures along the way. Real
 hotspot profiling on top of this larger data belongs to
 `docs/profile-hotspots.md` specifically, not folded in here.

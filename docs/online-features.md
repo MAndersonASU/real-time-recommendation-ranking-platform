@@ -27,7 +27,7 @@ Serving a stale durable feature is an acceptable, deliberate tradeoff — a
 user's overall favorite category does not meaningfully shift day to day.
 Serving a stale recent feature is a real correctness bug: it would mean a
 user's last-clicked items silently exclude everything from the last few
-hours, which defeats the point of the streaming work in Phase 6. This is
+hours, which defeats the point of the streaming work. This is
 also what decides where each kind of feature is allowed to live: durable
 features stay in the existing offline pandas pipeline; recent features
 need a store that can be written and read in milliseconds as events

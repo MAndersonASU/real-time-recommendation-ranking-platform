@@ -26,7 +26,7 @@ counters: validate, deduplicate, transform. Implementation:
 
 State lives entirely in one Python process's memory, deliberately. A
 durable, low-latency external store is a separate, later, explicitly
-named step of its own; building it here would blur which step is
+named component of its own; building it here would blur which operation is
 responsible for what, and validating this consumer's own logic doesn't
 need it.
 
@@ -34,7 +34,7 @@ Offsets are committed only after `process()` actually runs on a message,
 not the instant it's polled — so a crash between poll and commit leaves
 the offset unmoved, and a restarted consumer picks the same message back
 up rather than silently skipping it. This is what makes the recovery
-testing that follows this step meaningful.
+testing that follows this check meaningful.
 
 ## Restart idempotency: bounded, not absolute
 
@@ -61,7 +61,7 @@ the resulting state *inside* the claim:
    state — then report the event as a duplicate so it is not counted
    again.
 
-A crash between steps 2 and 3 is therefore self-healing: the redelivery
+A crash between operations 2 and 3 is therefore self-healing: the redelivery
 finds the claim, recovers the exact state that event produced, and
 repairs the state key. Nothing is applied twice and nothing is lost.
 
@@ -98,7 +98,7 @@ not double-count, and that the consumer's in-process state is left
 correct afterwards so the next genuine event applies on top of the right
 value.
 
-## A real bug, found by testing against a live broker, not assumed away
+## A bug, found by testing against a live broker, not assumed away
 
 The first verification run against the real broker reported zero messages
 processed even though 4,000 were waiting. Traced directly: the *first*
@@ -112,7 +112,7 @@ genuine end-of-stream once at least one real message has already been
 received; before that, a bounded number of empty polls are tolerated as
 ordinary rebalance warm-up.
 
-## Real result
+## Results
 
 Consuming the 4,000 events the replay producer published
 (`docs/replay-producer.md`), fresh consumer group, from the beginning:

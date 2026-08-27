@@ -8,9 +8,9 @@ contained what the user actually clicked. Implementation:
 
 ## A simulation, not a live A/B test
 
-Every prior evaluation in this project (Phases 2, 4, 5) scored features
+Every prior evaluation in this project (baselines, ranking, reranking) scored features
 computed once, offline, from each impression's own recorded history.
-This step is different: it calls the actual `recommend()` pipeline
+This check is different: it calls the actual `recommend()` pipeline
 (`docs/inference-path.md`), which pulls online features from whatever
 state currently exists — the durable cache built from the `validation`
 split, and Redis's current contents — not the exact point-in-time state
@@ -33,8 +33,7 @@ project converging on this one sample, not a new bug:
   `validation` — falls back to neutral defaults for almost everyone.
   **0% had a live Redis record at all** (checked directly), so recent
   features fall back too. A fully cold user's history mask is all
-  zeros, which the two-tower model's mean-pooling (`docs/retrieval-
-  model.md`) reduces to the same zero vector for every one of them —
+ zeros, which the two-tower model's mean-pooling (`docs/retrieval-model.md`) reduces to the same zero vector for every one of them —
   every cold user gets an identical, entirely generic retrieval result.
 - Even the 38 users who *did* have durable features scored **0 of 38**
   as well. A durable-only signal is just a dominant category match, and
@@ -49,13 +48,13 @@ project converging on this one sample, not a new bug:
 
 This is a genuine, mechanically-explained illustration of the
 offline-to-online gap documented formally in `docs/limitations.md` — not foreshadowing
-invented for this write-up, but the actual first real measurement of
+invented for this write-up, but the actual first measurement of
 it. A replay-based evaluation is only as informative as the online
 feature state it runs against; running it against users this
 deployment has simply never seen live traffic for measures cold-start
 behavior, correctly, and nothing else. The right fix isn't in this
-step: it would be evaluating against `replay` users who *do* have prior
+analysis: it would be evaluating against `replay` users who *do* have prior
 live interaction history recorded in Redis, which requires actually
-running the streaming replay (Phase 6) against a matching population
-first — a real, disclosed scoping boundary of what this step alone can
+running the streaming replay (the streaming pipeline) against a matching population
+first — a real, disclosed scoping boundary of what this check alone can
 show.

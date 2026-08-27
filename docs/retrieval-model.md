@@ -1,6 +1,6 @@
 # Two-Tower Retrieval Model
 
-Phase 3's first learned model. Architecture and training only — full
+the retrieval model's first learned model. Architecture and training only — full
 retrieval evaluation against the frozen protocol
 (`docs/evaluation-protocol.md`) is a separate, later evaluation pass, not
 this one. Implementation: `src/recommender/retrieval/` (`features.py`,
@@ -27,9 +27,9 @@ this one. Implementation: `src/recommender/retrieval/` (`features.py`,
   aren't sufficient once the model has to judge the full catalog, not a
   pre-filtered shortlist.
 
-## A real bug found during verification, not glossed over
+## A bug found during verification, not glossed over
 
-The first full training run (one epoch, 2,257 steps, no bias term) plateaued
+The first full training run (one epoch, 2,257 optimization updates, no bias term) plateaued
 at a loss of ~0.675 and stopped improving. Before accepting that as "trained,"
 it was checked against the actual entropy floor for this problem: with the
 training set's real class balance (~4% positive), a trivial model that always
@@ -47,11 +47,11 @@ and predictably instead of plateauing early.
 
 ## Initial training result (in-impression negatives only)
 
-6,000 steps, batch size 2,048, embedding dimension 32, on the `train`
+6,000 optimization updates, batch size 2,048, embedding dimension 32, on the `train`
 split (`docs/splits.md`, 4,621,015 examples) — about 1.3 passes over the
 full training set. Elapsed: 7m35s locally (CPU only).
 
-| Step | Mean loss (last 500) |
+| Update | Mean loss (last 500) |
 |---|---|
 | 500 | 0.6288 |
 | 1,500 | 0.3437 |
@@ -67,7 +67,7 @@ rate. Distinguishing "the model learned the base rate" from "the model
 learned to actually rank candidates well" is exactly what a dedicated
 evaluation pass against the frozen protocol is for, using the same Recall@K,
 NDCG@K, MRR, hit rate, and catalog coverage metrics already applied to all
-three Phase 2 baselines — not something this step's training loss can
+three baselines — not something this check's training loss can
 answer on its own.
 
 ## Negative sampling
@@ -78,7 +78,7 @@ adequate for reranking a pre-filtered shortlist but not for retrieval,
 which has to judge the entire catalog. Every positive example now also
 gets 4 randomly sampled catalog items as additional negatives
 (`src/recommender/retrieval/negatives.py`), rejected and redrawn if the
-sampled item is one that specific user is actually known to have clicked
+sampled item is one that specific user is known to have clicked
 elsewhere in `train` — an unfiltered random negative that happens to be
 something the user likes would be false training data, not harmless
 noise. The click history used for this check is built exclusively from
@@ -92,15 +92,15 @@ the original in-impression dataset via `ConcatDataset`. The model, loss
 function, and training loop from the initial run are unchanged; only what
 feeds into them changed.
 
-### Real result with sampled negatives added
+### Results with sampled negatives added
 
-Same 6,000-step budget, same batch size and embedding dimension, for a
+Same 6,000-update budget, same batch size and embedding dimension, for a
 direct comparison against the initial run. Dataset grew from 4,621,015 to
 5,379,091 examples (189,519 real positive clicks × 4 sampled negatives
 each = 758,076 added rows — matches the arithmetic exactly). Elapsed:
 8m3s locally.
 
-| Step | Mean loss (last 500) |
+| Update | Mean loss (last 500) |
 |---|---|
 | 500 | 0.6189 |
 | 1,500 | 0.3366 |
@@ -121,7 +121,7 @@ loss alone.
 
 Model saved to `data/processed/mind_small/two_tower_model.pt` (gitignored,
 reproducible via `python -m recommender.retrieval.train`); reload verified
-to reproduce the trained parameters exactly before treating this step as
+to reproduce the trained parameters exactly before treating this check as
 done.
 
 

@@ -318,7 +318,7 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
         # Every published number gets a definition. The previous report
         # dumped the raw result dict with a single definition covering
         # eleven metrics, so most of them were bare numbers -- and
-        # `faithfulness_rate: 1.0` in particular reads as a far stronger
+        # `lexical_policy_pass_rate: 1.0` in particular reads as a far stronger
         # claim than what is actually measured.
         "metric_definitions": {
             "total_recommendations_evaluated": (
@@ -332,10 +332,10 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
             "refusal_rate": "refused / total_recommendations_evaluated",
             "attempted": (
                 "recommendations an explanation was actually produced for -- the "
-                "denominator for faithfulness_rate"
+                "denominator for lexical_policy_pass_rate"
             ),
-            "faithful": "produced explanations that passed the lexical policy check",
-            "faithfulness_rate": (
+            "lexical_policy_passed": "produced explanations that passed the lexical policy check",
+            "lexical_policy_pass_rate": (
                 "faithful / attempted. Named for what the check enforces, which is "
                 "lexical, not semantic: an explanation passes when it contains no "
                 "vocabulary outside its approved template plus grammatical "

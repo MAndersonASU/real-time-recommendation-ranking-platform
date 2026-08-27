@@ -1,6 +1,6 @@
 # Ranking Features
 
-Phase 4's ranking model scores a candidate set, not the whole catalog —
+the ranking model's ranking model scores a candidate set, not the whole catalog —
 that asymmetry with retrieval (`docs/retrieval-model.md`) is exactly why it
 can afford richer, more expensive-per-item features than the two-tower
 model's category/subcategory pair. Implementation:
@@ -9,8 +9,8 @@ model's category/subcategory pair. Implementation:
 ## A deliberate departure from ranking retrieval's own candidates
 
 The ranking model here is evaluated against the same frozen candidate-set
-definition Phase 2's baselines used (`docs/evaluation-protocol.md`) — MIND's
-own impression list, K=10 — rather than against Phase 3's own top-N
+definition the baselines' baselines used (`docs/evaluation-protocol.md`) — MIND's
+own impression list, K=10 — rather than against the retrieval model's own top-N
 retrieval output. This is a disclosed methodological choice, not an
 oversight: `docs/retrieval-evaluation.md` had already found and explained a
 severe, specific limitation in the retrieval implementation as it stood
@@ -20,7 +20,7 @@ distinct embeddings now number 50,704). Ranking those same candidates would only
 an already-diagnosed problem, not answer anything new. Isolating "does a
 dedicated ranking model improve quality" from "is the current retrieval
 implementation's candidate generation good enough" keeps those two
-questions — RQ1 (already answered) and RQ2 (this phase's question) —
+questions — RQ1 (already answered) and RQ2 (this component's question) —
 independently testable. The two-tower model still contributes: its
 retrieval score is one input feature to the ranker below, not the
 candidate-generation mechanism.
@@ -40,14 +40,14 @@ ranker will score:
 
 | Feature | What it measures |
 |---|---|
-| `retrieval_score` | Two-tower dot product for this (user, candidate) pair — the learned embedding-compatibility signal from Phase 3, carried forward as one input among several. |
+| `retrieval_score` | Two-tower dot product for this (user, candidate) pair — the learned embedding-compatibility signal from the retrieval model, carried forward as one input among several. |
 | `popularity` | The popularity baseline's training click count (`docs/baselines.md`) for the candidate, log-transformed. |
 | `category_match` | 1 if the candidate's category matches the user's single most common history category, else 0. |
 | `content_similarity` | Cosine similarity between the candidate's TF-IDF vector and the mean TF-IDF vector of the user's history — reuses the content-similarity baseline's vectorizer (`docs/baselines.md`). |
 | `user_history_length` | Count of real (non-padding) history items for this user — an honest cold-start proxy. |
 | `hour_of_day` | Hour (0–23) extracted from this impression's own timestamp. |
 
-Article freshness (named in the phase description) is not included:
+Article freshness (named in the component description) is not included:
 `news.tsv`'s schema (`src/recommender/data/schema.py`) has no publish-date
 field at all. Recorded as a real data limitation rather than approximated
 with a substitute that would look like a genuine signal and isn't one.

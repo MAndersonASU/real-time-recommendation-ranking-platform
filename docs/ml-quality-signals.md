@@ -1,11 +1,10 @@
 # ML Quality Signals
 
-Real signals about the *model's* behavior, computed over a rolling
+signals about the *model's* behavior, computed over a rolling
 window of actual recent responses — distinct from the per-request
 operational metrics (`docs/operational-metrics.md`), since a score distribution, a
 diversity figure, or a concentration measure only means something in
-aggregate. Implementation: `src/recommender/monitoring/
-quality_signals.py`.
+aggregate. Implementation: `src/recommender/monitoring/quality_signals.py`.
 
 ## What's tracked
 
@@ -13,7 +12,7 @@ quality_signals.py`.
   spread of scores being returned, over recent individual
   recommendations.
 - **Diversity** (`recommend_mean_diversity`) — mean distinct categories
-  per response, the same real signal Phase 5's reranking evaluation
+ per response, the same signal reranking's evaluation
   already computed offline, now live.
 - **Catalog coverage** (`recommend_catalog_coverage`) — distinct items
   recommended at least once, divided by real catalog size, tracked
@@ -36,16 +35,16 @@ quality_signals.py`.
 
 Feature missingness is already measured exactly by this project, as
 `recommend_durable_cache_total{result}` /
-`recommend_recent_cache_total{result}` from the previous step. Building
+`recommend_recent_cache_total{result}` from the the preceding work. Building
 a second, parallel "missingness" signal here would just be the same
 fact tracked twice under two different names.
 
-## A real bug caught by the tracker's own tests, before real traffic saw it
+## Regression identified by the tracker's own tests, before real traffic saw it
 
 The first version of `catalog_coverage` returned `0.0` — not `None` —
 before any response had ever been recorded, since it only checked that
 `catalog_size` was set, not that any data existed yet. A gauge silently
 reporting "0% coverage" at startup looks exactly like a real, alarming
-signal, when the honest answer is "no data yet." Caught by a test
+signal, when the Interpretation is "no data yet." Caught by a test
 (`test_snapshot_is_all_none_before_anything_is_recorded`) written
 before the fix, not found in production.

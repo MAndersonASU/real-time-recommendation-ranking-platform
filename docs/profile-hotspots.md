@@ -5,7 +5,7 @@ Measures where the serving path actually spends memory, disk, and CPU
 breakdown (`docs/serving-latency.md`) already covered.
 Implementation: `src/recommender/monitoring/profile_hotspots.py`.
 
-## Three real measurements
+## Three measurements
 
 - **Disk footprint** — the on-disk size of every artifact
   `ServingContext` loads: the two-tower model, the ranking model, the
@@ -13,9 +13,9 @@ Implementation: `src/recommender/monitoring/profile_hotspots.py`.
 - **Memory** — real process RSS (`psutil`), measured before and after
   `build_serving_context()`, not estimated from artifact sizes.
 - **CPU vs. wall time** — `time.process_time()` alongside
-  `time.perf_counter()` over real requests. The two diverging reveals
+ `time.perf_counter()` over real requests. Their divergence reveals
   something `docs/serving-latency.md`'s wall-clock-only numbers couldn't: whether a
-  stage is actually computing, or using more than one CPU core at once
+ stage is computing, or using more than one CPU core at once
   underneath a single request.
 
 ## A real surprise: 515 MB of memory from artifacts under 7 MB combined
@@ -29,18 +29,18 @@ Implementation: `src/recommender/monitoring/profile_hotspots.py`.
 `build_serving_context()`'s real RSS grew by **515 MB**, orders of
 magnitude more than the artifacts it loads. Isolated line by line
 against the real training split: `compute_popularity` and
-`compute_first_seen` — two functions built independently, in Phases 2
-and 5, each for its own standalone use — **each call
+`compute_first_seen` — two functions built independently, for the
+baselines and for reranking, each for its own standalone use — **each call
 `explode_impressions(train)` on their own**, fully re-exploding the
 same ~4.6-million-row impression log a second and third time. The first
 explosion (measured separately) cost ~237 MB; the second, inside
 `compute_popularity`, cost another ~210 MB on top for data that already
-existed once. This is real, measured, wasted duplication, not a guess —
+existed once. This is measured, wasted duplication, not a guess —
 and it's exactly the kind of evidence the optimization work
 (`docs/optimization.md`) is scoped to act on, not this document, which is
 scoped only to surface it.
 
-## A second real finding, relevant to load testing (`docs/load-test.md`)
+## A second finding, relevant to load testing (`docs/load-test.md`)
 
 Over 30 real requests, total CPU time (2.45s) came out to **4.8×**
 total wall time (0.51s) — impossible for genuinely sequential,

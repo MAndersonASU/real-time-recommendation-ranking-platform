@@ -10,7 +10,7 @@ One row per (impression, candidate) pair, for both `train` and
 `validation` (`docs/splits.md`), using popularity counts, a TF-IDF
 vocabulary, and catalog embeddings fit only once — on `train` — and reused
 unchanged for validation feature-building, the same discipline already
-applied to every Phase 2 baseline. The label is MIND's own click/no-click
+applied to every baseline. The label is MIND's own click/no-click
 flag, already present in the exploded impression data.
 
 No separate negative sampling was added on top of MIND's own candidates,
@@ -19,13 +19,13 @@ to judge the full 51,282-item catalog, so its in-impression negatives alone
 were too narrow a signal on their own. Ranking only ever scores the
 candidate list an impression already narrowed things down to, and that list
 already contains a real mix of clicked and not-clicked items — adding
-synthetic negatives here would solve a problem this step doesn't have.
+synthetic negatives here would solve a problem this check doesn't have.
 
 Saved to `data/processed/mind_small/ranking/train.parquet` and
 `validation.parquet` (both gitignored, reproducible via
 `python -m recommender.ranking.build_dataset`).
 
-## Real result
+## Results
 
 | | Train | Validation |
 |---|---|---|

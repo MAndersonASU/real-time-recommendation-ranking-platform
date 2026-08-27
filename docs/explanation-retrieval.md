@@ -23,8 +23,8 @@ class SupportContext:
 
 `retrieve_support_context(request, news_by_id)` looks up the
 recommended item's real title, category, subcategory, and abstract
-from `news.parquet` — the same governed catalog every phase since
-Phase 1 has used (`docs/dataset-source.md`), indexed once by `news_id`
+from `news.parquet` — the same governed catalog every component since
+data ingestion has used (`docs/dataset-source.md`), indexed once by `news_id`
 per the same convention `ServingContext.category_by_id` already uses.
 The four ranking signals are carried straight through from
 `ExplanationRequest.matched_signals` (`docs/explanation-boundary.md`),
@@ -44,9 +44,9 @@ A raw `abstract` field is unbounded. Handed straight into a generation
 prompt, a very long abstract could crowd out the actual instruction in
 a small model's limited context window, and different articles would
 produce wildly different prompt sizes. Truncating at 300 characters
-here, before the value ever leaves this step, keeps every later stage's
+here, before the value ever leaves this check, keeps every later stage's
 input size predictable regardless of which article gets recommended. A
 missing abstract (`None` in the raw catalog) is treated as an empty
-string, not passed through as `None` — a generation step should never
+string, not passed through as `None` — a generation routine should never
 have to special-case a null value that only ever means "no abstract
 exists for this item."

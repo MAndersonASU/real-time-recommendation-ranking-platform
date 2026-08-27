@@ -14,7 +14,7 @@ at a time. Implementation: `src/recommender/retrieval/index.py`,
   clusters): k-means-clustered at build time; at query time, only the
   `nprobe` nearest clusters to the query get searched.
 
-## Real result: recall against exact search, by `nprobe`
+## Results: recall against exact search, by `nprobe`
 
 500 validation-derived user query vectors, top-50 candidates, measured
 against the exact index's own top-50 for the same queries.
@@ -33,7 +33,7 @@ searching every cluster (`nprobe = nlist`) approaches — but does not
 quite reach — the same latency as exact search, which is the expected
 behavior of an index degenerating toward brute force as `nprobe` grows.
 
-## A real limitation this exposed, not a bug in the index
+## A limitation this exposed, not a bug in the index
 
 `nprobe = 256` (every cluster probed) should, in principle, match exact
 search exactly — and it doesn't: recall caps at 0.904, not 1.0. Checked
@@ -51,16 +51,17 @@ distinct vector on average.
 With that many items tied at the exact same score, "the correct top-50"
 isn't a uniquely defined answer to begin with — exact and approximate
 search can legitimately return different subsets of a large tied group
-without either being wrong. This isn't an index bug; it's a direct,
-structural consequence of a real limitation in the item tower's current
-feature set. The model, as built in the item tower's current design
-(`docs/retrieval-model.md`), cannot yet
-distinguish between two different articles in the same category — a
-concrete, quantified argument for enriching the item tower with
-per-article features (e.g., title-derived text signal) in future work,
-left as a documented limitation rather than reopened here, since
-revisiting that architecture is a materially larger change than
-this step's scope.
+without either being wrong. This was not an index bug; it was a direct,
+structural consequence of the item tower's feature set at the time, which
+embedded only category and subcategory and so could not distinguish two
+articles sharing a category.
+
+That limitation has since been fixed. Each article now carries a content
+vector derived from its own title and abstract, and the tied-vector
+condition described above no longer holds. Current retrieval numbers are
+in [`docs/retrieval-evaluation.md`](retrieval-evaluation.md); the change
+itself is described in
+[`docs/retrieval-model.md`](retrieval-model.md).
 
 ## Regression coverage
 

@@ -21,22 +21,21 @@ what a real Prometheus server plus PromQL's `histogram_quantile()`
 does. This page has no server sitting in front of it scraping over
 time; it can only read its own histogram's running sum and count right
 now. Reporting a fabricated percentile from a single process's
-snapshot would be a real number that means something different from
+snapshot would be a number that means something different from
 what a p95 normally promises. Mean latency is the honest, simpler
-number this page can actually compute — the full histogram, for real
+number this page can compute — the full histogram, for real
 percentile queries, is still there at `/metrics`.
 
 ## Zero is not the same as no data yet, twice over
 
-Two real bugs of the same shape were caught before this page ever
+Two bugs of the same shape were caught before this page ever
 served a request: `Histogram` has no direct observation-count
 attribute (only `_sum` and per-bucket values), so computing mean
 latency from a wrong count would have quietly divided by the wrong
 number. And the four Gauge-backed quality signals have no "unset"
 state distinct from a real `0.0` — shown only once at least one real
 request has actually been recorded, rather than trusting a bare zero
-to mean "no data," which is exactly the mistake `docs/ml-quality-
-signals.md` already caught once for `catalog_coverage` alone.
+to mean "no data," which is exactly the mistake `docs/ml-quality-signals.md` already caught once for `catalog_coverage` alone.
 
 ## Verified against the real running container
 

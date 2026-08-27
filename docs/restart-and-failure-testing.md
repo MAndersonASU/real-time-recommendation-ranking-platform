@@ -9,11 +9,11 @@ or breaking something in the live `docker compose` topology.
 `docker-compose.yml`'s `api` service had `depends_on: kafka: condition:
 service_healthy`, blocking API startup until Kafka reported healthy —
 even though the live API never consumes from or produces to Kafka at
-request time; only the offline replay/consumer scripts from Phase 6 do.
+request time; only the offline replay/consumer scripts from the streaming pipeline do.
 Removed as a real, unnecessary coupling, found specifically by asking
 what a Kafka interruption should and shouldn't affect.
 
-## Five real results
+## Five results
 
 | Scenario | What was done | Result |
 |---|---|---|

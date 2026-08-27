@@ -66,8 +66,8 @@ describe a decision that has already, completely, been made elsewhere.
 
 ## Why `refused` is a required field, not inferred from empty text
 
-This phase's own requirement is an explicit refusal when
-real evidence is insufficient to explain a recommendation, not a
+This component's own requirement is an explicit refusal when
+evidence is insufficient to explain a recommendation, not a
 plausible-sounding guess produced anyway. Making `refused` a required
 boolean, rather than something a caller infers from an empty
 `explanation` string, means a caller can never mistake a refusal and a

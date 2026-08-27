@@ -1,7 +1,7 @@
 # Recovery Testing
 
-Everything built earlier in this phase was proven on the happy path — the
-broker up, messages well-formed, nothing crashing. This step deliberately
+Everything built earlier in this component was proven on the happy path — the
+broker up, messages well-formed, nothing crashing. This check deliberately
 breaks each of those assumptions, for real, against the live broker
 brought up in `docs/kafka-local.md`, not simulated in memory.
 Implementation: `src/recommender/streaming/recovery.py`,
@@ -54,7 +54,7 @@ genuine redelivery, not a repeated in-process call:
 
 ## Consumer lag reporting
 
-A new metric introduced at this step: the gap between a topic's latest
+A new metric introduced at this check: the gap between a topic's latest
 offset and what a consumer group has actually committed
 (`report_consumer_lag`), using a throwaway `Consumer` bound to the target
 group id purely to query watermark and committed offsets — it never
@@ -72,12 +72,20 @@ The number moves correctly at each stage and reaches exactly zero once
 nothing is left outstanding — a real, working operational signal, not
 just a value that happens to print.
 
-## Phase 6 close
+## What was verified, and what was not
 
-**Phase 6 (Event Streaming and Real-Time Interaction Replay) is now fully
-complete.** A real local Kafka broker, a schema, a chronologically-paced
-replay producer for a reserved historical split, a validating/
-deduplicating/transforming consumer, and — this step — proof that all of
-it keeps working when the broker rebalances mid-join, a message is
-malformed, a message is redelivered, or a consumer crashes and restarts.
+The streaming pipeline runs against a local Kafka broker with a schema, a
+chronologically-paced replay producer, and a validating, deduplicating,
+transforming consumer. The following behaviours were verified directly:
+
+- The consumer keeps working when the broker rebalances mid-join.
+- A malformed message is rejected without stopping the consumer.
+- A redelivered message is deduplicated rather than double-counted.
+- A crashed consumer resumes from its last committed offset on restart.
+
+**Not verified:** commit-failure behaviour against a real broker.
+STREAM-COMMIT-04 remains partially closed by an explicit scope decision —
+the failure path is covered by injected faults in tests, not by inducing a
+genuine commit failure in Kafka. See
+[`docs/engineering-review-and-hardening.md`](engineering-review-and-hardening.md).
 Every result above came from an actual running broker, not a mock.

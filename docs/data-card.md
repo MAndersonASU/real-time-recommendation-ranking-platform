@@ -1,7 +1,7 @@
 # Data Card: Microsoft News Dataset (MIND)
 
 A single, standard-structure reference for the one dataset this
-project uses. Every fact below was independently verified against real
+project uses. Every fact below was validated against the downloaded files and cited license text against real
 data or the license text at the time it was first documented — this
 card consolidates those findings rather than restating them, and links
 to the original source for full detail.
@@ -16,19 +16,19 @@ reported.
 
 ## Composition
 
-- **MIND-small** (development, used throughout Phases 1–9, 11–14):
+- **MIND-small** (development, used throughout data ingestion through replay evaluation, 11–14):
   news catalog with title/abstract/category/subcategory/entity
   annotations, and user impression logs with click labels.
-- **MIND-large** (used only for Phase 10's explicitly scoped scale
+- **MIND-large** (used only for the scale and performance work's explicitly scoped scale
   testing): the official larger release of the same schema — full
-  detail and real measured scaling factors: `docs/mind-large.md`.
+ detail and measured scaling factors: `docs/mind-large.md`.
 - **Real splits** (`docs/splits.md`): `train` (126,695 rows,
   2019-11-09 to 2019-11-13), `validation` (30,270 rows, 2019-11-14),
   `replay` (73,152 rows, 2019-11-15, MIND's own official dev window,
-  held untouched until streaming replay and final evaluation). Split
+ used for streaming replay and replay evaluation; no longer untouched). Split
   boundaries are time-ordered, never randomly shuffled, and a leakage
   assertion is enforced and tested.
-- **Real measured properties** (`docs/data-quality.md`): overall CTR
+- **measured properties** (`docs/data-quality.md`): overall CTR
   ~4.04–4.06%; only 39.6% (train) / 12.7% (dev) of catalog articles
   ever receive an impression in a given window; `news` and `sports`
   alone make up 59.1% of the catalog; user history is null on ~2–3% of
@@ -52,7 +52,7 @@ computed at ingestion since Microsoft publishes no official checksum
 for the original files (the Hugging Face mirror's own `X-Linked-ETag`
 is used instead — see License below). Used for: baseline evaluation,
 embedding retrieval training, ranking model training, reranking policy
-tuning, streaming replay, and every real number in
+tuning, streaming replay, and every number in
 `docs/conclusions.md`. Never used to train or evaluate anything outside
 the frozen research scope in `docs/research-scenario.md`.
 

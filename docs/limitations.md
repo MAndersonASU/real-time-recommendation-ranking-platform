@@ -1,9 +1,9 @@
 # Uncertainty and Limits
 
-Every real limitation found across this project, gathered into one
+Every limitation found across this project, gathered into one
 place rather than left scattered across the individual docs pages that
 first found each one. Nothing here is a new claim — every number and
-finding links back to the step that actually measured it.
+finding links back to the operation that measured it.
 
 ## Sparse-user behavior
 
@@ -14,15 +14,14 @@ interactions per user, with a small number of much more active users
 learns about "typical" user behavior is shaped by that thin, one- or
 two-interaction majority — there is very little historical signal to
 personalize against for most users in any single window, which is the
-underlying reason Phase 7's whole feature split (durable vs. recent)
-and Phase 7.5's cold-start fallbacks exist at all, not an edge case
+underlying reason the online feature store's whole feature split (durable vs. recent)
+and the online feature store.5's cold-start fallbacks exist at all, not an edge case
 bolted on afterward.
 
 ## Cold start, measured directly, not assumed
 
-Phase 7.5 built explicit fallback behavior for users with no known
-features. Replay-based evaluation (`docs/replay-
-evaluation.md`) measured how common that actually is in practice, using
+the online feature store.5 built explicit fallback behavior for users with no known
+features. Replay-based evaluation (`docs/replay-evaluation.md`) measured how common that actually is in practice, using
 this project's own real feature stores: of 499 sampled `replay`-split
 users, **92.4% never appeared in the `validation` split** the durable
 cache is built from, and **0% had any live Redis record at all** at the
@@ -39,7 +38,7 @@ request:
 - **History length.** Offline training's content-similarity profile
   (`ranking/features.py`) pools a user's entire recorded history,
   uncapped. The live path (`docs/inference-path.md`) only ever has
-  access to a user's last 20 recent clicks, the cap Phase 7's Redis
+ access to a user's last 20 recent clicks, the cap the online feature store's Redis
   store chose for latency reasons. `user_history_length` at serving
   time deliberately reads from the durable `lifetime_click_count` field
   instead of the capped recent list specifically to avoid a second,
@@ -54,7 +53,7 @@ request:
   `/ready` reports the real age and states the policy.
 
 Replay-based evaluation (`docs/replay-evaluation.md`) is the first place
-these two gaps were actually measured together on real data, rather than
+these two gaps were measured together on real data, rather than
 reasoned about individually.
 
 ## Selection bias in the underlying data
@@ -63,8 +62,7 @@ MIND's impression logs are themselves the output of Microsoft's own,
 different, already-deployed recommender — a fact never stated plainly
 until now, though every evaluation in this project has depended on it.
 A user could only ever click an article that some earlier system chose
-to show them. Every metric in this project (`docs/evaluation-
-protocol.md` onward) measures agreement with *that* system's own past
+to show them. Every metric in this project (`docs/evaluation-protocol.md` onward) measures agreement with *that* system's own past
 selections, not true, unconditional relevance to the user. An article
 this project's model would have correctly recommended, but the original
 system never displayed, has no way to appear as a "hit" in any of these
@@ -77,14 +75,13 @@ cannot answer that question.
 The direct consequence of the point above: this project has never once
 observed what a user would have clicked *if shown something different*
 from what the logged system actually displayed. Every hit rate, recall,
-and NDCG number in every phase compares this project's ranking against
+and NDCG number in every component compares this project's ranking against
 a fixed, already-decided candidate set and a fixed, already-observed
 click — a real, permanent ceiling on what offline evaluation alone can
 prove. Confirming that this project's system would perform differently
 against genuinely different candidate sets — the actual question a real
 production deployment cares about — requires a live experiment (a real
-A/B test) that this project's frozen research scope (`docs/research-
-scenario.md`) explicitly does not attempt, and the replay-based
+A/B test) that this project's frozen research scope (`docs/research-scenario.md`) explicitly does not attempt, and the replay-based
 evaluation (`docs/replay-evaluation.md`) was equally
 explicit about not pretending to be one.
 
@@ -102,15 +99,15 @@ evaluated against a frozen MIND snapshot and has no online
 item-onboarding flow, so persisting the transformers would add an
 artifact that nothing in this system exercises. It is stated here
 because "content-aware retrieval" otherwise implies an ability this
-does not have (ARTIFACT-TRANSFORMERS-07 in `docs/audit-register.md`).
+does not have (ARTIFACT-TRANSFORMERS-07 in `docs/engineering-review-register.md`).
 
 ## Retrieval queries ignore durable history
 
 `recommend()` builds its two-tower query vector from the user's recent
 in-session clicks held in Redis, and from nothing else. A returning user
 with a long durable click history but no activity in the current window
-therefore produces an empty query and is retrieved for as though they
-were a cold start — they receive the global popularity-shaped slate
+therefore produces an empty query, and retrieval proceeds as if the user
+were a cold-start user — they receive the global popularity-shaped slate
 while their own history sits unused in the durable feature store.
 
 This was found by running the API against real users rather than by

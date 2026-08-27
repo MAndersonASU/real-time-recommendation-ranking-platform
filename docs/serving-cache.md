@@ -10,8 +10,8 @@ Implementation: `src/recommender/serving/cache.py`.
 | Cached thing | Rule |
 |---|---|
 | Two-tower model weights, Faiss index, ranking model | Correct exactly as long as the on-disk artifact hasn't changed since load. Invalidated by a service restart after retraining — no code enforces this, it's a documented operational rule. |
-| Durable per-user features (`DurableFeatureCache`) | Explicit 24-hour staleness **threshold**, checked via `is_stale()` against `data_as_of` — the newest event in the data, not the time the process loaded it. For this project the threshold is permanently exceeded: the MIND snapshot is from November 2019 and nothing refreshes it. `is_stale()` therefore returns `True` always, which is the honest answer rather than a defect. Earlier wording here described a "refreshed daily" design intent and implied an automated refresh that does not exist. |
-| Recent per-user features | **Not cached at all in this layer** — Phase 7's Redis store already is the fresh, live source of truth for these; caching them again here would just be a second, competing copy with its own staleness to track. |
+| Durable per-user features (`DurableFeatureCache`) | Explicit 24-hour staleness **threshold**, checked via `is_stale()` against `data_as_of` — the newest event in the data, not the time the process loaded it. For this project the threshold is permanently exceeded: the MIND snapshot is from November 2019 and nothing refreshes it. `is_stale()` therefore returns `True` always, which is the Interpretation rather than a defect. Earlier wording here described a "refreshed daily" design intent and implied an automated refresh that does not exist. |
+| Recent per-user features | **Not cached at all in this layer** — the online feature store's Redis store already is the fresh, live source of truth for these; caching them again here would just be a second, competing copy with its own staleness to track. |
 
 ## Why the cache doesn't refresh itself
 
@@ -28,9 +28,9 @@ snapshot instead of values shifting under it mid-read.
 ## Why this, not a request-level response cache
 
 A cache that stored a full computed recommendation per user would need
-an explicit invalidation rule tied to Phase 7's live recent-feature
+an explicit invalidation rule tied to the online feature store's live recent-feature
 writes — serving a cached response across a real click would directly
-defeat the purpose of the streaming work in Phases 6 and 7. Given this
+defeat the purpose of the streaming work and the online feature store. Given this
 project's `recommend()` already runs in single-digit milliseconds
 end to end (`docs/inference-path.md`), a response cache would trade a
 small latency win for a real, hard-to-get-right freshness rule with

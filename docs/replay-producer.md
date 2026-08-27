@@ -1,7 +1,7 @@
 # Replay Producer
 
 Publishes the reserved `replay` split (`docs/splits.md` — MIND's official
-dev day, held untouched from the start specifically for this phase) to
+dev day, held untouched from the start specifically for this component) to
 Kafka, in the exact chronological order the interactions actually
 happened, paced by a real-time-scaled sleep rather than sent as one
 batch. Implementation: `src/recommender/streaming/replay_producer.py`.
@@ -13,11 +13,11 @@ was convenient. That's fine for offline evaluation, but it's the opposite
 of how a real system experiences data — one event at a time, with real
 gaps of silence in between. Loading `replay` as a single batch would let
 a consumer buffer and process everything instantly, which would make the
-recovery testing that follows this step meaningless — there'd be no
+recovery testing that follows this check meaningless — there'd be no
 "mid-stream" for a consumer to actually crash during.
 
 The producer walks `replay`'s 73,152 impressions in true chronological
-order and sleeps between rows in proportion to the real gap between their
+order and sleeps between rows in proportion to the gap between their
 original timestamps, scaled down by a speed multiplier (default 3,600× —
 one real second per simulated hour, compressing the full day into about
 24 real seconds of waiting) while every event still arrives in true
@@ -29,7 +29,7 @@ records no separate click timestamp relative to the impression, so both
 events honestly share the impression's own time rather than inventing a
 plausible-looking delay that isn't real data.
 
-## Real result
+## Results
 
 2,000 chronologically-first rows from `replay`, speed 7,200× (roughly 2
 simulated hours per real second):
