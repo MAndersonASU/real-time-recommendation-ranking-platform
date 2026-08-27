@@ -757,7 +757,7 @@ fixture non-degenerate, not by silencing the warning.
 
 ## Status summary
 
-All twelve published reports are generated from a clean source commit and
+All five published reports are generated from a clean source commit and
 record it, together with a verified-clean working tree. The tuning
 comparisons ran against the leakage-free fit-half feature table
 (`tune_fold_leakage: false`), and the report identifies that bundle by

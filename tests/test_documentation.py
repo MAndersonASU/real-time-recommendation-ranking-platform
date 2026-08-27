@@ -184,3 +184,28 @@ def test_no_document_calls_a_used_split_untouched_or_final() -> None:
             if claims.search(line) and not denials.search(line):
                 offenders.append(f"{md_id(path)}: {line.strip()[:90]}")
     assert not offenders, "documents still claim an untouched split: " + "; ".join(offenders)
+
+
+WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+}
+
+
+def test_documented_report_count_matches_the_reports_directory() -> None:
+    """Prose that counts published reports must match what is committed."""
+    actual = len(list(REPORTS.glob("*.json")))
+    words = "|".join(WORD_NUMBERS)
+    pattern = re.compile(
+        rf"(?i)(?<![a-z])({words})\s+(?:published\s+)?reports(?![a-z])"
+    )
+    wrong = []
+    for path in MARKDOWN:
+        for match in pattern.finditer(prose_of(path.read_text(encoding="utf-8"))):
+            claimed = WORD_NUMBERS[match.group(1).lower()]
+            if claimed != actual:
+                wrong.append(
+                    f"{md_id(path)} says {match.group(0)!r}, "
+                    f"but {actual} are committed"
+                )
+    assert not wrong, "; ".join(wrong)
