@@ -1,6 +1,6 @@
 # Ranking Features
 
-the ranking model scores a candidate set, not the whole catalog —
+The ranking model scores a candidate set, not the whole catalog —
 that asymmetry with retrieval (`docs/experiments/retrieval-model.md`) is exactly why it
 can afford richer, more expensive-per-item features than the two-tower
 model's category/subcategory pair. Implementation:

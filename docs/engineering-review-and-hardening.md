@@ -111,7 +111,7 @@ reproduced by public CI, which runs against synthetic artifacts only.
 | B105 | `data/schema.py`, `evaluation/publish.py` | False positives — Bandit matches identifiers containing "pass". One is a regex for a MIND impression token (`<news_id>-<0\|1>`); the other is the metric key `lexical_policy_pass_rate`. Neither is a credential. |
 | B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py` | Real category, low risk. Each calls `git` with a fully static argument list and no user input, to record the commit a result came from. Left unsuppressed rather than silenced, since the category is legitimate even where these instances are safe. |
 
-### pip-audit caveat
+### `pip-audit` caveat
 
 `pip-audit` reports no known vulnerabilities, but it **skips `torch`**:
 
@@ -311,7 +311,7 @@ concealed failures.
 - **Public CI cannot reproduce licensed-data quality metrics.**
 - **Kafka idempotency is bounded by claim retention** (24 hours) and
   covers the recent-feature state write, not arbitrary side effects.
-- **`torch` is not advisory-scanned** (see the pip-audit caveat above).
+- **`torch` is not advisory-scanned** (see the `pip-audit` caveat above).
 - **A lexical policy check is not a semantic guarantee.** The
   explanation gate verifies vocabulary, not meaning; this is why the
   factual relationship is produced deterministically.
