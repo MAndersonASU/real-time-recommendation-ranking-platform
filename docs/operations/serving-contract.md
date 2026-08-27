@@ -28,8 +28,8 @@ real network boundary, arriving as untrusted JSON from a caller who might
 send a negative candidate count or an empty user id. Pydantic validates
 that shape at the boundary and raises a clear, structured error before any
 of that bad input reaches real logic — which is exactly why FastAPI (the
-framework `docs/operations/inference-path.md` will use once the endpoint itself is
-built) is built around it rather than a general-purpose framework.
+framework `docs/operations/inference-path.md`'s endpoint is already built on)
+is built around it rather than a general-purpose framework.
 
 ## What's actually constrained, and why
 

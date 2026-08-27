@@ -23,13 +23,20 @@ aggregate. Implementation: `src/recommender/monitoring/quality_signals.py`.
   share of every recommendation slot ever given out that went to the 10
   most-recommended items. High and rising means the system is leaning
   on a shrinking set of popular items.
-- **Model version** (`recommend_model_info{sha256_prefix=...}`) — the
-  first 12 hex characters of the real, currently-loaded model file's
-  SHA-256, computed directly from the bytes actually loaded. This
-  project has no formal model registry (`docs/experiments/experiment-tracking.md`'s
-  plain log is the closest thing), and a retrain overwrites the same
-  file path rather than producing a new one — a real content fingerprint
-  is the honest substitute for a version number that doesn't exist.
+- **Model version** (`recommend_model_info{serving_version=...}`) —
+  `serving_version` is a 12-character hash of the complete serving
+  artifact manifest (retrieval model, ranking model, feature schema,
+  catalog, embedding model and its pinned revision, reranking config),
+  not any one file, so a change to any of them changes this value even
+  when the retrieval model file itself does not
+  (`tests/test_artifact_manifest.py` proves this per artifact). The
+  metric's full label set flattens that same manifest onto `/metrics`
+  directly, so every field it was computed from is visible alongside
+  the version, not just the derived hash. This project has no formal
+  model registry (`docs/experiments/experiment-tracking.md`'s plain log
+  is the closest thing), and a retrain overwrites the same file path
+  rather than producing a new one — a real content fingerprint is the
+  honest substitute for a version number that doesn't exist.
 
 ## Feature missingness lives in `docs/operations/operational-metrics.md`, not duplicated here
 

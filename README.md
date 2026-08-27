@@ -182,7 +182,7 @@ shapes; it does not reproduce any evaluation number.
 
 ```bash
 python -m recommender.data.synthetic          # seeded stand-in artifacts
-docker compose up -d --build api              # API only; no Kafka/Redis needed
+docker compose up -d --build api              # API + its Redis dependency; no Kafka needed
 ```
 
 **3. Licensed-data training and serving.**

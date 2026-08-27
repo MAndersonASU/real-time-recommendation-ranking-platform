@@ -40,10 +40,12 @@ own comments for detail.
 ## Explicit ports
 
 `API_PORT` flows from the environment through `docker-compose.yml`
-through the Dockerfile's shell-form `CMD` (`--port ${API_PORT:-8000}`)
-to the running `uvicorn` process — one real, traceable path, not a port
-number hardcoded in two or three different places that could silently
-drift apart.
+through the Dockerfile's JSON-form `CMD`
+(`CMD ["sh", "-c", "exec uvicorn ... --port ${API_PORT:-8000}"]`, which
+itself invokes `sh -c` to get the variable substitution a plain
+exec-form `CMD` cannot do, then `exec`s into `uvicorn`) to the running
+process — one real, traceable path, not a port number hardcoded in two
+or three different places that could silently drift apart.
 
 ## Validated startup dependencies
 

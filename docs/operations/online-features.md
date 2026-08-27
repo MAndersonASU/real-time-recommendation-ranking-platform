@@ -32,4 +32,4 @@ also what decides where each kind of feature is allowed to live: durable
 features stay in the existing offline pandas pipeline; recent features
 need a store that can be written and read in milliseconds as events
 arrive, which is what the low-latency state store (`docs/operations/state-store.md`)
-adds next.
+provides.

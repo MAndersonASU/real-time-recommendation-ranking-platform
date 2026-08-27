@@ -11,13 +11,19 @@ coverage floor, installed via `pyproject.toml`'s own flexible lower
 bounds. Real FastAPI `TestClient` requests against synthetic fixtures;
 no infrastructure, no licensed data.
 
-**`locked-install-test`** — the identical suite, installed instead from
-`requirements-lock.txt` with `--require-hashes`. A separate install path
-on purpose: a lock file drifted out of sync with `pyproject.toml` is
+**`locked-install-test`** — two separate, hash-verified installs, not
+one. `requirements-lock.txt` (the runtime lock this project's container
+image ships) installs alone into its own virtualenv (`/tmp/runtime-env`)
+and is checked only for whether the serving path still imports from it
+— asserting the narrow property that matters for a runtime image.
+Separately, in the job's own default environment,
+`requirements-dev-lock.txt` installs and the full test suite runs
+against it (`pytest -q`), and `pip-audit` audits that same
+development-lock environment afterward, not the runtime-only
+virtualenv. A lock file drifted out of sync with `pyproject.toml` is
 invisible to the flexible install above, which always resolves *some*
-working set. Hash verification additionally means a package republished
-under a pinned version is rejected rather than silently installed. This
-job then runs `pip-audit` against exactly that installed set.
+working set; hash verification additionally means a package republished
+under a pinned version is rejected rather than silently installed.
 
 **`api-container-test`** — builds and runs the real containerized API,
 waits on the container's own health check, asserts it runs as a
@@ -28,9 +34,15 @@ clean 422 rather than a 500, and `/metrics` checked for the derived
 serving version.
 
 **`integration-smoke-test`** — starts the real Kafka and Redis
-containers and runs two bounded round-trips against them:
-`verify_connectivity.py` (produce and consume a real message) and
-`verify_state_store.py` (write, read back, measure real latency).
+containers and runs five checks against them: a Kafka produce/consume
+round trip (`verify_connectivity.py`); a Redis round trip and latency
+measurement (`verify_state_store.py`); the atomic claim-and-apply Lua
+script against real Redis, not the in-memory stand-in every other test
+of it uses (`verify_lua_idempotency.py`); the same script under eight
+concurrent writers, which the sequential check above cannot exercise
+(`verify_lua_concurrency.py`); and that an acknowledged write survives
+a `SIGKILL`, not a graceful stop, which would pass even with AOF
+disabled (`verify_aof_recovery.py`).
 
 ## How the API container is testable here at all
 
