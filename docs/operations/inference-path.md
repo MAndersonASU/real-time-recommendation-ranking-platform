@@ -49,7 +49,9 @@ only that field, still carries the same uncapped meaning training used.
 `recommend()` for 20 real users from the validation split plus one user
 that has never existed anywhere. Every response validated against the
 typed contract, returned exactly the requested count, and the unknown
-user correctly came back with both feature flags false. Measured,
-single-request, single-threaded latency: **12.3ms p50, 15.5ms p99** —
-this component's own rigorous per-stage latency breakdown belongs to
-`docs/experiments/serving-latency.md`, not this document.
+user correctly came back with both feature flags false. Measured, single-request, single-threaded latency: 12.3ms p50, 15.5ms
+p99. That measurement predates the retrieval-depth and cold-start
+changes recorded in `docs/experiments/serving-latency.md` and is
+superseded by the 21.31ms p50 / 60.97ms p99 measured there under the
+current pipeline; this component's own rigorous per-stage latency
+breakdown belongs to that document, not this one.

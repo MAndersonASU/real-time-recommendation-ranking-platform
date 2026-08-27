@@ -31,8 +31,9 @@ A cache that stored a full computed recommendation per user would need
 an explicit invalidation rule tied to the online feature store's live recent-feature
 writes — serving a cached response across a real click would directly
 defeat the purpose of the streaming work and the online feature store. Given this
-project's `recommend()` already runs in single-digit milliseconds
-end to end (`docs/operations/inference-path.md`), a response cache would trade a
+project's request latency is already dominated by candidate retrieval
+and reranking rather than any repeated per-request computation this
+cache could avoid (`docs/experiments/serving-latency.md`), a response cache would trade a
 small latency win for a real, hard-to-get-right freshness rule with
 no measured need behind it — exactly the kind of complexity the
 project's own no-added-tool-without-a-measured-requirement policy rules

@@ -16,7 +16,7 @@ different questions and are not comparable to each other.
 
 Candidate-list numbers are much higher, because ordering a short
 pre-filtered list is a far easier task than finding items in a catalog of
-50,704. Reading one as the other overstates the system substantially.
+51,282. Reading one as the other overstates the system substantially.
 
 - [`evaluation-protocol.md`](experiments/evaluation-protocol.md) — frozen metrics, splits and definitions
 - [`serving-path-end-to-end-evaluation.md`](experiments/serving-path-end-to-end-evaluation.md) — the full-catalog measurement

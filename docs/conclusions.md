@@ -93,10 +93,13 @@ needed to answer this question properly.**
 | Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
-Reranking is both the single largest latency cost in the system and
-one of its two real quality wins (diversity/freshness) — the two are
-directly in tension, and this table is the first place that tension is
-shown in one place rather than argued about qualitatively. Full detail:
+Candidate retrieval is now the largest latency cost in the system
+(`docs/experiments/serving-latency.md`), driven by the cold-start
+popularity path rather than by a deliberate quality tradeoff. Reranking
+remains the second-largest cost and is also one of the two real quality
+wins (diversity/freshness) — that one is a genuine tension, and this
+table is the first place it is shown in one place rather than argued
+about qualitatively. Full detail:
 `docs/experiments/ablations.md`.
 
 ## The cumulative pipeline gain, stage by stage

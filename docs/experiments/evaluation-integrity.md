@@ -49,8 +49,8 @@ use instead of reaching for validation again.
 
 | Decision | Original (validation) | Tune fold | Confirmed? |
 |---|---|---|---|
-| Diversity: 4+ same-category rate | 53.1% | 59.6% | Yes — same order of magnitude, same conclusion |
-| Diversity: single-category rate | 4.6% | 7.4% | Yes |
+| Diversity: 4+ same-category rate | 53.1% | 56.6% | Yes — same order of magnitude, same conclusion |
+| Diversity: single-category rate | 4.6% | 5.2% | Yes |
 | Freshness: fresh-row rate at 12h | 36.3% | 32.3% | Yes — same order of magnitude |
 | Freshness: zero-fresh-impression rate | 0.7% | 3.4% | Yes — still rare, same conclusion |
 
@@ -197,8 +197,8 @@ Ranking cannot promote an item retrieval never surfaced, so this was a
 hard ceiling on the whole pipeline.
 
 A predefined search-latency budget was stated before these numbers were
-produced — and it did not bind, since every depth came in under a
-millisecond. A "deepest affordable" rule would therefore have
+produced — and it did not bind: every tested depth stayed below the
+predefined 5 ms p99 budget. A "deepest affordable" rule would therefore have
 degenerated into "deepest tried", the same defect as the original
 diversity rule, so it is not presented as having selected anything.
 Index search is also not where depth actually costs: ranking and
