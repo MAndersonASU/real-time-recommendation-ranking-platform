@@ -32,8 +32,8 @@ def order_and_limit(exploded: pd.DataFrame, limit: int | None = None) -> pd.Data
 
 def load_replay_events(limit: int | None = None) -> pd.DataFrame:
     """Chronologically ordered (impression, candidate) rows from the
-    reserved `replay` split (docs/experiments/splits.md) -- MIND's official dev day,
-    held untouched from the start specifically for this phase.
+    reserved `replay` split (docs/experiments/splits.md) -- MIND's
+    official dev day, used by the streaming replay producer.
     """
     behaviors = load_split("replay")
     exploded = explode_impressions(behaviors)

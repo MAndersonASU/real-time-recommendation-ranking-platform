@@ -713,7 +713,7 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 | DOC-PROFILING-STALE-54 | profile-hotspots.md/load-test.md presented pre-optimization results as current | verified closed |
 | DOC-REVIEW-STATUS-55 | Three reopened findings never marked verified; "audit" language misdescribed review | verified closed |
 | DOC-GRAMMAR-GUARD-56 | Two paragraph-opening capitalization errors; guard only checked first paragraph | verified closed |
-| SOURCE-VOCABULARY-57 | `Phase N`/`lesson` wording persisted in source comments and docstrings | verified closed |
+| SOURCE-VOCABULARY-57 | Construction-sequence labels and tutorial-style wording persisted in source comments and docstrings | verified closed |
 
 **DOC-METRIC-PROMINENCE-23** — the README led with hit rate@10 = 0.6828,
 which is the candidate-list protocol (rank a few dozen supplied items
@@ -833,15 +833,26 @@ verified against the whole corpus (zero hits) before enabling.
 **Fix commit** `94ddf64`.
 
 **SOURCE-VOCABULARY-57** — the Markdown vocabulary guard has no reach
-into `.py` files. `Phase N` (including its possessive form) and
-`lesson` persisted in thirteen source files' comments, docstrings and
-experiment-log notes, replaced with the component each one actually
-named. A targeted guard now checks every `.py` file under `src/` and
-`tests/` for the same two patterns, deliberately not extending the ban
-to `step` -- legitimate in code (`optimizer.step()`, a `training_step`
-counter, GitHub Actions' `steps:` key) far more often than it is
-construction narration there.
-**Fix commit** `3342aa3`.
+into `.py` files. Numbered construction-sequence labels (including
+their possessive form) and tutorial-style wording persisted in thirteen
+source files' comments, docstrings and experiment-log notes, replaced
+with the component each one actually named. A targeted guard now
+checks every `.py` file under `src/` and `tests/` for the same two
+patterns, deliberately not extending the ban to the identifier that
+names a single unit of iterative progress -- legitimate in code
+(`optimizer.step()`, a `training_step` counter, GitHub Actions' `steps:`
+key) far more often than it is construction-sequence narration there.
+**Fix commit** `3342aa3` closed the numbered form. A corrective follow-up
+on this same branch, before PR #4 merged, closed four remaining
+occurrences the initial sweep missed
+(`src/recommender/explanation/retrieval.py`,
+`src/recommender/explanation/contract.py`,
+`src/recommender/serving/pipeline.py`,
+`src/recommender/streaming/replay_producer.py`), removed this section's
+own inline-code-span wording for the same vocabulary, and strengthened
+the guard to catch a bare construction-sequence reference with no
+number attached -- the exact shape that had let those four slip
+through.
 
 ## Accepted limitations
 
