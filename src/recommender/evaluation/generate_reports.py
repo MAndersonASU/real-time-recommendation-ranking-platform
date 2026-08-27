@@ -38,6 +38,7 @@ EXPECTED_REPORTS = (
     "ablation",
     "stage-comparison",
     "failure-analysis",
+    "serving-latency",
 )
 
 
