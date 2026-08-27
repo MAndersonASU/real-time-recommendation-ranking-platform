@@ -42,11 +42,13 @@ under a current commit would assert a provenance that is not true — the
 exact failure EVAL-PROVENANCE-01 was raised about. The validator has not
 been weakened and no field has been hand-filled.
 
-Publishing those seven requires: rebuild the licensed-data artifacts from
-a clean commit, validate the bundle, re-run each evaluation with
-`--output-dir` pointing outside the tree, then commit the reports in a
-dedicated commit whose recorded `source_commit` is the clean commit that
-computed them.
+Six of the seven outstanding evaluations were published exactly that way
+in this pass: the licensed-data artifacts were rebuilt from a clean
+commit, the bundle was validated, each evaluation was re-run with
+`--output-dir` pointing outside the tree, and the reports were committed
+together in a dedicated commit whose recorded `source_commit` is the
+clean commit that computed them. Serving latency needs that same
+sequence plus a running Redis instance.
 
 ## Full records
 
