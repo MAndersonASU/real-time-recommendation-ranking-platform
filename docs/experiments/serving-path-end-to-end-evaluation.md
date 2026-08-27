@@ -1,11 +1,11 @@
 # Serving-Path End-to-End Evaluation
 
-`docs/experiments/ranking-features.md` already discloses a deliberate methodological
-choice: the ranking model is evaluated against MIND's own frozen
-impression candidate list, not against the retrieval model's own top-N
-output, specifically to isolate RQ1 (is retrieval any good) from RQ2
-(does ranking improve on a candidate set). That choice is real, still
-valid for what it measures, and is not changed here.
+`docs/experiments/ranking-features.md` already discloses a deliberate
+methodological choice: the ranking model is evaluated against MIND's own
+frozen impression candidate list, not against the retrieval model's own
+top-N output, specifically to isolate RQ1 (is retrieval any good) from
+RQ2 (does ranking improve on a candidate set). That choice is real,
+still valid for what it measures, and is not changed here.
 
 What this adds: a run of the real `/recommend` code path — retrieval,
 ranking, and reranking together — against real, chronologically ordered
@@ -22,10 +22,10 @@ Implementation:
 This is a name change from an earlier version of this document, which
 called this a "deployment-representative" evaluation. That term
 overstated what it measures: this is a real run of the serving code
-path against real historical data with real, reconstructed point-in-
-time state — not a claim about serving-path traffic, real request
-concurrency, real Kafka/Redis latency, or the real cadence a durable-
-feature batch job would run on.
+path against real historical data with real, reconstructed point-in-time
+state — not a claim about serving-path traffic, real request
+concurrency, real Kafka/Redis latency, or the real cadence a
+durable-feature batch job would run on.
 
 ## What it does
 
@@ -183,10 +183,11 @@ over:
   Raising it from 50 to 1,000 candidates was decided against the tuning
   fold (`verify_retrieval_depth`), because choosing a hyperparameter by
   looking at `validation` and then reporting against `validation` is
-  precisely the leakage `docs/experiments/evaluation-integrity.md` exists to record.
-  The cost is real and measured: about 4 ms of additional end-to-end p50
-  latency, since ranking and reranking both scale with candidate count
-  even though index search itself stays under a millisecond.
+precisely the leakage `docs/experiments/evaluation-integrity.md` exists
+to record. The cost is real and measured: about 4 ms of additional
+end-to-end p50 latency, since ranking and reranking both scale with
+candidate count even though index search itself stays under a
+millisecond.
 
 ## Status and limitations
 

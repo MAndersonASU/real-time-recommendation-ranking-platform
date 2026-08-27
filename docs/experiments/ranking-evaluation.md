@@ -16,6 +16,8 @@ different candidate set or protocol.
 
 ## Results
 
+Generated from [`reports/ranking-evaluation.json`](../../reports/ranking-evaluation.json).
+
 | Metric | Retrieval score only | Ranked |
 |---|---|---|
 | Hit rate@10 | 0.6689 | 0.6828 |

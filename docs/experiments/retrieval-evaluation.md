@@ -2,14 +2,15 @@
 
 The two-tower model plus exact Faiss search, run against the same frozen
 `validation` split as all three baselines
-(`docs/experiments/evaluation-protocol.md`) — but a genuinely different task: searching
-the full 51,282-item catalog rather than ranking a roughly 37-item
-pre-filtered candidate list. Evaluated at N=100 (the retrieval-stage
-candidate count, distinct from K=10 per `docs/research-scenario.md`), not
-at K=10 — these numbers are not directly comparable to the baseline table
-without accounting for that difference. Exact search deliberately, not the
-approximate index, to isolate model quality from the index's already-
-measured approximation cost (`docs/archive/faiss-index.md`). Implementation:
+(`docs/experiments/evaluation-protocol.md`) — but a genuinely different
+task: searching the full 51,282-item catalog rather than ranking a
+roughly 37-item pre-filtered candidate list. Evaluated at N=100 (the
+retrieval-stage candidate count, distinct from K=10 per
+`docs/research-scenario.md`), not at K=10 — these numbers are not
+directly comparable to the baseline table without accounting for that
+difference. Exact search deliberately, not the approximate index, to
+isolate model quality from the index's already-measured approximation
+cost (`docs/archive/faiss-index.md`). Implementation:
 `src/recommender/evaluation/evaluate_retrieval.py`.
 
 ## Results
@@ -100,5 +101,6 @@ together:
 
 These are post-selection development results under the candidate-list
 protocol, not a final generalization estimate; no untouched evaluation
-split remains. See [`docs/experiments/evaluation-protocol.md`](evaluation-protocol.md)
-for what that protocol does and does not support.
+split remains. See
+[`docs/experiments/evaluation-protocol.md`](evaluation-protocol.md) for
+what that protocol does and does not support.

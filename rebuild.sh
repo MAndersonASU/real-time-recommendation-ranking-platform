@@ -5,7 +5,9 @@
 #   bash rebuild.sh <out-dir>
 #
 # <out-dir> must be OUTSIDE this repository. The log and the build receipt
-# are written there, never into the tree.
+# are written there, never into the tree. The receipt is copied to
+# provenance/build-receipt.json in the commit that publishes the reports;
+# reports/ holds evaluation reports only.
 #
 # Why: `recommender.evaluation.reports.validate` refuses a report produced
 # from a dirty working tree, and untracked files count as dirty -- an

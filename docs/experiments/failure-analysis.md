@@ -1,5 +1,7 @@
 # Failure Case Analysis
 
+Generated from [`reports/failure-analysis.json`](../../reports/failure-analysis.json).
+
 Every metric reported so far is one aggregate number across 30,270
 validation impressions. This document segments the misses themselves:
 for each real impression the frozen K=10 evaluation protocol already

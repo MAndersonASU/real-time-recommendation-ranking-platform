@@ -1,5 +1,7 @@
 # Baselines
 
+Generated from [`reports/baseline-evaluation.json`](../../reports/baseline-evaluation.json).
+
 Reproducible results for each defined baseline, evaluated
 against the frozen `validation` split (`docs/experiments/splits.md`) using the
 metrics from `docs/research-scenario.md` and

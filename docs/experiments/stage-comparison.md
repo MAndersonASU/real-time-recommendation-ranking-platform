@@ -1,5 +1,7 @@
 # Comparing Model Stages
 
+Generated from [`reports/stage-comparison.json`](../../reports/stage-comparison.json).
+
 Orders every stage of the pipeline — the strongest baseline, retrieval,
 ranking, reranking — into one table, using the experiment log built in
 `docs/experiments/experiment-tracking.md`, and computes each metric's change from

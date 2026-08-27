@@ -17,10 +17,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 REPORTS = ROOT / "reports"
 
-# The build receipt lives beside the reports because it is evidence about
-# the same run, but it describes artifacts rather than metrics and so does
-# not carry the evaluation-report envelope.
-NOT_AN_EVALUATION_REPORT = {"build-receipt.json"}
+# reports/ holds evaluation reports only. The build receipt describes
+# artifacts rather than metrics and does not carry the evaluation-report
+# envelope, so it lives under provenance/ and the report contract in
+# recommender.evaluation.reports stays a single, unqualified rule.
+NOT_AN_EVALUATION_REPORT: set[str] = set()
 
 
 def evaluation_reports():
@@ -136,6 +137,15 @@ NUMERIC_SYNC = [
     ("explanation-evaluation.json", ("results", "refused"), "d", "explanation-evaluation.md"),
     ("explanation-evaluation.json", ("results", "distinct_explanations"), "d", "explanation-evaluation.md"),
     ("retrieval-evaluation.json", ("results", "hit_rate_at_n"), ".4f", "retrieval-evaluation.md"),
+    ("ranking-evaluation.json", ("results", "ranked", "hit_rate_at_k"), ".4f", "ranking-evaluation.md"),
+    ("ranking-evaluation.json", ("results", "ranked", "recall_at_k"), ".4f", "ranking-evaluation.md"),
+    ("ranking-evaluation.json", ("results", "ranked", "ndcg_at_k"), ".4f", "ranking-evaluation.md"),
+    ("ranking-evaluation.json", ("results", "retrieval_score_only", "recall_at_k"), ".4f", "ranking-evaluation.md"),
+    ("reranking-evaluation.json", ("results", "reranked", "recall_at_k"), ".4f", "reranking-evaluation.md"),
+    ("reranking-evaluation.json", ("results", "ranked_only", "mean_distinct_categories"), ".2f", "reranking-evaluation.md"),
+    ("reranking-evaluation.json", ("results", "reranked", "mean_distinct_categories"), ".2f", "reranking-evaluation.md"),
+    ("stage-comparison.json", ("results", "retrieval", "hit_rate_at_k"), ".4f", "stage-comparison.md"),
+    ("stage-comparison.json", ("results", "reranked", "recall_at_k"), ".4f", "stage-comparison.md"),
 ]
 
 

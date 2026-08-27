@@ -20,6 +20,8 @@ evaluation, see below.
 
 ## Results
 
+Generated from [`reports/reranking-evaluation.json`](../../reports/reranking-evaluation.json).
+
 | Metric | Ranked only | Reranked | Change |
 |---|---|---|---|
 | Hit rate@10 | 0.6828 | 0.6675 | −2.2% |

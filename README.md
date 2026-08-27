@@ -15,7 +15,7 @@ ranking model, diversity/freshness reranking, real-time streaming
 features, and containerized serving — evaluated end to end against a
 frozen research protocol.
 
-**Evidence status.** Seven legacy evaluation tables match their recorded measurements but do not yet have committed, provenance-valid machine-readable reports. Their reports require clean-tree artifact reconstruction and full recomputation. No report was backfilled with inferred or false provenance. Numbers backed by a committed report link to
+**Evidence status.** One legacy evaluation table, serving latency, matches its recorded measurement but does not yet have a committed, provenance-valid machine-readable report: it needs a running Redis instance, which was unavailable during this pass. No report was backfilled with inferred or false provenance. Numbers backed by a committed report link to
 it; the rest are labelled as measurements awaiting republication. `docs/research-scenario.md` defines
 the five research questions this project set out to answer;
 `docs/conclusions.md` answers all five from the evidence gathered

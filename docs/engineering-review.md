@@ -24,11 +24,11 @@ independent check.
 
 ## Evidence status
 
-Seven legacy evaluation tables match their recorded measurements but do
-not yet have committed, provenance-valid machine-readable reports. Their
-reports require clean-tree artifact reconstruction and full
-recomputation. No report was backfilled with inferred or false
-provenance.
+One legacy evaluation table, serving latency, matches its recorded
+measurement but does not yet have a committed, provenance-valid
+machine-readable report: it needs a running Redis instance, which was
+unavailable during this pass. No report was backfilled with inferred or
+false provenance.
 
 Not every headline result is report-backed yet, and not all documentation
 findings are closed.

@@ -1,5 +1,7 @@
 # Ablations
 
+Generated from [`reports/ablation.json`](../../reports/ablation.json).
+
 A component-level ablation asks how much removing just one piece of the
 system costs, holding everything else fixed. This project has five real
 components worth isolating: retrieval features, the ranker's own
