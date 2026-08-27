@@ -5,19 +5,29 @@ straight through to Redis as events arrive, instead of only updating
 its own in-process memory. Implementation:
 `src/recommender/features/live_sync.py`.
 
-## A hook, not a rewrite
+## Overriding `process`, not a hook after the fact
 
-`StreamConsumer.process` (`docs/operations/streaming-consumer.md`) already updates a
-user's in-process `UserState` on every event. Rather than duplicating
-that parsing/dedup/counting logic or coupling the streaming module
-directly to Redis, `StreamConsumer` gained one small hook,
-`_on_state_updated(user_id, state)`, called right after state changes —
-a no-op by default. `SyncingStreamConsumer` subclasses `StreamConsumer`
-and overrides only that hook, converting the updated `UserState` into a
-`RecentUserFeatures` record (`docs/operations/online-features.md`) and writing it to
-Redis (`docs/operations/state-store.md`) via `save_recent_features`. Every other
-line of consumer behavior — parsing, deduplication, monitoring counters
-— is inherited unchanged.
+`StreamConsumer.process` (`docs/operations/streaming-consumer.md`)
+updates a user's in-process `UserState` on every event, entirely in
+memory. `SyncingStreamConsumer` subclasses `StreamConsumer` and
+overrides `process` itself, rather than computing state locally first
+and pushing it to Redis afterward: each event's own fields are handed
+straight to `claim_and_apply_event` (`docs/operations/state-store.md`,
+`docs/operations/streaming-consumer.md`), the atomic Lua operation that
+loads current state, applies the delta, and writes the claim and state
+together. The resulting `RecentUserFeatures` is derived from whatever
+that atomic script returns, never from a locally-mutated `UserState`
+that could go stale against a concurrent writer.
+
+`SyncingStreamConsumer` also overrides `_get_or_create_state`, so the
+first event a fresh process sees for a user restores that user's real
+prior state from Redis instead of starting from empty — without it, a
+restart would silently roll every user back to zero the moment their
+first post-restart event arrived. `_on_state_updated` is overridden too,
+but only to a no-op: the base class calls it after mutating its own
+in-process state, which is exactly the stale basis this subclass must
+not let reach Redis. Parsing, deduplication, and monitoring counters are
+inherited from `StreamConsumer` unchanged.
 
 ## Verified end to end, against real infrastructure
 

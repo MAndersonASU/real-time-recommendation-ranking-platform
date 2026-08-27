@@ -1,6 +1,6 @@
 # Ranking Features
 
-the ranking model scores a candidate set, not the whole catalog —
+The ranking model scores a candidate set, not the whole catalog —
 that asymmetry with retrieval (`docs/experiments/retrieval-model.md`) is exactly why it
 can afford richer, more expensive-per-item features than the two-tower
 model's category/subcategory pair. Implementation:
@@ -33,19 +33,23 @@ pipeline (retrieval, ranking, and reranking together) against real,
 chronologically-ordered, point-in-time-correct state, and is reported
 alongside — not in place of — the numbers here.
 
-## The six features
+## Computed features
 
 Computed per (impression, candidate) pair, one row per candidate the
-ranker will score:
+ranker will score. Six features are computed and persisted; the trained
+model actually uses five of them — `popularity` is computed and kept in
+the persisted feature table for transparency, but excluded from the
+model's own inputs (`docs/experiments/ranking-model.md` has the evidence
+for why):
 
-| Feature | What it measures |
-|---|---|
-| `retrieval_score` | Two-tower dot product for this (user, candidate) pair — the learned embedding-compatibility signal from the retrieval model, carried forward as one input among several. |
-| `popularity` | The popularity baseline's training click count (`docs/experiments/baselines.md`) for the candidate, log-transformed. |
-| `category_match` | 1 if the candidate's category matches the user's single most common history category, else 0. |
-| `content_similarity` | Cosine similarity between the candidate's TF-IDF vector and the mean TF-IDF vector of the user's history — reuses the content-similarity baseline's vectorizer (`docs/experiments/baselines.md`). |
-| `user_history_length` | Count of real (non-padding) history items for this user — an honest cold-start proxy. |
-| `hour_of_day` | Hour (0–23) extracted from this impression's own timestamp. |
+| Feature | Used by the model? | What it measures |
+|---|---|---|
+| `retrieval_score` | Yes | Two-tower dot product for this (user, candidate) pair — the learned embedding-compatibility signal from the retrieval model, carried forward as one input among several. |
+| `popularity` | No — computed, excluded | The popularity baseline's training click count (`docs/experiments/baselines.md`) for the candidate, log-transformed. |
+| `category_match` | Yes | 1 if the candidate's category matches the user's single most common history category, else 0. |
+| `content_similarity` | Yes | Cosine similarity between the candidate's TF-IDF vector and the mean TF-IDF vector of the user's history — reuses the content-similarity baseline's vectorizer (`docs/experiments/baselines.md`). |
+| `user_history_length` | Yes | Count of real (non-padding) history items for this user — an honest cold-start proxy. |
+| `hour_of_day` | Yes | Hour (0–23) extracted from this impression's own timestamp. |
 
 Article freshness (named in the component description) is not included:
 `news.tsv`'s schema (`src/recommender/data/schema.py`) has no publish-date

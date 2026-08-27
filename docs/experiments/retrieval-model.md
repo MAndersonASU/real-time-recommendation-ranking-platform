@@ -8,9 +8,12 @@ this one. Implementation: `src/recommender/retrieval/` (`features.py`,
 
 ## Architecture
 
-- **Item tower**: category + subcategory embeddings, concatenated and
-  projected to a 32-dimensional vector. Defined for every catalog item
-  regardless of click history, since these features never depend on it.
+- **Item tower**: category and subcategory embeddings, plus a
+  64-dimensional per-article content vector derived from that article's
+  title and abstract, concatenated and projected to a 32-dimensional
+  vector (see "Item tower features" below for why the content vector
+  was added). Defined for every catalog item regardless of click
+  history, since these features never depend on it.
 - **User tower**: not a separate set of parameters. A user's vector is the
   mean of the item tower's vectors for whatever's in their (fixed-length,
   masked) click history — the same idea as the earlier content-similarity

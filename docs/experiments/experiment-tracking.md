@@ -19,8 +19,8 @@ total and no team collaboration surface to justify a tracking UI.
 That's a measured cost, not a guess, and it doesn't clear this
 project's own complexity-boundary policy: no tool without a measured
 requirement. (Two `.gitignore` entries anticipating MLflow, `mlruns/`
-and `mlflow.db`, left over from the project's original stack outline
-in the original stack outline, were removed as part of this decision — dead configuration
+and `mlflow.db`, left over from the project's original stack outline,
+were removed as part of this decision — dead configuration
 for a tool this project isn't using.)
 
 ## What was built instead

@@ -1,7 +1,8 @@
 # Ranking Model
 
-The project's first learned ranking model, over the six features defined in
-`docs/experiments/ranking-features.md`. Deliberately not a neural model at this
+The project's first learned ranking model, over the features defined in
+`docs/experiments/ranking-features.md` (six computed and persisted, five
+used by the trained model). Deliberately not a neural model at this
 stage — logistic regression, so every fitted weight can be read and
 sanity-checked directly rather than inferred from behavior alone.
 Implementation: `src/recommender/ranking/train.py`.

@@ -1,10 +1,10 @@
 # Data Card: Microsoft News Dataset (MIND)
 
 A single, standard-structure reference for the one dataset this
-project uses. Every fact below was validated against the downloaded files and cited license text against real
-data or the license text at the time it was first documented — this
-card consolidates those findings rather than restating them, and links
-to the original source for full detail.
+project uses. Every fact below was validated directly -- against the
+real downloaded files or the license text itself, at the time it was
+first documented -- and this card consolidates those findings rather
+than restating them, linking to the original source for full detail.
 
 ## Motivation
 
@@ -16,7 +16,7 @@ reported.
 
 ## Composition
 
-- **MIND-small** (development, used throughout data ingestion through replay evaluation, 11–14):
+- **MIND-small** (development, used throughout data ingestion through replay evaluation):
   news catalog with title/abstract/category/subcategory/entity
   annotations, and user impression logs with click labels.
 - **MIND-large** (used only for the scale and performance work's explicitly scoped scale
@@ -73,8 +73,10 @@ license text review: `docs/dataset-source.md`.
 ## Maintenance
 
 This project does not maintain or modify the dataset itself — it is
-ingested read-only from the canonical Hugging Face mirror
-(`docs/dataset-source.md`) and never altered. Updates to this data card
+ingested read-only from the verified Hugging Face mirror this project
+actually downloaded from (`docs/dataset-source.md`; the official MIND
+site and the Microsoft Research License remain the authoritative
+sources for dataset identity and licensing) and never altered. Updates to this data card
 track changes in how this project *uses* the dataset, not changes to
 the dataset itself.
 

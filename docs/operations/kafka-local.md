@@ -22,7 +22,7 @@ Bring up: `docker compose up -d`. Health-checked via
 before anything tries to connect.
 
 `kafka_client.py` provides three small, reusable helpers every later
-the streaming pipeline builds on: `build_producer`, `build_consumer` (manual
+streaming component builds on: `build_producer`, `build_consumer` (manual
 offset commits — `enable.auto.commit: False` — deliberately, since the
 recovery tests need direct control over exactly when an offset
 counts as processed), and `ensure_topic`.

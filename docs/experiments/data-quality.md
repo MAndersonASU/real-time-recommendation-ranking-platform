@@ -52,7 +52,7 @@ cold-start handling.
 17 categories, heavily concentrated: `news` and `sports` alone account for
 59.1% of train-window articles (58.5% in dev). The remaining 15 categories
 share the rest, several (`kids`, `middleeast`, and one of `northamerica`/
-`games` depending on the window) with single-digit counts. reranking's
+`games` depending on the window) with single-digit counts. Reranking's
 diversity control needs to account for this imbalance rather than assume a
 roughly even category split.
 

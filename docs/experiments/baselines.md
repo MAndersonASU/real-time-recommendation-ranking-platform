@@ -53,9 +53,11 @@ this trade-off.
 
 Runtime: the evaluation loop (a Python-level `groupby` over 30,270
 impressions) took about 41 seconds locally. Left as-is rather than
-optimized — the scale and performance work is where profiling and performance work belongs, and
-optimizing a one-off local evaluation script before it's ever been a
-measured bottleneck would be solving a problem that doesn't exist yet.
+optimized — profiling and performance work belongs on the serving path
+this project actually measures (`docs/experiments/optimization.md`), not
+a one-off local evaluation script, and optimizing this one before it's
+ever been a measured bottleneck would be solving a problem that doesn't
+exist yet.
 
 ## Content-similarity baseline
 

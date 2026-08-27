@@ -18,7 +18,7 @@ changes. It does: schema validation (`recommender.data.schema`) still
 passes, and the same Parquet output shape lands in
 `data/processed/mind_large/`.
 
-## numbers, both splits
+## Numbers, both splits
 
 | Split | News rows | News scale | Behaviors rows | Behaviors scale | Extract | Ingest |
 |---|---|---|---|---|---|---|

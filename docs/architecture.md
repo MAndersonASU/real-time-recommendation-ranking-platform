@@ -80,20 +80,36 @@ flowchart TD
 
 ## Artifact boundaries
 
-The offline path produces a versioned bundle that the online path loads
-read-only. Nothing in the serving path writes to it.
+The offline path produces the artifacts the online path loads read-only.
+Nothing in the serving path writes to them. Two distinct mechanisms
+cover them, with different scope, and conflating them overstates what
+either one actually checks:
 
-| Artifact | Produced by | Consumed by |
-|---|---|---|
-| Two-tower retrieval model | `recommender.retrieval` | Serving, evaluation |
-| Item content vectors (`.npz`) | `recommender.retrieval` | Retrieval, ranking features |
-| Faiss `IndexFlatIP` index | `recommender.retrieval` | Serving, evaluation |
-| Item catalog | `recommender.data` | Serving, reranking |
-| Ranking model | `recommender.ranking` | Serving, evaluation |
-| Bundle manifest (SHA-256 per file) | `recommender.retrieval` | Startup validation |
+**Coherence bundle** (`recommender.retrieval.bundle`,
+`serving_bundle.json`): three artifacts that must have been produced
+together, because interpreting one against a different version of
+another produces plausible-looking nonsense with no error --
 
-Every bundle member is checksummed in the manifest, and the API validates
-those checksums during startup rather than trusting the filenames.
+| Artifact | Produced by |
+|---|---|
+| Two-tower retrieval model | `recommender.retrieval` |
+| Item content vectors (`.npz`) | `recommender.retrieval` |
+| Item catalog | `recommender.data` |
+
+`validate_bundle()` checks all three against the manifest's recorded
+SHA-256 hashes at startup and refuses a mismatched set.
+
+**Serving-version manifest** (`recommender.monitoring.artifact_manifest`):
+a broader fingerprint -- covering the ranking model, behaviour splits and
+serving code commit alongside the three bundle members above -- exposed
+through `/metrics` as `recommend_model_info` for observability. It
+labels what is running; it does not gate startup or check that its
+members agree with each other the way the coherence bundle does.
+
+| Artifact | Covered by |
+|---|---|
+| Faiss `IndexFlatIP` index | Neither -- rebuilt in memory at every startup from the coherence-bundle-validated retrieval model and catalog, so it cannot itself drift out of agreement with them |
+| Ranking model | Serving-version manifest only; required to load at startup, but not cross-checked against the retrieval model or catalog |
 
 ## Runtime dependencies
 

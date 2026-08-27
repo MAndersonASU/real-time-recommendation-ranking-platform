@@ -142,7 +142,7 @@ MIND records, per impression, the clicks that happened strictly before
 it, so seeding the store from that field is point-in-time correct
 rather than leakage — it is exactly what a live store would already
 hold for a returning user. With the fix, recent-feature coverage rises
-to 97.8% and catalog coverage roughly quadruples. **The ranking metrics
+to 97.6% and catalog coverage roughly quadruples. **The ranking metrics
 did not materially improve**, because the retrieval ceiling above is
 the real constraint; the fix makes this evaluation measure the actual
 serving path instead of a degenerate one, which is its own reason to

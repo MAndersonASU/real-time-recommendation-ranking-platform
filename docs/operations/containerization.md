@@ -36,8 +36,8 @@ project already defaults to. `app.py` reads `REDIS_URL` from the
 environment, falling back to the existing `localhost` default so every
 non-containerized caller (tests, verify scripts) is unaffected. This is
 deliberately minimal: real environment-based configuration, secret
-handling, and startup-dependency validation are `docs/operations/configuration.md`'s
-own, later job.
+handling, and startup-dependency validation are handled in
+`docs/operations/configuration.md`.
 
 ## Verified by actually building and running it
 

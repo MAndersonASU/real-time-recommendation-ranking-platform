@@ -218,19 +218,34 @@ WORD_NUMBERS = {
 
 
 def test_documented_report_count_matches_the_reports_directory() -> None:
-    """Prose that counts published reports must match what is committed."""
+    """Prose that counts published reports must match what is committed.
+
+    Two shapes are checked. "The four published reports" is caught by a
+    tight number-then-"reports" pattern. That alone missed the real bug
+    found in this repository: "the four machine-readable reports
+    currently in `reports/`", where an adjective sits between the
+    number and "reports". A second pattern matches that specific shape
+    -- a number, then "reports", then "currently in" a literal
+    `reports/` reference -- rather than broadening the tight pattern in
+    general, which reintroduces false positives ("one JSON per
+    published report" is a per-report count, not a total).
+    """
     actual = len(evaluation_reports())
     words = "|".join(WORD_NUMBERS)
-    pattern = re.compile(
-        rf"(?i)(?<![a-z])({words})\s+(?:published\s+)?reports(?![a-z])"
+    tight = re.compile(rf"(?i)(?<![a-z])({words})\s+(?:published\s+)?reports?(?![a-z])")
+    currently_in_directory = re.compile(
+        rf"(?i)(?<![a-z])({words})\s+(?:[a-z][a-z-]*\s+){{0,4}}reports?\s+"
+        rf"(?:[a-z][a-z-]*\s+){{0,4}}currently\s+in\s+`?reports/?`?"
     )
+
     wrong = []
     for path in MARKDOWN:
-        for match in pattern.finditer(prose_of(path.read_text(encoding="utf-8"))):
-            claimed = WORD_NUMBERS[match.group(1).lower()]
-            if claimed != actual:
-                wrong.append(
-                    f"{md_id(path)} says {match.group(0)!r}, "
-                    f"but {actual} are committed"
-                )
-    assert not wrong, "; ".join(wrong)
+        text = prose_of(path.read_text(encoding="utf-8"))
+        for pattern in (tight, currently_in_directory):
+            for match in pattern.finditer(text):
+                claimed = WORD_NUMBERS[match.group(1).lower()]
+                if claimed != actual:
+                    wrong.append(
+                        f"{md_id(path)} says {match.group(0)!r}, but {actual} are committed"
+                    )
+    assert not wrong, "; ".join(sorted(set(wrong)))

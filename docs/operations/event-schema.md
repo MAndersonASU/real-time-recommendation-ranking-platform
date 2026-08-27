@@ -1,6 +1,6 @@
 # Event Schema
 
-the streaming pipeline turns MIND's behavior logs from a finished table into a stream of
+The streaming pipeline turns MIND's behavior logs from a finished table into a stream of
 individual interaction events — what a real system would receive one at a
 time, in order, as it happens. This check defines the message format all
 the streaming components (Kafka broker, replay producer, streaming
@@ -45,8 +45,17 @@ to article freshness in the ranking model and reranking.
   scope's own "replayed-stream, not live production" boundary.
 
 `InteractionEvent` is a frozen dataclass with `to_json`/`from_json` for
-Kafka message (de)serialization; `make_event` assigns a fresh UUID and the
-current schema version. Verified with 3 tests: a JSON round-trip preserves
-every field including the event-type enum (not a bare string); two events
-built from identical inputs still get distinct event ids; the default
-source identifies replay, not a live feed.
+Kafka message (de)serialization. By default, `make_event` assigns
+`event_id` a **deterministic** id (`stable_event_id`, a `uuid5` derived
+from this event's own immutable fields — type, user, item, impression,
+timestamp, source): identical inputs produce the identical id, on any
+run, on any machine. That is deliberate, not incidental — replay is
+re-runnable by design, and a random id would make the same historical
+event look brand new every time it replayed, defeating the duplicate
+detection this schema exists to support
+(`docs/operations/streaming-consumer.md`). A caller representing
+genuinely new, live traffic can pass its own `event_id` instead of
+relying on the default. Verified with 3 tests: a JSON round-trip
+preserves every field including the event-type enum (not a bare
+string); identical inputs produce the identical id; ids differ when any
+identifying field differs.

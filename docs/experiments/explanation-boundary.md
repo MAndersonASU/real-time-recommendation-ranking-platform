@@ -48,9 +48,10 @@ recommended item's real `category_match`, `content_similarity`,
 `retrieval_score`, and `user_history_length` directly from the same
 feature row already used to produce that item's ranking score — not a
 second pass over the data, and not a value derived specifically for
-explanation purposes. These are the same four features documented in
-`docs/experiments/ranking-features.md` (`popularity` excluded, matching the trained
-model itself).
+explanation purposes. These are four of the five features the trained
+model actually uses (`docs/experiments/ranking-features.md`):
+`hour_of_day` is not exposed here, and `popularity` is excluded from the
+trained model itself, not only from this explanation contract.
 
 ## `build_explanation_requests`: the boundary in code, not just in prose
 

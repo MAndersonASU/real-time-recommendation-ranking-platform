@@ -181,15 +181,72 @@ DETECTORS = (
 )
 
 
+# A word directly followed by a bare ".<digit>" (no space) is not a
+# sentence in this documentation's own style -- decimal figures are
+# written as "0.5" (digit before the dot) or spelled out in a table
+# cell, never as "wordname.5". This shape is what a bulk substitution
+# left behind when it replaced only part of a longer reference and
+# dropped a trailing fragment ("the online feature store.5").
+STRAY_NUMERIC_SUFFIX = re.compile(r"\b[a-zA-Z]+\.\d\b")
+
+
+def stray_numeric_suffix(text: str) -> list[str]:
+    out = []
+    for m in STRAY_NUMERIC_SUFFIX.finditer(text):
+        start = max(0, m.start() - 20)
+        out.append(text[start:m.end() + 5].strip())
+    return out
+
+
+# "a small, regression that..." -- a comma after a short adjective,
+# followed by exactly one bare word and then a relative clause, with no
+# coordinating conjunction in that one-word slot. A genuine list item
+# ("a real, disclosed limitation that...") always has more than one word
+# between the comma and the relative clause, or a conjunction; this
+# shape is what is left when a word was dropped between them.
+DROPPED_WORD_BEFORE_RELATIVE = re.compile(
+    r"\b(?:a|an|the)\s+[a-z]+(?:,|\s+XCOMMA)\s+([a-z]+)\s+(?:that|which|who)\b",
+    re.IGNORECASE,
+)
+_RELATIVE_CLAUSE_CONJUNCTIONS = frozenset(
+    {"and", "or", "but", "so", "yet", "nor", "then", "which", "who", "that"}
+)
+
+
+def dropped_word_before_relative_clause(text: str) -> list[str]:
+    out = []
+    for m in DROPPED_WORD_BEFORE_RELATIVE.finditer(text):
+        if m.group(1).lower() in _RELATIVE_CLAUSE_CONJUNCTIONS:
+            continue
+        out.append(m.group(0))
+    return out
+
+
+# These two run over the whole rendered-prose string directly, not a
+# tokenised word list: the corruption they catch (a stray ".5", a
+# missing word) is invisible to a detector that only ever sees complete
+# words, since the token pattern that feeds every detector above simply
+# drops a bare ".5" from the stream instead of ever presenting it.
+TEXT_DETECTORS = (
+    stray_numeric_suffix,
+    dropped_word_before_relative_clause,
+)
+
+
 def findings(markdown: str) -> list[str]:
     """Every duplication finding in one Markdown document."""
+    prose = rendered_prose(markdown)
     out = []
-    for paragraph in re.split(r"\n\s*\n", rendered_prose(markdown)):
+    for paragraph in re.split(r"\n\s*\n", prose):
         for words in _sentences(paragraph):
             for detector in DETECTORS:
                 for hit in detector(words):
                     if hit not in ACCEPTED_REPETITION:
                         out.append(hit)
+    for detector in TEXT_DETECTORS:
+        for hit in detector(prose):
+            if hit not in ACCEPTED_REPETITION:
+                out.append(hit)
     return out
 
 
@@ -328,6 +385,28 @@ REGRESSIONS: tuple[tuple[str, str], ...] = (
             ' components shares.'
         ),
     ),
+    (
+        (
+            "the underlying reason the online feature store's whole feature"
+            " split (durable vs. recent) and the online feature store.5's"
+            ' cold-start fallbacks exist at all'
+        ),
+        (
+            "the underlying reason the online feature store's whole feature"
+            " split (durable vs. recent) and its cold-start fallbacks exist"
+            ' at all'
+        ),
+    ),
+    (
+        (
+            'a small, regression that was true in the underlying report'
+            ' files all along'
+        ),
+        (
+            'a small NDCG regression that was true in the underlying report'
+            ' files all along'
+        ),
+    ),
 )
 
 
@@ -363,3 +442,82 @@ def test_repaired_wording_is_accepted(repaired: str) -> None:
 def test_legitimate_repetition_is_not_flagged(phrase: str) -> None:
     """Coordination and lists repeat component names on purpose."""
     assert not findings(phrase), f"false positive: {phrase!r}"
+
+
+# --- Lowercase document and heading openings -------------------------
+#
+# A bulk rewrite can drop the first word of a sentence -- an article, a
+# subject -- while leaving the rest of the sentence grammatical, and the
+# telltale sign left behind is a document or heading that starts on a
+# lowercase word. A code identifier is the one legitimate exception
+# ("## `pip-audit` caveat" is fine); an ordinary lowercase word opening a
+# heading or a document's first paragraph is not.
+
+_LEADING_MARKUP = re.compile(r"^[*_#\s]+")
+
+
+def _opens_lowercase(text: str) -> bool:
+    stripped = _LEADING_MARKUP.sub("", text.strip())
+    if not stripped or stripped[0] == "`":
+        return False
+    first_letter = re.match(r"[A-Za-z]", stripped)
+    return bool(first_letter) and stripped[0].islower()
+
+
+def lowercase_openings(markdown: str) -> list[str]:
+    """The document's first paragraph and every heading, if lowercase."""
+    lines = markdown.splitlines()
+    hits = []
+    past_title = False
+    for line in lines:
+        if line.startswith("# ") and not past_title:
+            past_title = True
+            continue
+        if past_title and line.strip() and not line.startswith("#"):
+            if _opens_lowercase(line):
+                hits.append(f"document opens lowercase: {line.strip()[:70]!r}")
+            break  # only the document's first paragraph is checked
+    for line in lines:
+        match = re.match(r"^#{2,6}\s+(.*)", line)
+        if match and _opens_lowercase(match.group(1)):
+            hits.append(f"heading opens lowercase: {match.group(1).strip()[:70]!r}")
+    return hits
+
+
+@pytest.mark.parametrize("path", MARKDOWN, ids=md_id)
+def test_no_lowercase_document_or_heading_openings(path: pathlib.Path) -> None:
+    """A document or heading never opens on a lowercase word."""
+    hits = lowercase_openings(path.read_text(encoding="utf-8"))
+    assert not hits, f"{md_id(path)}: " + "; ".join(hits)
+
+
+@pytest.mark.parametrize(
+    "markdown,expected_substring",
+    [
+        (
+            "# Event Schema\n\nthe streaming pipeline turns MIND's logs into events.\n",
+            "document opens lowercase",
+        ),
+        (
+            "# Engineering Review\n\n## pip-audit caveat\n\nSome text.\n",
+            "heading opens lowercase",
+        ),
+    ],
+)
+def test_lowercase_opening_is_rejected(markdown: str, expected_substring: str) -> None:
+    """Both a broken document opening and a broken heading are caught."""
+    hits = lowercase_openings(markdown)
+    assert any(expected_substring in h for h in hits), hits
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "# Event Schema\n\nThe streaming pipeline turns MIND's logs into events.\n",
+        "# Engineering Review\n\n## `pip-audit` caveat\n\nSome text.\n",
+        "# Ranking Model\n\n## `recommend()` internals\n\nSome text.\n",
+    ],
+)
+def test_capitalized_or_code_opening_is_accepted(markdown: str) -> None:
+    """A capitalized opening, or a heading starting on a code span, is fine."""
+    assert not lowercase_openings(markdown)

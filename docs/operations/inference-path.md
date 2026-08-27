@@ -16,21 +16,27 @@ re-fits anything.
 
 ## The one place this project's retrieval quality actually gets used live
 
-Every offline evaluation since the baselines ranked the same frozen candidate
-set — MIND's own impression list — because retrieval evaluation
-(`docs/experiments/retrieval-evaluation.md`) found the retrieval
-model's own top-N badly weakened by a 284-distinct-vector limitation in
-the item tower. A live request has no impression list to fall back on:
-it has to generate its own candidates from the whole catalog through the
-Faiss index, exactly what `recommend()` does with `faiss_index.search`.
-This is genuinely the first place in the whole project where retrieval's
-own top-N output becomes the actual candidate source, not a stand-in
-for one — and it inherits the same diagnosed limitation as a result.
-Ranking on top of those candidates still recovers reasonable quality
-(ranking evaluation (`docs/experiments/ranking-evaluation.md`) showed ranked scoring
-works even over a retrieval-narrowed candidate pool), but the pool
-itself starts from retrieval's real, already-documented ceiling, not a
-clean slate.
+Every offline evaluation since the baselines ranked the same frozen
+candidate set — MIND's own impression list, not a pool retrieval itself
+produced (`docs/experiments/ranking-features.md`). A live request has no
+impression list to fall back on: it has to generate its own candidates
+from the whole catalog through the Faiss index, exactly what
+`recommend()` does with `faiss_index.search`. This is genuinely the
+first place in the whole project where retrieval's own top-N output
+becomes the actual candidate source, not a stand-in for one.
+
+Retrieval quality over the full catalog remains weak in an absolute
+sense (`docs/experiments/retrieval-evaluation.md`): the item-tower fix
+raised distinct embeddings from 284 to 50,704 across the 51,282-item
+catalog and every retrieval metric with it, but did not produce a
+working full-catalog retriever. Ranking evaluation
+(`docs/experiments/ranking-evaluation.md`) does not measure ranking
+quality over this live, retrieval-narrowed pool — it deliberately uses
+MIND's own frozen impression list instead, to isolate retrieval quality
+from ranking quality. The pool a live request actually ranks over is
+measured separately, end to end
+(`docs/experiments/serving-path-end-to-end-evaluation.md`), and starts
+from retrieval's real, already-documented ceiling, not a clean slate.
 
 ## A disclosed asymmetry between the live path and offline training
 
@@ -49,7 +55,9 @@ only that field, still carries the same uncapped meaning training used.
 `recommend()` for 20 real users from the validation split plus one user
 that has never existed anywhere. Every response validated against the
 typed contract, returned exactly the requested count, and the unknown
-user correctly came back with both feature flags false. Measured,
-single-request, single-threaded latency: **12.3ms p50, 15.5ms p99** —
-this component's own rigorous per-stage latency breakdown belongs to
-`docs/experiments/serving-latency.md`, not this document.
+user correctly came back with both feature flags false. Measured, single-request, single-threaded latency: 12.3ms p50, 15.5ms
+p99. That measurement predates the retrieval-depth and cold-start
+changes recorded in `docs/experiments/serving-latency.md` and is
+superseded by the 21.31ms p50 / 60.97ms p99 measured there under the
+current pipeline; this component's own rigorous per-stage latency
+breakdown belongs to that document, not this one.

@@ -778,8 +778,9 @@ run numbers appear here only where they are evidence for a *particular*
 fix, and stay attached to that fix.
 
 Run 33004519430 at commit `37e6510` is the **report-republication run**:
-the run that verified the four machine-readable reports currently in
-`reports/`. It is cited for that and nothing else. (Run 32975126661
+the run that verified the machine-readable reports published as of that
+commit -- a much smaller `reports/` directory than today's twelve. It is
+cited for that historical verification and nothing else. (Run 32975126661
 verified the previous set, superseded when the strict content-artifact
 schema changed the artifact hashes those reports recorded.)
 
@@ -907,7 +908,7 @@ the status below will be updated once that check has run.
 
 STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 
-Every evaluation table in this repository is backed by a committed, provenance-valid machine-readable report. No report was backfilled with inferred or false provenance.
+The twelve headline evaluation result families listed in `docs/evaluation.md` each have a committed, provenance-valid machine-readable report. No report was backfilled with inferred or false provenance. Other historical and operational measurements throughout the documentation are real but are not part of this twelve-report contract; each states its own verification scope in the document it appears in.
 
 Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
 2 accepted limitations. The minimum-fresh quota is retained at 2 as a

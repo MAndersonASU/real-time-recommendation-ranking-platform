@@ -1,10 +1,9 @@
 # Replay Producer
 
-Publishes the reserved `replay` split (`docs/experiments/splits.md` — MIND's official
-dev day, held untouched from the start specifically for this component) to
-Kafka, in the exact chronological order the interactions actually
-happened, paced by a real-time-scaled sleep rather than sent as one
-batch. Implementation: `src/recommender/streaming/replay_producer.py`.
+Publishes the `replay` split (`docs/experiments/splits.md` — MIND's
+official dev day) to Kafka, in the exact chronological order the
+interactions actually happened, paced by a real-time-scaled sleep
+rather than sent as one batch. Implementation: `src/recommender/streaming/replay_producer.py`.
 
 ## Why paced replay, not a batch load
 

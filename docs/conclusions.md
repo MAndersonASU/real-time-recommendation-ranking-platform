@@ -29,10 +29,10 @@ carries a content vector derived from its own title and abstract
 
 It is still not a working retriever in a deployable sense: the user's
 real next click is absent from a 100-item candidate set roughly 97% of
-the time. **Answer: not
-demonstrated by this architecture, for a diagnosed and fixable reason
-(item-tower feature richness), not a verdict on learned embeddings in
-general.**
+the time. **Answer: content features produced a measured improvement (7.6x-13.5x
+across retrieval metrics). Absolute retrieval quality remains weak, and
+the remaining cause has not been isolated -- not a verdict on learned
+embeddings in general.**
 
 ## RQ2: Does a learned ranker add value beyond retrieval?
 
@@ -53,11 +53,12 @@ generalization estimate.
 ## RQ3: Does reranking improve diversity and freshness?
 
 Yes, at a real, small, disclosed relevance cost. Reranking raised mean
-distinct categories per slate from 4.50 to 5.33 (+18.3%) and cut the
-fraction of slates below the freshness quota from 13.3% to 4.8% (−64%
-relative), at a relevance cost under 2.2% on every metric
-(`docs/experiments/reranking-evaluation.md`). Catalog coverage moved slightly the
-wrong way (−2.3%), a disclosed, understood exception: the diversity
+distinct categories per slate from 4.70 to 5.42 (+15.1%) and cut the
+fraction of slates below the freshness quota from 82.0% to 74.0% (−9.8%
+relative), at a relevance cost no more than approximately 2.6% on any
+metric (`docs/experiments/reranking-evaluation.md`). Catalog coverage
+moved slightly the wrong way (−3.8%), a disclosed, understood
+exception: the diversity
 policy only reshuffles within one impression's own already-narrow
 candidate pool, so within-impression variety and across-impression
 catalog coverage are two genuinely different properties that don't
@@ -87,15 +88,18 @@ needed to answer this question properly.**
 | Component removed | Quality cost | Latency saved |
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
-| Ranker features | Hit rate −2.9%, NDCG −6.1% | ~1.49ms p50 |
-| Reranking | Relevance rises (+1.8%/+1.4%), diversity/freshness fall | ~6.36ms p50 (~30% of total) |
+| Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.07ms p50 |
+| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~6.36ms p50 (~30% of total) |
 | Recent streaming features | Unchanged in this sample | 0.80ms→0.008ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
-Reranking is both the single largest latency cost in the system and
-one of its two real quality wins (diversity/freshness) — the two are
-directly in tension, and this table is the first place that tension is
-shown in one place rather than argued about qualitatively. Full detail:
+Candidate retrieval is now the largest latency cost in the system
+(`docs/experiments/serving-latency.md`), driven by the cold-start
+popularity path rather than by a deliberate quality tradeoff. Reranking
+remains the second-largest cost and is also one of the two real quality
+wins (diversity/freshness) — that one is a genuine tension, and this
+table is the first place it is shown in one place rather than argued
+about qualitatively. Full detail:
 `docs/experiments/ablations.md`.
 
 ## The cumulative pipeline gain, stage by stage
@@ -117,11 +121,11 @@ on the diversity/freshness improvement documented under RQ3.
 
 ## Where the system actually fails (docs/experiments/failure-analysis.md)
 
-Overall miss rate 33.2% across 30,270 real impressions. Misses
-concentrate predictably by user history depth (43.5% for a cold-start
-user vs. 31.9% for a well-established one) and by whether the clicked
+Overall miss rate 33.3% across 30,270 real impressions. Misses
+concentrate predictably by user history depth (43.9% for a cold-start
+user vs. 32.2% for a well-established one) and by whether the clicked
 item's category matched the user's own dominant history category
-(35.1% vs. 28.3%) — both consistent with what the ranking model was built to use. One counter-intuitive result was chased down
+(35.0% vs. 28.7%) — both consistent with what the ranking model was built to use. One counter-intuitive result was chased down
 rather than reported at face value: items never clicked in training
 miss *less* often than items that were, explained not by the model
 treating them differently (its own predicted score is nearly identical

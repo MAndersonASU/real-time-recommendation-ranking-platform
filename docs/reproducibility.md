@@ -188,7 +188,9 @@ The licensed MIND dataset itself was not re-downloaded for this
 check — the already-produced, already-verified offline artifacts were
 reused directly, matching the project's own no-redistribution policy
 (`docs/data-card.md`). A genuinely first-time user still needs to
-obtain the dataset from its canonical source (`docs/dataset-source.md`)
-and run the offline pipeline themselves before the live services will
+obtain the dataset following `docs/dataset-source.md` -- the official
+MIND site is the authoritative source; this project downloaded from
+the verified Hugging Face mirror documented there -- and run the
+offline pipeline themselves before the live services will
 serve real personalized recommendations; the test suite alone requires
 nothing beyond a clean clone.

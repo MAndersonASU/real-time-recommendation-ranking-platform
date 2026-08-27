@@ -2,9 +2,12 @@
 
 A local, instruction-tuned model (`google/flan-t5-small`, 77M
 parameters, Apache 2.0, no external API) turns retrieved support
-context into a short "why recommended" sentence. What actually reached
-production here was shaped directly by measured model behavior,
-not by the first design that seemed reasonable. Implementation:
+context into a short "why recommended" sentence. What the current
+implementation actually does was shaped directly by measured model
+behavior, not by the first design that seemed reasonable. Generative
+rewriting is opt-in and disabled by default
+(`allow_generative_rewrite`) -- an ordinary request gets the
+deterministic template. Implementation:
 `src/recommender/explanation/generation.py`.
 
 ## The real refusal rule
@@ -68,7 +71,15 @@ the gate that decides whether to use the rewrite instead is a real,
 tested check against a documented set of failure modes, not a proof
 that no fabrication could ever pass it.
 
-## Results across 15 real recommendations, 5 real users
+## Superseded: a 15-recommendation, 5-user pilot
+
+The table below was the first measurement taken with this design, before
+`docs/experiments/explanation-evaluation.md`'s frozen protocol and its
+machine-readable report existed. It is kept for the qualitative pattern
+it shows, not as a current result -- **current numbers are the 180-request
+sample in `docs/experiments/explanation-evaluation.md`**
+([`reports/explanation-evaluation.json`](../../reports/explanation-evaluation.json)),
+where the model's rewrite is kept 0 times out of 65 attempts, not 2 of 14.
 
 | Outcome | Count |
 |---|---|
@@ -82,8 +93,12 @@ model's own rewrite was judged trustworthy and used only twice — both
 genuine cases where the rewrite happened to retain the real category
 word (`"It is a good choice for a tv show."`, category `tv`). The
 other 12 dropped the required fact and fell back to the template,
-consistent with attempt 3's finding above. **This is reported plainly
-as a limitation of this small local model at this task, not
-smoothed over**: its practical, verified contribution here is a
-minority-case wording variation on top of a deterministic sentence that
-does the actual explanatory work, not a fully generative capability.
+consistent with attempt 3's finding above.
+
+The larger, current sample found the rewrite trustworthy even less
+often -- zero times, not two. **This is reported plainly as a
+limitation of this small local model at this task, not smoothed over**:
+its verified contribution is, at best, an occasional wording variation
+on top of a deterministic sentence that does the actual explanatory
+work, never a fully generative capability, and the current sample did
+not observe even that.

@@ -27,27 +27,26 @@ Generated from [`reports/reranking-evaluation.json`](../../reports/reranking-eva
 | Hit rate@10 | 0.6828 | 0.6675 | −2.2% |
 | Recall@10 | 0.5999 | 0.5848 | −2.5% |
 | NDCG@10 | 0.3671 | 0.3610 | −1.7% |
-| MRR (slate-scoped) | 0.3188 | 0.3169 | −0.6% |
+| MRR (slate-scoped) | 0.3182 | 0.3158 | −0.8% |
 | Mean distinct categories | 4.70 | 5.42 | +15.1% |
 | Mean max-category count | 4.04 | 2.82 | −30.2% |
-| Mean fresh fraction | 0.442 | 0.440 | ~unchanged |
+| Mean fresh fraction | 0.0833 | 0.0946 | +13.5% relative |
 | Slates below the fresh quota | 82.0% | 74.0% | −9.8% relative |
-| Catalog coverage@10 | 0.0712 | 0.0695 | −2.3% |
+| Catalog coverage@10 | 0.0678 | 0.0652 | −3.8% |
 
 ## Reading these numbers honestly
 
 Relevance loss is real but small — every relevance metric dropped, none
-by more than about 2%. Diversity improved substantially: the average
-slate's dominant category shrank from 4.25 items to 2.82, and picked up
+by more than about 2.6%. Diversity improved substantially: the average
+slate's dominant category shrank from 4.04 items to 2.82, and picked up
 nearly a full additional distinct category on average.
 
-The freshness population mean barely moving is not a failure — it's the
-expected shape of a floor, not a boost. Most slates already had 2+ fresh
-items before any policy touched them, so an average dominated by
-already-compliant slates was never going to shift much. The metric that
-shows the quota's effect is the fraction of slates that failed to
-clear the floor at all: 13.3% down to 4.8%, a real, nearly two-thirds
-relative reduction in how often a user would see an entirely stale slate.
+The freshness mean fraction moved too, not just the quota-miss rate: from
+8.3% to 9.5% of a slate being fresh on average, a real if modest
+increase. The fraction of slates that failed to clear the floor
+entirely — the metric the quota is actually meant to move — dropped from
+82.0% to 74.0%, a real but modest relative reduction of about 9.8%, not
+the near-elimination a much larger swing would suggest.
 
 Catalog coverage moved the wrong way, stated plainly rather than glossed
 over: the diversity policy only ever reshuffles candidates *within* one
@@ -80,7 +79,8 @@ given (1.0) for a click that falls outside the slate.
 ## Interpretation: RQ3
 
 For this implementation: yes, on diversity and on the freshness floor, at
-a relevance cost under 2.2% on every metric measured — with one genuine,
+a relevance cost no more than approximately 2.6% on any metric measured
+— with one genuine,
 disclosed caveat, that catalog-wide coverage moved slightly the wrong
 direction, a limitation of a per-impression policy rather than a
 system-wide one. Whether that specific tradeoff is "acceptable" is
