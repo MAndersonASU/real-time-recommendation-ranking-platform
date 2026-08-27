@@ -1,9 +1,27 @@
 # Uncertainty and Limits
 
-Every limitation found across this project, gathered into one
-place rather than left scattered across the individual docs pages that
-first found each one. Nothing here is a new claim — every number and
-finding links back to the operation that measured it.
+The limitations of the evaluation itself: what the numbers this project
+publishes can and cannot show, gathered into one place rather than left
+scattered across the individual docs pages that first found each one.
+Nothing here is a new claim — every number and finding links back to
+the operation that measured it.
+
+This page is not the complete limitations register. Engineering-level
+limitations -- properties of the implementation that no fix is
+currently planned for, as distinct from a finding that was fixed -- are
+tracked in `docs/engineering-review-register.md`'s own **Accepted
+limitations** table (`LIMIT-*`/`HIST-*`, twelve entries: unaudited
+CPU-only torch, no untouched final split, low absolute recommendation
+quality, global cold-start popularity, recency analysis confounded by
+user composition, judgment-based tuning parameters, public CI's
+licensed-data ceiling, the claim-retention idempotency window, lexical-
+only explanation validation, an earlier CI-status overclaim, unquantified
+sampling error, and the `hour_of_day` offline/online timezone mismatch).
+Those are separate again from the **2 findings** among the register's 23
+primary findings that carry the status `accepted limitation` -- a
+finding the project chose not to fix, not a documented characteristic
+like the twelve above. Read the register directly rather than inferring
+a limitation count from this page alone.
 
 ## Sparse-user behavior
 
@@ -15,12 +33,12 @@ learns about "typical" user behavior is shaped by that thin, one- or
 two-interaction majority — there is very little historical signal to
 personalize against for most users in any single window, which is the
 underlying reason the online feature store's whole feature split (durable vs. recent)
-and the online feature store.5's cold-start fallbacks exist at all, not an edge case
+and its cold-start fallbacks exist at all, not an edge case
 bolted on afterward.
 
 ## Cold start, measured directly, not assumed
 
-the online feature store.5 built explicit fallback behavior for users with no known
+The online feature store built explicit fallback behavior for users with no known
 features. Replay-based evaluation (`docs/experiments/replay-evaluation.md`) measured how common that actually is in practice, using
 this project's own real feature stores: of 499 sampled `replay`-split
 users, **92.4% never appeared in the `validation` split** the durable
