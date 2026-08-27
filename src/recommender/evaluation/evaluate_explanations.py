@@ -61,7 +61,7 @@ def _contains_a_known_fabrication_indicator(explanation: str) -> bool:
     return bool(words & _FABRICATION_INDICATOR_WORDS)
 
 
-def _independently_verify_faithfulness(explanation: str, category: str, category_match: bool) -> bool:
+def _verify_lexical_policy(explanation: str, category: str, category_match: bool) -> bool:
     """Re-checks the real outcome from scratch, rather than trusting
     that the generation module's own gate
     (recommender.explanation.generation._preserves_required_facts) must
@@ -82,7 +82,7 @@ def evaluate_explanations(
     num_users: int = DEFAULT_NUM_USERS,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
 ) -> dict:
-    """Measures explanation faithfulness and how much the local model
+    """Measures lexical policy compliance and how much the local model
     actually contributes beyond the safe fallback template -- both
     deliberately kept separate from recommendation Recall/NDCG/MRR,
     which measure a different property (whether the right item
@@ -94,7 +94,7 @@ def evaluate_explanations(
 
     total = 0
     refused = 0
-    faithful = 0
+    lexical_policy_passed = 0
     model_rewrite_used = 0
     template_fallback_used = 0
     explanation_lengths: list[int] = []
@@ -114,10 +114,10 @@ def evaluate_explanations(
                 continue
 
             template = build_template_explanation(support)
-            if _independently_verify_faithfulness(
+            if _verify_lexical_policy(
                 result.explanation, support.category, support.category_match
             ):
-                faithful += 1
+                lexical_policy_passed += 1
 
             if result.explanation == template:
                 template_fallback_used += 1
@@ -133,8 +133,8 @@ def evaluate_explanations(
         "refused": refused,
         "refusal_rate": refused / total if total else 0.0,
         "attempted": attempted,
-        "faithful": faithful,
-        "faithfulness_rate": faithful / attempted if attempted else None,
+        "lexical_policy_passed": lexical_policy_passed,
+        "lexical_policy_pass_rate": lexical_policy_passed / attempted if attempted else None,
         "model_rewrite_used": model_rewrite_used,
         "template_fallback_used": template_fallback_used,
         "model_contribution_rate": model_rewrite_used / attempted if attempted else None,

@@ -1,0 +1,131 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "dbfba306a94f",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "df87cee0e680",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "e9a039551816cd11314d89ba87de1d9ad0f200ef"
+  },
+  "configuration": {
+    "candidate_source": "MIND's supplied candidate list for each impression, not the full catalog",
+    "k": 10
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "validation",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "impressions_evaluated": 30270
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Scored against MIND's supplied candidate list for each impression rather than the full catalog, so these are not full-catalog retrieval numbers.",
+    "Labels come from exposure-biased MIND logs: an item recorded as not clicked may never have been shown.",
+    "Post-selection development evaluation on the validation split. No untouched final split remains, so these are not generalization estimates."
+  ],
+  "metric_definitions": {
+    "catalog_coverage_at_k": "share of the catalog appearing across all served slates",
+    "catalog_size": "number of items in the catalog at evaluation time",
+    "distinct_items_recommended": "count of unique items appearing in any served slate",
+    "fallback_to_popularity_count": "impressions where the baseline had no signal and fell back to global popularity ordering",
+    "hit_rate_at_k": "share of impressions with at least one clicked item in the served Top-K",
+    "impressions_evaluated": "impressions the metric was computed over",
+    "k": "size of the served Top-K slate",
+    "model": "identifier of the baseline or model the row describes",
+    "mrr": "mean reciprocal rank of the first clicked item in the served Top-K",
+    "ndcg_at_k": "normalised discounted cumulative gain over the served Top-K",
+    "recall_at_k": "clicked items in the Top-K divided by all clicked items in the impression"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.evaluation.evaluate_baseline",
+    "generated_at": "2026-08-27T02:21:57.845801+00:00",
+    "source_commit": "e9a039551816cd11314d89ba87de1d9ad0f200ef",
+    "working_tree_clean": true
+  },
+  "report_name": "baseline-evaluation",
+  "results": {
+    "collaborative": {
+      "catalog_coverage_at_k": 0.03892203892203892,
+      "catalog_size": 51282,
+      "distinct_items_recommended": 1996,
+      "fallback_to_popularity_count": 4958,
+      "hit_rate_at_k": 0.5708622398414271,
+      "impressions_evaluated": 30270,
+      "k": 10,
+      "model": "collaborative_baseline",
+      "mrr": 0.2509058291830877,
+      "ndcg_at_k": 0.28474267322841795,
+      "recall_at_k": 0.50456374760561
+    },
+    "content_similarity": {
+      "catalog_coverage_at_k": 0.07222807222807223,
+      "catalog_size": 51282,
+      "distinct_items_recommended": 3704,
+      "fallback_to_popularity_count": 772,
+      "hit_rate_at_k": 0.6557317476048893,
+      "impressions_evaluated": 30270,
+      "k": 10,
+      "model": "content_similarity_baseline",
+      "mrr": 0.3235982548903606,
+      "ndcg_at_k": 0.35261524050018733,
+      "recall_at_k": 0.5742890290004415
+    },
+    "popularity": {
+      "catalog_coverage_at_k": 0.03697203697203697,
+      "catalog_size": 51282,
+      "distinct_items_recommended": 1896,
+      "hit_rate_at_k": 0.5697059795176742,
+      "impressions_evaluated": 30270,
+      "k": 10,
+      "model": "popularity_baseline",
+      "mrr": 0.24835239224435124,
+      "ndcg_at_k": 0.28296997604552315,
+      "recall_at_k": 0.5033988422360466
+    }
+  },
+  "sampling": {
+    "method": "no sampling -- every eligible impression in the split was evaluated",
+    "seed": null
+  },
+  "schema_version": 2
+}

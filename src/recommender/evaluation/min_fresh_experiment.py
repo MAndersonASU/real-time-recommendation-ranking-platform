@@ -1,5 +1,5 @@
 """The minimum-fresh quota experiment specified in
-`docs/min-fresh-experiment-protocol.md`.
+`docs/experiments/min-fresh-experiment-protocol.md`.
 
 That protocol was frozen and committed **before** this ran. The
 selection rule below is a transcription of it, not a fresh decision, and
@@ -62,7 +62,7 @@ OUTCOMES_PATH = mind_small_path("min_fresh_experiment_outcomes.parquet")
 SCORING_COMMIT = "bcd673102dd2c3b4a0462cacf90cda7f4031a791"
 
 # --- frozen protocol constants -----------------------------------------
-# Transcribed from docs/min-fresh-experiment-protocol.md. Changing any of
+# Transcribed from docs/experiments/min-fresh-experiment-protocol.md. Changing any of
 # these after seeing output would make the experiment worthless.
 QUOTAS = (0, 1, 2, 3, 5)
 BASELINE_QUOTA = 0
@@ -285,7 +285,7 @@ def main(limit: int | None = None, reuse_outcomes: bool = False) -> None:
     baseline_rows = outcomes[outcomes["quota"] == BASELINE_QUOTA]
     summary = {
         "experiment": "prospectively specified tuning-fold policy experiment",
-        "protocol": "docs/min-fresh-experiment-protocol.md (frozen before this run)",
+        "protocol": "docs/experiments/min-fresh-experiment-protocol.md (frozen before this run)",
         "feature_provenance": provenance,
         "denominators": {
             "impressions_evaluated": int(baseline_rows["impression_id"].nunique()),

@@ -30,10 +30,10 @@ TRAIN_REPORT_PATH = mind_small_path("ranking_train_report.json")
 # it partly correlates with the very labels it's fit on, and only 29.2%
 # of validation candidates even have a nonzero train count -- the same
 # cold-start sparsity already found for the collaborative baseline
-# (docs/baselines.md). Kept in the persisted feature table
+# (docs/experiments/baselines.md). Kept in the persisted feature table
 # (FEATURE_COLUMNS) for transparency; excluded here.
 #
-# Real, disclosed methodological note (docs/evaluation-integrity.md):
+# Real, disclosed methodological note (docs/experiments/evaluation-integrity.md):
 # this AUC check was originally made by looking at validation, which is
 # also the split every reported metric uses -- a real form of
 # hyperparameter-selection leakage, corrected going forward by

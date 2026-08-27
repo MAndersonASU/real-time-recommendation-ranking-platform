@@ -1,38 +1,38 @@
 from recommender.evaluation.evaluate_explanations import (
     _contains_a_known_fabrication_indicator,
-    _independently_verify_faithfulness,
+    _verify_lexical_policy,
 )
 
 
-def test_verify_faithfulness_passes_when_category_word_is_present():
-    assert _independently_verify_faithfulness(
+def test_verify_lexical_policy_passes_when_category_word_is_present():
+    assert _verify_lexical_policy(
         "Recommended because it matches your interest in sports.", "sports", category_match=True
     )
 
 
-def test_verify_faithfulness_fails_when_category_word_is_missing():
-    assert not _independently_verify_faithfulness(
+def test_verify_lexical_policy_fails_when_category_word_is_missing():
+    assert not _verify_lexical_policy(
         "It is a good choice for you.", "sports", category_match=True
     )
 
 
-def test_verify_faithfulness_is_case_insensitive():
-    assert _independently_verify_faithfulness(
+def test_verify_lexical_policy_is_case_insensitive():
+    assert _verify_lexical_policy(
         "This matches your interest in SPORTS.", "sports", category_match=True
     )
 
 
-def test_verify_faithfulness_ignores_category_when_match_is_false():
+def test_verify_lexical_policy_ignores_category_when_match_is_false():
     # No category-match claim was made, so nothing about the category
     # word needs to appear for the explanation to be faithful.
-    assert _independently_verify_faithfulness(
+    assert _verify_lexical_policy(
         "Recommended because its content resembles articles you've read before.",
         "sports",
         category_match=False,
     )
 
 
-def test_verify_faithfulness_rejects_a_lowercase_fabricated_attribution():
+def test_verify_lexical_policy_rejects_a_lowercase_fabricated_attribution():
     """Regression test for one of the exact fabrications confirmed to
     have been accepted by both the generation module's own gate *and*
     this "independent" check before this fix -- a fully lowercase
@@ -41,29 +41,29 @@ def test_verify_faithfulness_rejects_a_lowercase_fabricated_attribution():
     """
     fabricated = "the president personally selected this story for you."
 
-    assert not _independently_verify_faithfulness(fabricated, "sports", category_match=False)
+    assert not _verify_lexical_policy(fabricated, "sports", category_match=False)
 
 
-def test_verify_faithfulness_rejects_a_lowercase_fabricated_causation_claim():
+def test_verify_lexical_policy_rejects_a_lowercase_fabricated_causation_claim():
     fabricated = "this was selected because your employer requested it."
 
-    assert not _independently_verify_faithfulness(fabricated, "sports", category_match=False)
+    assert not _verify_lexical_policy(fabricated, "sports", category_match=False)
 
 
-def test_verify_faithfulness_rejects_a_fabrication_that_keeps_the_real_category_word():
+def test_verify_lexical_policy_rejects_a_fabrication_that_keeps_the_real_category_word():
     """The third exact example: mixed-case, and it *does* keep the
     real category word -- a check that only verified the category word
     was present would have wrongly accepted this.
     """
     fabricated = "Sports officials confirmed this guarantees financial success."
 
-    assert not _independently_verify_faithfulness(fabricated, "sports", category_match=True)
+    assert not _verify_lexical_policy(fabricated, "sports", category_match=True)
 
 
-def test_verify_faithfulness_rejects_an_invented_entity_even_with_the_category_word_present():
+def test_verify_lexical_policy_rejects_an_invented_entity_even_with_the_category_word_present():
     fabricated_but_keeps_category = "NASA recommends this because you like sports."
 
-    assert not _independently_verify_faithfulness(
+    assert not _verify_lexical_policy(
         fabricated_but_keeps_category, "sports", category_match=True
     )
 

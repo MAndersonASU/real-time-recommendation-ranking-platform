@@ -98,7 +98,7 @@ def render_dashboard_html() -> str:
         # These four read Prometheus Gauges, which have no "unset" state
         # distinct from a real 0.0 -- gated on a real request having
         # happened at all, rather than trusting a bare zero to mean
-        # "no data" (docs/dashboard.md).
+        # "no data" (docs/operations/dashboard.md).
         ("Mean score", _fmt(d["score_mean"]) if quality_available else "&mdash;"),
         ("Mean diversity", _fmt(d["mean_diversity"]) if quality_available else "&mdash;"),
         ("Catalog coverage", _fmt_pct(d["catalog_coverage"]) if quality_available else "&mdash;"),

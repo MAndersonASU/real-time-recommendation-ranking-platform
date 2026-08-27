@@ -64,9 +64,16 @@ def evaluate_ranking(k: int = TOP_K) -> dict:
 
 
 def main() -> None:
+    from recommender.evaluation.publish import (
+        output_dir_from_argv,
+        publish_ranking_report,
+    )
+
     report = evaluate_ranking()
     REPORT_PATH.write_text(json.dumps(report, indent=2))
+    published = publish_ranking_report(report, output_dir=output_dir_from_argv())
     print(json.dumps(report, indent=2))
+    print(f"published {published}")
 
 
 if __name__ == "__main__":

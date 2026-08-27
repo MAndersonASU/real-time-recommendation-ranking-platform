@@ -53,10 +53,10 @@ def profile_context_build_memory() -> dict:
 def profile_stage_cpu_vs_wall(context, num_requests: int = NUM_REQUESTS) -> dict:
     """CPU time (`time.process_time`) alongside wall time
     (`time.perf_counter`) for each of the six request stages measured in
-    `docs/serving-latency.md`, averaged over real requests. The two
+    `docs/experiments/serving-latency.md`, averaged over real requests. The two
     diverging for a stage would mean it spends real time waiting on
     something (network, disk) rather than computing -- this is the one
-    profiling angle `docs/serving-latency.md`'s own wall-clock-only
+    profiling angle `docs/experiments/serving-latency.md`'s own wall-clock-only
     numbers couldn't tell apart.
     """
     users = load_split("validation")["user_id"].drop_duplicates().head(num_requests).tolist()

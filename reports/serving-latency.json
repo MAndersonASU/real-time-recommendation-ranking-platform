@@ -1,0 +1,126 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "dbfba306a94f",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "df87cee0e680",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "6daad210877a89b17193b24d2681086ed796eea7"
+  },
+  "configuration": {
+    "environment": "local containerized stack",
+    "measurement": "wall clock around each serving-path stage"
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "validation",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "requests_measured": 100
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Measured on one developer machine against the containerized demonstration stack, not production hardware.",
+    "Latency depends on local CPU, container limits and Redis locality; absolute values are not portable."
+  ],
+  "metric_definitions": {
+    "by_stage": "wall-clock milliseconds attributed to each serving-path stage",
+    "mean_ms": "mean wall-clock milliseconds",
+    "p50_ms": "median wall-clock milliseconds",
+    "p95_ms": "95th-percentile wall-clock milliseconds",
+    "p99_ms": "99th-percentile wall-clock milliseconds",
+    "requests_measured": "requests the latency figures were computed over",
+    "total": "end-to-end wall-clock milliseconds per request"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.serving.verify_latency",
+    "generated_at": "2026-08-27T04:57:49.427661+00:00",
+    "source_commit": "6daad210877a89b17193b24d2681086ed796eea7",
+    "working_tree_clean": true
+  },
+  "report_name": "serving-latency",
+  "results": {
+    "by_stage": {
+      "embedding_ms": {
+        "p50_ms": 0.31,
+        "p95_ms": 0.53,
+        "p99_ms": 0.591
+      },
+      "feature_build_ms": {
+        "p50_ms": 3.156,
+        "p95_ms": 4.306,
+        "p99_ms": 6.721
+      },
+      "feature_lookup_ms": {
+        "p50_ms": 1.324,
+        "p95_ms": 1.665,
+        "p99_ms": 21.973
+      },
+      "ranking_ms": {
+        "p50_ms": 1.071,
+        "p95_ms": 1.494,
+        "p99_ms": 2.05
+      },
+      "reranking_ms": {
+        "p50_ms": 6.361,
+        "p95_ms": 8.576,
+        "p99_ms": 12.347
+      },
+      "retrieval_ms": {
+        "p50_ms": 8.777,
+        "p95_ms": 10.268,
+        "p99_ms": 12.647
+      }
+    },
+    "requests_measured": 100,
+    "total": {
+      "p50_ms": 21.31,
+      "p95_ms": 25.352,
+      "p99_ms": 60.971
+    }
+  },
+  "sampling": {
+    "method": "no sampling -- every eligible impression in the split was evaluated",
+    "seed": null
+  },
+  "schema_version": 2
+}

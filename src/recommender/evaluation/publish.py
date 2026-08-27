@@ -15,6 +15,8 @@ identifiers and no article text: the underlying dataset is licensed and
 is never redistributed by this repository.
 """
 
+from pathlib import Path
+
 from recommender.evaluation.reports import build_report, write_report
 
 MIND_DATASET = {
@@ -49,7 +51,31 @@ FULL_POPULATION = {
 }
 
 
-def _publish(spec: dict, evaluation_module: str, sampling: dict, extra_artifacts: dict | None = None):
+def output_dir_from_argv(argv=None):
+    """Reads ``--output-dir`` so a run can publish outside the repository.
+
+    ``reports.validate`` refuses a report produced from a dirty working
+    tree, because the commit it records would not describe the code that
+    produced the numbers. Writing into the tree would dirty it partway
+    through a multi-evaluation rebuild and fail every later run, so a
+    rebuild publishes to a directory outside the tree and the reports are
+    copied back in a dedicated commit afterwards.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--output-dir", default=None)
+    args, _ = parser.parse_known_args(argv)
+    return Path(args.output_dir) if args.output_dir else None
+
+
+def _publish(
+    spec: dict,
+    evaluation_module: str,
+    sampling: dict,
+    extra_artifacts: dict | None = None,
+    output_dir=None,
+):
     report = build_report(evaluation_module=evaluation_module, sampling=sampling, **spec)
     if extra_artifacts:
         # Merged rather than replacing: the deployed artifact hashes stay
@@ -57,10 +83,10 @@ def _publish(spec: dict, evaluation_module: str, sampling: dict, extra_artifacts
         # and the run-specific ones are added beside them under their own
         # key so the two can never be confused for each other.
         report["artifacts"] = {**report["artifacts"], **extra_artifacts}
-    return write_report(report)
+    return write_report(report) if output_dir is None else write_report(report, output_dir)
 
 
-def publish_retrieval_report(raw: dict, sampling: dict = FULL_POPULATION):
+def publish_retrieval_report(raw: dict, sampling: dict = FULL_POPULATION, output_dir=None):
     spec = {
         "report_name": "retrieval-evaluation",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -93,16 +119,16 @@ def publish_retrieval_report(raw: dict, sampling: dict = FULL_POPULATION):
             (
                 "Post-selection development evaluation: the content-aware item tower "
                 "was developed after observing validation behaviour, so this is not an "
-                "untouched final generalization estimate. docs/evaluation-protocol.md "
+                "untouched final generalization estimate. docs/experiments/evaluation-protocol.md "
                 "records the leakage-free fit-half comparison that bounds how much of "
                 "this figure that development could account for."
             ),
         ],
     }
-    return _publish(spec, "recommender.evaluation.evaluate_retrieval", sampling)
+    return _publish(spec, "recommender.evaluation.evaluate_retrieval", sampling, output_dir=output_dir)
 
 
-def publish_end_to_end_report(raw: dict, sampling: dict):
+def publish_end_to_end_report(raw: dict, sampling: dict, output_dir=None):
     spec = {
         "report_name": "end-to-end-evaluation",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -156,10 +182,10 @@ def publish_end_to_end_report(raw: dict, sampling: dict):
             ),
         ],
     }
-    return _publish(spec, "recommender.evaluation.evaluate_end_to_end", sampling)
+    return _publish(spec, "recommender.evaluation.evaluate_end_to_end", sampling, output_dir=output_dir)
 
 
-def publish_tuning_report(raw: dict, sampling: dict):
+def publish_tuning_report(raw: dict, sampling: dict, output_dir=None):
     spec = {
         "report_name": "tuning-decisions",
         "dataset": {**MIND_DATASET, "split": "tuning fold carved from train"},
@@ -300,11 +326,15 @@ def publish_tuning_report(raw: dict, sampling: dict):
     )
     extra = {"fit_only_bundle": fit_only_artifact_manifest()} if leakage_free else {}
     return _publish(
-        spec, "recommender.evaluation.verify_tuning_decisions", sampling, extra_artifacts=extra
+        spec,
+        "recommender.evaluation.verify_tuning_decisions",
+        sampling,
+        extra_artifacts=extra,
+        output_dir=output_dir,
     )
 
 
-def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
+def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION, output_dir=None):
     spec = {
         "report_name": "explanation-evaluation",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -318,7 +348,7 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
         # Every published number gets a definition. The previous report
         # dumped the raw result dict with a single definition covering
         # eleven metrics, so most of them were bare numbers -- and
-        # `faithfulness_rate: 1.0` in particular reads as a far stronger
+        # `lexical_policy_pass_rate: 1.0` in particular reads as a far stronger
         # claim than what is actually measured.
         "metric_definitions": {
             "total_recommendations_evaluated": (
@@ -332,10 +362,10 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
             "refusal_rate": "refused / total_recommendations_evaluated",
             "attempted": (
                 "recommendations an explanation was actually produced for -- the "
-                "denominator for faithfulness_rate"
+                "denominator for lexical_policy_pass_rate"
             ),
-            "faithful": "produced explanations that passed the lexical policy check",
-            "faithfulness_rate": (
+            "lexical_policy_passed": "produced explanations that passed the lexical policy check",
+            "lexical_policy_pass_rate": (
                 "faithful / attempted. Named for what the check enforces, which is "
                 "lexical, not semantic: an explanation passes when it contains no "
                 "vocabulary outside its approved template plus grammatical "
@@ -369,15 +399,15 @@ def publish_explanation_report(raw: dict, sampling: dict = FULL_POPULATION):
             ),
         ],
     }
-    return _publish(spec, "recommender.evaluation.evaluate_explanations", sampling)
+    return _publish(spec, "recommender.evaluation.evaluate_explanations", sampling, output_dir=output_dir)
 
 
-def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
+def publish_min_fresh_experiment_report(raw: dict, sampling: dict, output_dir=None):
     """Publishes the prospectively specified min-fresh policy experiment.
 
     Named as an experiment rather than an evaluation because that is what
     it is: a rule declared and committed before the run, applied to its
-    output without adjustment. `docs/min-fresh-experiment-protocol.md`
+    output without adjustment. `docs/experiments/min-fresh-experiment-protocol.md`
     is the frozen protocol, and the commit that added it precedes the
     commit that produced these numbers.
     """
@@ -385,7 +415,7 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
         "report_name": "min-fresh-experiment",
         "dataset": {**MIND_DATASET, "split": "complete tuning fold carved from train"},
         "configuration": {
-            "protocol": "docs/min-fresh-experiment-protocol.md (frozen before the run)",
+            "protocol": "docs/experiments/min-fresh-experiment-protocol.md (frozen before the run)",
             "quotas_evaluated": raw["selection_rule"]["quotas_evaluated"],
             "primary_metric": "ndcg_at_10",
             "guardrail_metric": "hit_rate_at_10",
@@ -479,4 +509,317 @@ def publish_min_fresh_experiment_report(raw: dict, sampling: dict):
             ),
         ],
     }
-    return _publish(spec, "recommender.evaluation.min_fresh_experiment", sampling)
+    return _publish(spec, "recommender.evaluation.min_fresh_experiment", sampling, output_dir=output_dir)
+
+
+# --- Candidate-list pipeline reports -------------------------------------
+#
+# Baselines, ranking, reranking, ablations, stage comparison, failure
+# analysis and serving latency. Each is published by the run that measured
+# it, so the recorded commit and artifact fingerprints describe those
+# numbers rather than whatever happens to be checked out later.
+
+_CANDIDATE_LIST_LIMITATIONS = [
+    *_COMMON_LIMITATIONS,
+    (
+        "Scored against MIND's supplied candidate list for each impression "
+        "rather than the full catalog, so these are not full-catalog "
+        "retrieval numbers."
+    ),
+    (
+        "Labels come from exposure-biased MIND logs: an item recorded as not "
+        "clicked may never have been shown."
+    ),
+    (
+        "Post-selection development evaluation on the validation split. No "
+        "untouched final split remains, so these are not generalization "
+        "estimates."
+    ),
+]
+
+_RELEVANCE_DEFINITIONS = {
+    "hit_rate_at_k": (
+        "share of impressions with at least one clicked item in the served Top-K"
+    ),
+    "recall_at_k": (
+        "clicked items in the Top-K divided by all clicked items in the impression"
+    ),
+    "ndcg_at_k": "normalised discounted cumulative gain over the served Top-K",
+    "mrr": "mean reciprocal rank of the first clicked item in the served Top-K",
+    "catalog_coverage_at_k": "share of the catalog appearing across all served slates",
+    "catalog_size": "number of items in the catalog at evaluation time",
+    "distinct_items_recommended": "count of unique items appearing in any served slate",
+    "impressions_evaluated": "impressions the metric was computed over",
+    "k": "size of the served Top-K slate",
+    "model": "identifier of the baseline or model the row describes",
+    "fallback_to_popularity_count": (
+        "impressions where the baseline had no signal and fell back to global "
+        "popularity ordering"
+    ),
+}
+
+_SLATE_DEFINITIONS = {
+    "mean_distinct_categories": "mean count of distinct categories in the served slate",
+    "mean_max_category_count": (
+        "mean size of the largest single-category group in the served slate"
+    ),
+    "fraction_of_slates_below_fresh_quota": (
+        "share of slates holding fewer fresh items than the configured minimum"
+    ),
+    "mean_fresh_fraction": (
+        "mean share of slate items newer than the freshness threshold"
+    ),
+    "mean_age_days": "mean age in days of the items in the served slate",
+}
+
+_CANDIDATE_LIST_CONFIG = {
+    "candidate_source": (
+        "MIND's supplied candidate list for each impression, not the full catalog"
+    ),
+    "k": 10,
+}
+
+
+def publish_baseline_report(raw, sampling=FULL_POPULATION, output_dir=None):
+    spec = {
+        "report_name": "baseline-evaluation",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_evaluated": raw.get("popularity", {}).get(
+                "impressions_evaluated"
+            ),
+        },
+        "metric_definitions": dict(_RELEVANCE_DEFINITIONS),
+        "results": raw,
+        "limitations": list(_CANDIDATE_LIST_LIMITATIONS),
+    }
+    return _publish(
+        spec,
+        "recommender.evaluation.evaluate_baseline",
+        sampling,
+        output_dir=output_dir,
+    )
+
+
+def publish_ranking_report(raw, sampling=FULL_POPULATION, output_dir=None):
+    spec = {
+        "report_name": "ranking-evaluation",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_evaluated": raw.get("ranked", {}).get("impressions_evaluated"),
+        },
+        "metric_definitions": {
+            **_RELEVANCE_DEFINITIONS,
+            "retrieval_score_only": (
+                "candidates ordered by two-tower retrieval score alone"
+            ),
+            "ranked": "candidates ordered by the learned ranking model",
+        },
+        "results": raw,
+        "limitations": list(_CANDIDATE_LIST_LIMITATIONS),
+    }
+    return _publish(
+        spec,
+        "recommender.evaluation.evaluate_ranking",
+        sampling,
+        output_dir=output_dir,
+    )
+
+
+def publish_reranking_report(raw, sampling=FULL_POPULATION, output_dir=None):
+    spec = {
+        "report_name": "reranking-evaluation",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_evaluated": raw.get("impressions_evaluated"),
+            "k": raw.get("k"),
+        },
+        "metric_definitions": {**_RELEVANCE_DEFINITIONS, **_SLATE_DEFINITIONS},
+        "results": {
+            key: raw[key] for key in ("ranked_only", "reranked") if key in raw
+        },
+        "limitations": [
+            *_CANDIDATE_LIST_LIMITATIONS,
+            (
+                "Diversity and freshness are slate-shape measurements, not user "
+                "outcomes: nothing here shows a reader preferred the reranked slate."
+            ),
+        ],
+    }
+    return _publish(
+        spec,
+        "recommender.evaluation.evaluate_reranking",
+        sampling,
+        output_dir=output_dir,
+    )
+
+
+def publish_ablation_report(
+    raw, full_model, sampling=FULL_POPULATION, output_dir=None
+):
+    """Publishes each ablated variant beside the full model it is measured against.
+
+    The deltas are computed here rather than written into prose, so a
+    document can never disagree with the arithmetic.
+    """
+    deltas = {}
+    for variant, values in raw.items():
+        deltas[variant] = {
+            metric: {
+                "absolute": values[metric] - full_model[metric],
+                "relative_pct": (
+                    (values[metric] - full_model[metric]) / full_model[metric] * 100.0
+                ),
+            }
+            for metric in ("hit_rate_at_k", "recall_at_k", "ndcg_at_k")
+            if metric in values and metric in full_model
+        }
+    spec = {
+        "report_name": "ablation",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_evaluated": full_model.get("impressions_evaluated"),
+        },
+        "metric_definitions": {
+            **_RELEVANCE_DEFINITIONS,
+            "full_model": "the unmodified ranking model, for comparison",
+            "deltas_vs_full_model": "variant minus full model, per metric",
+            "absolute": "variant value minus full-model value, in metric units",
+            "relative_pct": (
+                "that absolute difference as a percentage of the full-model value"
+            ),
+        },
+        "results": {"full_model": full_model, **raw, "deltas_vs_full_model": deltas},
+        "limitations": [
+            *_CANDIDATE_LIST_LIMITATIONS,
+            (
+                "The ranking model is retrained with the feature dropped, so "
+                "this measures the feature's contribution under this "
+                "architecture and training budget, not its value in general."
+            ),
+        ],
+    }
+    return _publish(
+        spec, "recommender.evaluation.ablations", sampling, output_dir=output_dir
+    )
+
+
+def publish_stage_comparison_report(
+    retrieval, ranked, reranked, sampling=FULL_POPULATION, output_dir=None
+):
+    spec = {
+        "report_name": "stage-comparison",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_evaluated": ranked.get("impressions_evaluated"),
+        },
+        "metric_definitions": {
+            **_RELEVANCE_DEFINITIONS,
+            **_SLATE_DEFINITIONS,
+            "retrieval": "candidates ordered by retrieval score alone",
+            "ranked": "candidates ordered by the learned ranking model",
+            "reranked": "the ranked slate after diversity and freshness policy",
+        },
+        "results": {
+            "retrieval": retrieval,
+            "ranked": ranked,
+            "reranked": reranked,
+        },
+        "limitations": list(_CANDIDATE_LIST_LIMITATIONS),
+    }
+    return _publish(
+        spec,
+        "recommender.evaluation.evaluate_ranking",
+        sampling,
+        output_dir=output_dir,
+    )
+
+
+def publish_failure_analysis_report(raw, sampling=FULL_POPULATION, output_dir=None):
+    spec = {
+        "report_name": "failure-analysis",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": dict(_CANDIDATE_LIST_CONFIG),
+        "denominators": {
+            "impressions_analyzed": raw.get("impressions_analyzed"),
+            "k": raw.get("k"),
+        },
+        "metric_definitions": {
+            "impressions_analyzed": "impressions the analysis was computed over",
+            "k": "size of the served Top-K slate",
+            "overall_miss_rate": (
+                "share of impressions with no clicked item in the served Top-K"
+            ),
+            "by_user_history_length": (
+                "miss rate grouped by the user's prior interaction count"
+            ),
+            "by_clicked_item_coldness": (
+                "miss rate grouped by how recently the clicked item entered the "
+                "catalog"
+            ),
+            "by_category_match": (
+                "miss rate grouped by whether the clicked item's category matched "
+                "the user's dominant category"
+            ),
+            "miss_rate": "share of impressions in this group that missed",
+            "n": "impressions in this group",
+            "impressions": "impressions in this group",
+        },
+        "results": raw,
+        "limitations": [
+            *_CANDIDATE_LIST_LIMITATIONS,
+            (
+                "A miss is disagreement with MIND's logged click, not evidence the "
+                "served slate was worse."
+            ),
+        ],
+    }
+    return _publish(
+        spec,
+        "recommender.evaluation.failure_analysis",
+        sampling,
+        output_dir=output_dir,
+    )
+
+
+def publish_serving_latency_report(raw, sampling=FULL_POPULATION, output_dir=None):
+    spec = {
+        "report_name": "serving-latency",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": {
+            "measurement": "wall clock around each serving-path stage",
+            "environment": "local containerized stack",
+        },
+        "denominators": {"requests_measured": raw.get("requests_measured")},
+        "metric_definitions": {
+            "requests_measured": "requests the latency figures were computed over",
+            "by_stage": (
+                "wall-clock milliseconds attributed to each serving-path stage"
+            ),
+            "total": "end-to-end wall-clock milliseconds per request",
+            "mean_ms": "mean wall-clock milliseconds",
+            "p50_ms": "median wall-clock milliseconds",
+            "p95_ms": "95th-percentile wall-clock milliseconds",
+            "p99_ms": "99th-percentile wall-clock milliseconds",
+        },
+        "results": raw,
+        "limitations": [
+            *_COMMON_LIMITATIONS,
+            (
+                "Measured on one developer machine against the containerized "
+                "demonstration stack, not production hardware."
+            ),
+            (
+                "Latency depends on local CPU, container limits and Redis "
+                "locality; absolute values are not portable."
+            ),
+        ],
+    }
+    return _publish(
+        spec, "recommender.serving.verify_latency", sampling, output_dir=output_dir
+    )

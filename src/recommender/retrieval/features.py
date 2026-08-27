@@ -22,7 +22,7 @@ def build_item_content_matrix(
 
     This exists because category and subcategory alone cannot tell two
     articles apart: the pair takes only 284 distinct values across
-    51,282 items (`docs/faiss-index.md`), so an item tower built from
+    51,282 items (`docs/archive/faiss-index.md`), so an item tower built from
     them collapses the whole catalog into 284 distinct embeddings and
     retrieval can identify the right topic but never the right article
     within it. The title/abstract text is the per-article signal that

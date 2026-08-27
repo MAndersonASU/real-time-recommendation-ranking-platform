@@ -16,8 +16,8 @@ def verify_inference_path(num_users: int = 20) -> dict:
     then runs `recommend()` for real users pulled from that split,
     including at least one user known to have real history. Confirms
     every response actually validates against the typed contract
-    (`docs/serving-contract.md`) and measures real, if rough, end-to-end
-    latency; `docs/serving-latency.md` does the rigorous per-stage
+    (`docs/operations/serving-contract.md`) and measures real, if rough, end-to-end
+    latency; `docs/experiments/serving-latency.md` does the rigorous per-stage
     version of that measurement.
     """
     context = build_serving_context()

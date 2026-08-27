@@ -158,7 +158,7 @@ def evaluate_end_to_end(
     This is a serving-path evaluation, not a claim about what a live
     deployment's actual traffic and timing would produce: real request
     concurrency, real Kafka/Redis latency, and real durable-feature
-    refresh cadence are not reproduced here. `docs/ranking-features.md`
+    refresh cadence are not reproduced here. `docs/experiments/ranking-features.md`
     already discloses a separate, deliberate choice: the frozen ranking
     protocol scores MIND's own impression candidate list, not real
     Faiss-retrieved candidates. This function's own real candidates

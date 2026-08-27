@@ -155,7 +155,7 @@ def build_template_explanation(context: SupportContext) -> str:
     rewritten as "boyfriends"). A later paraphrase-only attempt avoided
     inventing facts but regularly dropped the one fact it was given,
     rewriting a category-specific sentence into content-free filler.
-    `docs/explanation-generation.md` records those real examples.
+    `docs/experiments/explanation-generation.md` records those real examples.
     """
     facts = extract_facts(context)
     key = select_template_key(facts)

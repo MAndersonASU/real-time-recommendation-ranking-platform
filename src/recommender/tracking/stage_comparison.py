@@ -25,7 +25,7 @@ def compare_stages(path: Path = DEFAULT_LOG_PATH) -> pd.DataFrame:
     """Orders the tracked runs into the pipeline's real stage progression
     and computes each metric's change from the stage immediately before
     it -- every stage compared here was evaluated on the same K=10,
-    same 30,270-impression validation split (docs/evaluation-protocol.md,
+    same 30,270-impression validation split (docs/experiments/evaluation-protocol.md,
     frozen since Phase 2), so a delta between adjacent rows reflects that
     one added stage, not a different evaluation population.
     """

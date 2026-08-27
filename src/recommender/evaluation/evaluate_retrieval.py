@@ -34,7 +34,7 @@ def evaluate_retrieval(n: int = N) -> dict:
         model, catalog_cat, catalog_subcat, item_content
     )
     # Exact search, deliberately: isolates embedding quality from the
-    # approximate index's already-measured accuracy cost (docs/faiss-index.md).
+    # approximate index's already-measured accuracy cost (docs/archive/faiss-index.md).
     index = build_exact_index(catalog_embeddings)
 
     hist_cat, hist_subcat, hist_mask, hist_rows, _ = build_history_arrays(

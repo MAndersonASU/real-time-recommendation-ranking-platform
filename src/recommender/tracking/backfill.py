@@ -20,12 +20,12 @@ def backfill() -> list[str]:
     collapsed, exactly the kind of mix-up a structured log is meant to
     prevent:
 
-    - retrieval_full_catalog_n100 (docs/retrieval-evaluation.md): the
+    - retrieval_full_catalog_n100 (docs/experiments/retrieval-evaluation.md): the
       two-tower model alone, searching the whole ~51k-item catalog.
-    - retrieval_score_as_sort_key_k10 (docs/ranking-evaluation.md): the same model's raw
+    - retrieval_score_as_sort_key_k10 (docs/experiments/ranking-evaluation.md): the same model's raw
       score, used only to sort MIND's own small frozen candidate pool --
       a much easier task, and a much higher number, for a real, disclosed
-      reason (docs/inference-path.md).
+      reason (docs/operations/inference-path.md).
     """
     logged = []
 

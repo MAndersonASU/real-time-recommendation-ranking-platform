@@ -54,7 +54,7 @@ RETRIEVAL_MULTIPLIER = 5
 # end-to-end p50 rises about 4 ms (index search itself stays under a
 # millisecond -- the added time is ranking and reranking scoring more
 # candidates). Chosen as a judgment call from that measured tradeoff,
-# not selected by an automatic rule; see docs/evaluation-integrity.md.
+# not selected by an automatic rule; see docs/experiments/evaluation-integrity.md.
 MIN_RETRIEVAL_CANDIDATES = 1000
 
 
@@ -102,7 +102,7 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     wall time -- torch spreading one request's math across several
     threads by default -- and a real concurrency test confirmed the
     fix: at concurrency 4, throughput rose from 62.7 to 80.3 req/s and
-    p50 latency dropped from 61ms to 48ms (docs/optimization.md). This
+    p50 latency dropped from 61ms to 48ms (docs/experiments/optimization.md). This
     process expects to serve many concurrent requests, not minimize one
     request's own wall time in isolation, so a single math thread per
     operation -- leaving concurrency to the request-level thread pool
@@ -149,7 +149,7 @@ def build_serving_context(redis_url: str = "redis://localhost:6379/0") -> Servin
     # Exploded once and shared, rather than each function re-deriving its
     # own copy of the same multi-million-row frame -- found to cost
     # ~210MB of real, wasted memory the first time this was profiled
-    # (docs/profile-hotspots.md).
+    # (docs/experiments/profile-hotspots.md).
     exploded_train = explode_impressions(train)
 
     return ServingContext(
@@ -217,7 +217,7 @@ def recommend(
     One disclosed asymmetry between this live path and offline training:
     the two-tower embedding and the content-similarity profile here only
     ever see a user's last 20 recent clicks, since that is the cap
-    Phase 7's low-latency store chose (docs/state-store.md). Offline
+    Phase 7's low-latency store chose (docs/operations/state-store.md). Offline
     training's own content profile (`ranking/features.py`) pools a user's
     entire history string, uncapped. This is a real, disclosed
     consequence of Phase 7's own latency/storage tradeoff, not a bug --
@@ -233,7 +233,7 @@ def recommend(
 
     `use_recent_features`, when False, forces the online lookup to skip
     Redis entirely (recommender.features.cold_start.get_online_features)
-    -- the recent-streaming-features ablation (docs/ablations.md), not a
+    -- the recent-streaming-features ablation (docs/experiments/ablations.md), not a
     normal request path.
 
     `capture_candidates`, when given a list, is extended with the real

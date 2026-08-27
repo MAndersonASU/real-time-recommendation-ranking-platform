@@ -17,7 +17,8 @@ limitations remain open.
 | | |
 |---|---|
 | **Baseline commit** | `cd8a4d776ad81b47313e2761e2ba9c3918293c26` |
-| **Review period** | 2026-08-24 to 2026-08-25 |
+| **Last updated** | 2026-08-26 |
+| **Review period** | 2026-08-24 to 2026-08-26 |
 | **Environments** | Windows 11 (development), `python:3.11-slim` containers (clean-environment checks), Ubuntu GitHub Actions (CI) |
 
 **Components examined**: the serving request path, the offline and
@@ -91,7 +92,7 @@ reproduced by public CI, which runs against synthetic artifacts only.
   import, and a stale number in prose misreports with more authority
   than no number at all. An earlier version of this document said "six"
   and was wrong within a few commits.
-- **pip-audit**: runs as a blocking CI step against the hash-verified
+- **pip-audit**: runs as a blocking CI check against the hash-verified
   lock. See the caveat below regarding `torch`.
 - **Container test**: the `api-container-test` job builds the real
   image, waits on its health check, asserts a non-root user, and makes
@@ -120,7 +121,7 @@ torch  Dependency not found on PyPI and could not be audited: torch (2.13.0+cpu)
 
 The CPU-only wheel comes from PyTorch's own index and carries a local
 version identifier that has no PyPI entry, so the advisory database
-cannot be queried for it. This is a real consequence of the CPU-only
+cannot be queried for it. This is a consequence of the CPU-only
 choice: the largest dependency in the tree is version-pinned and
 hash-verified but not advisory-scanned. It is recorded here rather than
 left implicit in a "no known vulnerabilities" line.
@@ -145,14 +146,14 @@ generalization estimates.
 | End-to-end hit rate@10 | 0.0005 | **0.0084** |
 | End-to-end MRR | 0.000125 | **0.0048** |
 
-Protocol: K=10, frozen evaluation contract (`docs/evaluation-protocol.md`).
+Protocol: K=10, frozen evaluation contract (`docs/experiments/evaluation-protocol.md`).
 Full metric definitions and denominators: `reports/`.
 
 ### Tuning-fold evaluation
 
 Diversity cap, freshness threshold, minimum-fresh quota and retrieval
 depth were compared against alternatives on a fold carved from `train`,
-never on `validation` (`docs/evaluation-integrity.md`).
+never on `validation` (`docs/experiments/evaluation-integrity.md`).
 
 These comparisons are now run against a feature table built from a
 retrieval model trained on the fit half alone
@@ -190,7 +191,7 @@ Three further reasons the table does not settle the question:
   isolate.
 
 **That experiment has since been run**
-(`docs/min-fresh-experiment-protocol.md`, frozen before the run;
+(`docs/experiments/min-fresh-experiment-protocol.md`, frozen before the run;
 `reports/min-fresh-experiment.json`). Complete tuning fold: 25,140
 impressions, 18,227 users, 125,700 slates, five quotas on identical
 impressions, judged on held-out clicks rather than predicted score, with
@@ -215,7 +216,7 @@ benefit requirement, so once every candidate cleared the floors the
 selection fell on the largest value tested -- the boundary of the
 candidate set, not an interior optimum. That is the same
 monotone-trivial failure the diversity-cap rule made once
-(`docs/evaluation-integrity.md`), reappearing on the other side: there,
+(`docs/experiments/evaluation-integrity.md`), reappearing on the other side: there,
 a benefit-only rule always chose the largest; here, a cost-only rule did
 the same once the cost proved immeasurable.
 
@@ -320,7 +321,7 @@ concealed failures.
 
 - `CHANGELOG.md` — user-visible and architectural changes.
 - `reports/` — machine-readable evaluation results with provenance.
-- `docs/evaluation-integrity.md` — tuning-fold methodology, including
+- `docs/experiments/evaluation-integrity.md` — tuning-fold methodology, including
   two selection rules that failed and how they were replaced.
-- `docs/retrieval-evaluation.md`, `docs/serving-path-end-to-end-evaluation.md`
+- `docs/experiments/retrieval-evaluation.md`, `docs/experiments/serving-path-end-to-end-evaluation.md`
   — current measurements in context.

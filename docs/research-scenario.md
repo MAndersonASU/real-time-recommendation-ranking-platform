@@ -2,7 +2,7 @@
 
 **Project:** Real-Time Personalized Recommendation & Ranking Platform
 **Research domain:** Personalized news/content recommendation with implicit user feedback.
-**Dataset:** Microsoft News Dataset (MIND) — MIND-small for development; MIND-large only for justified, explicitly-scoped scale testing (Phase 10).
+**Dataset:** Microsoft News Dataset (MIND) — MIND-small for development; MIND-large only for justified, explicitly-scoped scale testing (the scale and performance work).
 
 ## Core problem
 
@@ -46,7 +46,7 @@ they answer different questions.
 
 ## Success metrics
 
-Defined precisely in Phase 2, once the evaluation contract is frozen; named
+Defined precisely alongside the baselines, once the evaluation contract is frozen; named
 here only to fix scope: Recall@K, NDCG@K, MRR, hit rate, catalog coverage,
 and diversity/freshness measures where supported by the data.
 
@@ -68,21 +68,21 @@ Unless independently measured and verified at the time of writing:
   *engineering practices* (tested, containerized, monitored) demonstrated
   locally.
 - No claim of a ranking improvement without stating that both compared
-  systems used the identical frozen evaluation contract (Phase 2).
+ systems used the identical frozen evaluation contract (the baselines).
 - No treatment of replay-based evaluation as a real A/B test.
 
 ## Boundary: what this project does not do
 
 - No Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, a
-  feature store, or an LLM, unless a measured requirement in a later phase
+ feature store, or an LLM, unless a measured requirement in a future work
   justifies adding it.
-- The optional Phase 14 generative/RAG explanation layer explains an
+- The optional generative/RAG explanation layer explains an
   already-selected recommendation; it never participates in retrieval,
   ranking, or reranking decisions.
 
 ---
 
 *Locked 2026-08-15. This document is the fixed reference point every later
-phase's evaluation is measured against; revising it after model results
+component's evaluation is measured against; revising it after model results
 exist would invalidate prior comparisons and must be treated as a new
 locked version, not a silent edit.*
