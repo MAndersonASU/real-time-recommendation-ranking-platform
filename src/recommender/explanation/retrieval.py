@@ -33,7 +33,7 @@ def retrieve_support_context(request: ExplanationRequest, news_by_id: pd.DataFra
     one index access, not a full-table scan per explanation.
 
     The catalog looked up here is the same governed `news.parquet` file
-    every earlier phase already reads (docs/dataset-source.md) -- no
+    every earlier component already reads (docs/dataset-source.md) -- no
     separate knowledge base or vector store is introduced for this.
     """
     news_id = request.recommended_item.news_id
