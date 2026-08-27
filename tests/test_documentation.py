@@ -17,6 +17,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 REPORTS = ROOT / "reports"
 
+# The build receipt lives beside the reports because it is evidence about
+# the same run, but it describes artifacts rather than metrics and so does
+# not carry the evaluation-report envelope.
+NOT_AN_EVALUATION_REPORT = {"build-receipt.json"}
+
+
+def evaluation_reports():
+    return sorted(
+        path
+        for path in REPORTS.glob("*.json")
+        if path.name not in NOT_AN_EVALUATION_REPORT
+    )
+
 EXCLUDED_DIRS = {".git", ".venv", "venv", "node_modules", "site-packages", ".tox"}
 
 MARKDOWN = sorted(
@@ -107,7 +120,7 @@ def test_relative_links_resolve(path: pathlib.Path) -> None:
 def test_every_published_report_is_valid_and_documented() -> None:
     """Each report parses, and carries the envelope readers rely on."""
     required = {"report_name", "provenance", "results", "metric_definitions", "limitations"}
-    for report in sorted(REPORTS.glob("*.json")):
+    for report in evaluation_reports():
         doc = json.loads(report.read_text(encoding="utf-8"))
         assert required <= doc.keys(), f"{report.name} missing {required - doc.keys()}"
         assert doc["limitations"], f"{report.name} declares no limitations"
@@ -149,7 +162,7 @@ def test_documented_numbers_match_reports(report_name, keys, spec, doc_name) -> 
 def test_explanation_metric_is_named_for_what_it_measures() -> None:
     """A lexical check must not be published as 'faithfulness'."""
     offenders = []
-    for path in list(REPORTS.glob("*.json")) + MARKDOWN + list(
+    for path in evaluation_reports() + MARKDOWN + list(
         (ROOT / "src").rglob("*.py")
     ):
         if "faithfulness_rate" in path.read_text(encoding="utf-8"):
@@ -196,7 +209,7 @@ WORD_NUMBERS = {
 
 def test_documented_report_count_matches_the_reports_directory() -> None:
     """Prose that counts published reports must match what is committed."""
-    actual = len(list(REPORTS.glob("*.json")))
+    actual = len(evaluation_reports())
     words = "|".join(WORD_NUMBERS)
     pattern = re.compile(
         rf"(?i)(?<![a-z])({words})\s+(?:published\s+)?reports(?![a-z])"
