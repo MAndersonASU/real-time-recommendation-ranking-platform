@@ -166,9 +166,19 @@ There are three separate entry points, with different prerequisites.
 git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platform.git
 cd real-time-recommendation-ranking-platform
 py -3.11 -m venv .venv
-# Windows (PowerShell):   .venv\Scripts\Activate.ps1
-# Windows (Git Bash):     source .venv/Scripts/activate
-# macOS / Linux:          source .venv/bin/activate
+```
+
+Activate the virtual environment for your shell -- run only the one
+line below that matches, not all three, since a shell comment (`#`)
+that ends up pasted alongside the others is silently skipped rather
+than run, leaving the environment unactivated and every command below
+resolving outside it:
+
+- **Windows (PowerShell)**: `.venv\Scripts\Activate.ps1`
+- **Windows (Git Bash)**: `source .venv/Scripts/activate`
+- **macOS / Linux**: `source .venv/bin/activate`
+
+```bash
 pip install -e ".[dev]"
 pytest -q
 ruff check .
