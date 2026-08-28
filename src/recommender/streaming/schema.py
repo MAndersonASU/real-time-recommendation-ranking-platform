@@ -33,12 +33,32 @@ def _is_uuid(value: str) -> bool:
 
 
 def _is_rfc3339(value: str) -> bool:
-    """MIND's own timestamps are space-separated rather than RFC3339, so
-    both forms are accepted; what is rejected is a string that is not a
-    datetime at all.
+    """A genuine RFC3339 datetime: parseable *and* timezone-aware. An
+    offset is not optional in RFC3339 -- a naive string like MIND's own
+    timestamps is not this format, whatever `fromisoformat` accepts.
+    Required for a live event's own timestamp (`InteractionEvent.validate`,
+    any `source` other than `REPLAY_SOURCE`); `_is_dataset_local_timestamp`
+    below is the deliberately more permissive check for a replayed one.
     """
     try:
         # Python 3.11's fromisoformat accepts a trailing Z directly.
+        parsed = datetime.fromisoformat(value)
+    except (ValueError, AttributeError):
+        return False
+    return parsed.tzinfo is not None
+
+
+def _is_dataset_local_timestamp(value: str) -> bool:
+    """MIND's own timestamp format: naive, space-separated, and of an
+    unknown timezone -- MIND does not document it
+    (`docs/engineering-review-register.md`'s FEATURE-TIMEZONE-20). Not
+    RFC3339 (no offset, wrong separator) and not named or described as
+    RFC3339 anywhere this is used; what is rejected is a string that is
+    not a datetime at all. Deliberately as permissive as `_is_rfc3339`
+    used to be, for the one source (`REPLAY_SOURCE`) that legitimately
+    carries this shape.
+    """
+    try:
         datetime.fromisoformat(value)
     except (ValueError, AttributeError):
         return False
@@ -122,8 +142,23 @@ class InteractionEvent:
                 f"source must be one of {sorted(ALLOWED_SOURCES)}, got {self.source!r}"
             )
 
-        if not isinstance(self.timestamp, str) or not _is_rfc3339(self.timestamp):
-            raise ValueError(f"timestamp must be an RFC3339 datetime, got {self.timestamp!r}")
+        if not isinstance(self.timestamp, str):
+            raise TypeError(f"timestamp must be a string, got {self.timestamp!r}")
+        # A replayed MIND event legitimately carries MIND's own naive,
+        # dataset-local timestamp shape; anything else claims to be a
+        # live event's own timestamp and must actually be one -- a real,
+        # timezone-aware RFC3339 datetime, not merely something
+        # `datetime.fromisoformat` happens to parse.
+        if self.source == REPLAY_SOURCE:
+            if not _is_dataset_local_timestamp(self.timestamp):
+                raise ValueError(
+                    f"timestamp must be a parseable datetime, got {self.timestamp!r}"
+                )
+        elif not _is_rfc3339(self.timestamp):
+            raise ValueError(
+                f"timestamp must be a timezone-aware RFC3339 datetime for source "
+                f"{self.source!r}, got {self.timestamp!r}"
+            )
 
     @staticmethod
     def from_json(raw: str) -> "InteractionEvent":

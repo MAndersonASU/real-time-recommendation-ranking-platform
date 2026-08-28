@@ -147,9 +147,12 @@ def _latest_event_time(behaviors: pd.DataFrame) -> datetime | None:
     if pd.isna(latest):
         return None
     stamp = latest.to_pydatetime()
-    # Dataset timestamps are naive-but-UTC by this project's convention
-    # (`docs/experiments/evaluation-protocol.md`); attach UTC so comparisons against
-    # a real clock are between two aware values.
+    # MIND does not document its timestamps' timezone at all
+    # (`docs/engineering-review-register.md`'s FEATURE-TIMEZONE-20) --
+    # UTC is a pragmatic, disclosed assumption this project makes for
+    # comparison purposes, not a documented dataset fact. Attaching it
+    # here means comparisons against a real clock are at least between
+    # two aware values, not a claim that the assumption is verified.
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
