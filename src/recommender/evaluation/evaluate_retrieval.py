@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -8,6 +7,7 @@ from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import load_catalog, load_split
 from recommender.evaluation.metrics import catalog_coverage, hit_rate_at_k, reciprocal_rank
 from recommender.evaluation.retrieval_metrics import ndcg_at_n_known_total, recall_at_n_known_total
+from recommender.paths import mind_small_path
 from recommender.retrieval.build_index import load_trained_model
 from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
@@ -17,7 +17,7 @@ from recommender.retrieval.features import (
 )
 from recommender.retrieval.index import build_exact_index, compute_catalog_embeddings
 
-RETRIEVAL_REPORT_PATH = Path("data/processed/mind_small/retrieval_evaluation_report.json")
+RETRIEVAL_REPORT_PATH = mind_small_path("retrieval_evaluation_report.json")
 N = 100  # retrieval-stage candidate count -- distinct from K=10, per docs/research-scenario.md
 
 
@@ -85,14 +85,14 @@ def evaluate_retrieval(n: int = N) -> dict:
 
 
 def main() -> None:
-    from recommender.evaluation.publish import publish_retrieval_report
+    from recommender.evaluation.publish import output_dir_from_argv, publish_retrieval_report
 
     report = evaluate_retrieval()
     RETRIEVAL_REPORT_PATH.write_text(json.dumps(report, indent=2))
     # Published by the run that measured, so the recorded commit and
     # artifact fingerprints describe these numbers rather than whatever
     # happened to be checked out at some later publishing step.
-    published = publish_retrieval_report(report)
+    published = publish_retrieval_report(report, output_dir=output_dir_from_argv())
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 

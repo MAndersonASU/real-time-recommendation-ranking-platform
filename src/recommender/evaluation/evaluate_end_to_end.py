@@ -2,7 +2,6 @@ import json
 from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -23,6 +22,7 @@ from recommender.features.online_features import (
     user_state_from_recent_features,
 )
 from recommender.features.state_store import load_recent_features, save_recent_features
+from recommender.paths import mind_small_path
 from recommender.ranking.features import dominant_category, history_ids_from_raw
 from recommender.retrieval.features import MAX_HISTORY
 from recommender.serving.cache import DurableFeatureCache
@@ -31,7 +31,7 @@ from recommender.serving.fallback import safe_recommend
 from recommender.serving.pipeline import ServingContext
 from recommender.streaming.consumer import UserState
 
-REPORT_PATH = Path("data/processed/mind_small/end_to_end_evaluation_report.json")
+REPORT_PATH = mind_small_path("end_to_end_evaluation_report.json")
 # Raised from 500 once sampling became representative. At 500
 # impressions an end-to-end hit rate near 1% rests on about five hits,
 # so the figure moved with the sample rather than with the system. The
@@ -337,14 +337,16 @@ def main() -> None:
     produced these exact numbers, which a separate step reading this
     file back off disk could never establish.
     """
-    from recommender.evaluation.publish import publish_end_to_end_report
+    from recommender.evaluation.publish import output_dir_from_argv, publish_end_to_end_report
     from recommender.serving.pipeline import build_serving_context
 
     context = build_serving_context()
     report = evaluate_end_to_end(context)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
-    published = publish_end_to_end_report(report, sampling=report["sampling"])
+    published = publish_end_to_end_report(
+        report, sampling=report["sampling"], output_dir=output_dir_from_argv()
+    )
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 
