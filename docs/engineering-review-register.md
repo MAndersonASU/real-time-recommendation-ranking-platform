@@ -714,8 +714,9 @@ account of what shipped in `PR #6` -- the same discipline this
 register already applies to itself in EVAL-PROVENANCE-01's account of
 being reopened. The other eight findings' fixes were not affected and
 are marked verified closed against the same `PR #6` CI run. The three
-reopened findings stay at `open` until their new fixes have their own
-green CI run, not asserted from local runs alone.
+reopened findings' new fixes are now verified against their own real
+CI run ([PR #7](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/7),
+run 33140396074, all four jobs green) and marked verified closed too.
 
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
 **Severity** Critical · **Status** verified closed
@@ -779,9 +780,10 @@ never wired into a long-running production entrypoint -- confirmed true
 today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
+**CI** `PR #7` run 33140396074 (all four jobs green)
 
 **Reopened by external review of the merged fix.** `RedisCircuitBreaker.allow_request()`
 computed `now - opened_at >= cooldown` fresh on every call with no
@@ -819,9 +821,10 @@ features, with the circuit breaker measurably speeding up the third
 request onward (~3-4s for the first two, 0.29s for the third).
 
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below)
 **Tests** `tests/test_deployment_contract.py`
+**CI** `PR #7` run 33140396074 (all four jobs green)
 
 **Reopened by external review of the merged fix.** `build-image.sh`
 detected a dirty working tree but only printed a warning and continued
@@ -885,9 +888,10 @@ the discovery approach alone would miss (a reverted constant just drops
 out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below)
 **Tests** `tests/test_streaming_schema.py`
+**CI** `PR #7` run 33140396074 (all four jobs green)
 
 The schema's timestamp validator accepted anything
 `datetime.fromisoformat` parses -- naive, space-separated, whatever --
@@ -1398,21 +1402,21 @@ in place on its own entry above with its own reproduction, fix commit,
 and regression test, rather than editing the earlier account of what
 `PR #6` shipped -- this register does not rewrite a prior finding's
 history when a later review reopens it, the same discipline
-EVAL-PROVENANCE-01's own account already establishes. New fix commits
-for all three are on this branch; they stay `open` until this branch
-has its own green CI run, not asserted from local runs, and this
-section will be revised again once that lands.
+EVAL-PROVENANCE-01's own account already establishes. All three new
+fixes are now verified against their own real CI run (`PR #7`, run
+33140396074, all four jobs green) and marked verified closed above.
 
 The other eight findings from this round were not affected by the
 three reopened gaps and are marked verified closed above, against the
-same `PR #6` CI run.
+`PR #6` CI run.
 
 Combined with the 23 primary findings from the original review above,
 this project has now had 34 findings raised across two review rounds
-by the same maintainer both times -- 31 verified closed, 3 reopened
-and pending this branch's CI. This project is **still not** in a state
-where all review findings are closed: nothing about closing most of
-these findings establishes that a further pass would not find others,
-and three of this very round's own fixes were themselves gaps an
-*earlier* pass in the same round had reported as complete.
+by the same maintainer both times, all 34 currently verified closed.
+This project is **still not** described as permanently free of
+findings: closing every finding raised so far establishes only that
+those specific gaps are fixed, not that a further review would not
+find more -- three of this very round's own fixes were themselves gaps
+an *earlier* pass in the same round had reported as complete, and nothing
+rules out the same happening again.
 
