@@ -696,16 +696,31 @@ reuse the existing `EVAL-*`/`STREAM-*` prefixes because they genuinely
 are that kind of finding; the other nine introduce new prefixes for
 kinds of gap this register had not previously named
 (`REPRO-*`, `DEPLOYMENT-*`, `DATA-PATH-*`, `TIMESTAMP-*`, `BANDIT-*`,
-`HTTP-METRICS-*`, `UNKNOWN-*`, `CI-*`). All eleven have a fix committed
-and a fail-then-pass regression test on this branch; **none has CI
-evidence yet** -- that is added in a follow-up commit once a real run
-is green, not claimed here from local runs (the mistake this register's
-own history already names once, in EVAL-PROVENANCE-01's account of
-CI reported as green from local runs while it was red).
+`HTTP-METRICS-*`, `UNKNOWN-*`, `CI-*`). All eleven had a fix committed
+and a fail-then-pass regression test on the branch that became
+[PR #6](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/6),
+verified against real CI (run 33134350323, all four jobs green) and
+merged.
+
+**A further external review of that merged state found three of the
+eleven fixes were themselves incomplete** -- `REDIS-DEGRADED-PATH-61`
+(the circuit breaker's probe claim was not concurrency-safe),
+`TIMESTAMP-CONTRACT-64` (the RFC3339 check still accepted several
+non-RFC3339 ISO 8601 forms), and `DEPLOYMENT-CONTRACT-62`
+(`build-image.sh` warned on a dirty tree but built anyway). Each gap is
+recorded in place on its entry below, with its own reproduction, fix
+commit, and regression test, rather than silently editing the earlier
+account of what shipped in `PR #6` -- the same discipline this
+register already applies to itself in EVAL-PROVENANCE-01's account of
+being reopened. The other eight findings' fixes were not affected and
+are marked verified closed against the same `PR #6` CI run. The three
+reopened findings stay at `open` until their new fixes have their own
+green CI run, not asserted from local runs alone.
 
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
-**Severity** Critical · **Status** open (fix committed, CI verification pending)
+**Severity** Critical · **Status** verified closed
 **Fix commit** `912c00a` · **Tests** `tests/test_reports.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 `source_commit()` tried `GIT_COMMIT_SHA` (meant for the container
 manifest, which has no `.git` directory) before falling back to a real
@@ -723,8 +738,9 @@ check (skipped on a shallow clone) confirming every recorded
 and set `fetch-depth: 0` on the job where that check can run.
 
 ## REPRO-ORCHESTRATION-59 — `evaluate_all.sh` ran 7 of the 12 published evaluations
-**Severity** High · **Status** open (fix committed, CI verification pending)
+**Severity** High · **Status** verified closed
 **Fix commit** `5dd91f9` · **Tests** `tests/test_orchestration_scripts.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 The script's own header claimed it ran "every evaluation whose report
 is published." It ran 7: retrieval, end-to-end, tuning decisions,
@@ -743,8 +759,9 @@ without a matching script line fails this test instead of silently
 never running in the orchestrated pass.
 
 ## STREAM-MEMORY-60 — `StreamConsumer.user_states` was still unbounded
-**Severity** High · **Status** open (fix committed, CI verification pending)
+**Severity** High · **Status** verified closed
 **Fix commit** `97ac5e4` · **Tests** `tests/test_consumer.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 An earlier pass bounded `_seen_event_ids` and the monitoring counters'
 `distinct_users`/`distinct_items`, with a comment describing the
@@ -763,8 +780,21 @@ today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
 **Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate)
+**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
+
+**Reopened by external review of the merged fix.** `RedisCircuitBreaker.allow_request()`
+computed `now - opened_at >= cooldown` fresh on every call with no
+memory of whether a probe had already been dispatched, so once the
+cooldown elapsed, every concurrent caller got the same `True` answer
+at once -- the thundering herd this breaker exists to prevent, not
+fix. Reproduced with an 8-thread `Barrier`: 8 of 8 threads allowed
+past cooldown simultaneously, against the class's own docstring
+promising exactly one probe. Fixed in `de457c3` with explicit
+CLOSED/OPEN/HALF_OPEN states under a lock -- the state transition and
+the probe claim happen inside the same locked call that returns
+`True`, so only the thread that actually flips the state gets it. The
+same 8-thread reproduction, now a regression test, gets exactly 1 of 8.
 
 Redis unavailability was caught the same way as a broken model or
 index -- the full retreat to `build_fallback_response`'s flat,
@@ -790,7 +820,25 @@ request onward (~3-4s for the first two, 0.29s for the third).
 
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
 **Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commit** `be8b5ce` · **Tests** `tests/test_deployment_contract.py`
+**Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below)
+**Tests** `tests/test_deployment_contract.py`
+
+**Reopened by external review of the merged fix.** `build-image.sh`
+detected a dirty working tree but only printed a warning and continued
+to `docker compose build api` regardless -- Docker copies whatever is
+actually on disk into the image (`COPY src/ ./src/`, `COPY pyproject.toml
+./`, `COPY requirements-lock.txt ./`) while the image is labeled with
+the clean commit unconditionally, the same provenance mismatch this
+project already refuses outright for an evaluation report built from a
+dirty tree (`recommender.evaluation.reports`). Fixed in `81483fd`: the
+script now refuses (exit 1, before invoking docker) when
+`git status --porcelain` shows anything dirty under the paths that
+actually affect the image (`src/`, `Dockerfile`, `pyproject.toml`,
+`requirements-lock.txt`); a change outside those paths still proceeds.
+Verified against a real, isolated `git worktree` checkout, not a
+simulation: a dirty file under `src/` refuses before the real `docker
+compose build` ever runs; a clean tree still completes a real build; a
+dirty file under `docs/` is correctly ignored.
 
 `docs/architecture.md` said Redis is optional and startup does not gate
 on it (`DOC-FALLBACK-SCOPE-52` above), but `docker-compose.yml`'s `api`
@@ -812,8 +860,9 @@ calls `git rev-parse HEAD` before building, and corrected the
 Dockerfile's claim.
 
 ## DATA-PATH-CONSISTENCY-63 — `RECOMMENDER_DATA_ROOT` didn't move most of the project's own paths
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `5dd91f9`, `b992259`, `e615ff2` · **Tests** `tests/test_data_path_consistency.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 `recommender.paths` exists specifically so `RECOMMENDER_DATA_ROOT`
 moves every data path a deployment might relocate, but only the
@@ -837,7 +886,8 @@ out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
 **Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commit** `063bbf5` · **Tests** `tests/test_streaming_schema.py`
+**Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below)
+**Tests** `tests/test_streaming_schema.py`
 
 The schema's timestamp validator accepted anything
 `datetime.fromisoformat` parses -- naive, space-separated, whatever --
@@ -857,10 +907,26 @@ Corrected the `cache.py`/`pipeline.py` comments to state the real
 situation: UTC is a pragmatic, disclosed assumption this project makes
 for comparison purposes, not a documented dataset fact.
 
+**Reopened by external review of the merged fix.** "Parseable and
+timezone-aware" was still not "RFC3339": `datetime.fromisoformat` is
+intentionally more permissive than RFC3339's own grammar, so
+`_is_rfc3339` kept accepting real ISO 8601 forms RFC3339 excludes.
+Reproduced two concrete false positives: `"2019-11-14 08:00:00+00:00"`
+(a space instead of the required `"T"`) and `"2019-11-14T08:00+00:00"`
+(seconds omitted, mandatory in RFC3339's `partial-time`). Fixed in
+`35c01b3`: a structural regex against RFC3339's actual grammar
+(literal uppercase `"T"`, mandatory seconds, a mandatory `"Z"` or
+numeric `"+HH:MM"`/`"-HH:MM"` offset) now runs before `fromisoformat`,
+which still runs afterward to reject a structurally valid but
+calendar-impossible date or time the regex alone can't catch. New
+tests cover both reported false positives plus lowercase separators, a
+colon-less offset, and impossible dates.
+
 ## BANDIT-REVIEW-65 — A real evaluation invariant used `assert`; the Bandit table was stale
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `e615ff2` (assert -> ValueError), `7d5f2ef` (table and guards)
 **Tests** `tests/test_recent_features_ablation.py`, `tests/test_bandit_table_sync.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 `recent_features_ablation.py`'s paired-sample digest check used a bare
 `assert`, compiled out entirely under `python -O` -- an unpaired
@@ -881,8 +947,9 @@ of silently falling out of the table again; a companion test AST-scans
 `src/recommender` for any `assert` statement at all.
 
 ## HTTP-METRICS-SCOPE-66 — `recommend_requests_total` never saw a 422 or a middleware-level 500
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commit** `b992259` · **Tests** `tests/test_app.py`, `tests/test_metrics.py`, `tests/test_dashboard.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 `recommend_requests_total` only ever incremented inside
 `recommend_endpoint`'s own body, so a request FastAPI rejected with a
@@ -900,8 +967,9 @@ the two metrics' distinct scopes so they can be compared rather than
 conflated.
 
 ## UNKNOWN-DATA-AGE-67 — Unknown durable-feature data age reported as a false zero
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commit** `b992259` · **Tests** `tests/test_metrics.py`, `tests/test_app.py`
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 `/ready` set the durable-feature data-age gauge with
 `age_seconds or 0.0`. `None` (the newest-event time is genuinely
@@ -915,8 +983,9 @@ companion `durable_feature_snapshot_has_known_age` gauge so the same
 fact is queryable/alertable without a NaN-aware query.
 
 ## CI-COVERAGE-WORDING-68 — CI's coverage comment cited a number already wrong
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commits** `912c00a` (wording), `4547c27` (regression test)
+**CI** `PR #6` run 33134350323 (all four jobs green)
 
 The comment above CI's coverage-floor command said "current coverage is
 ~64%"; a full run at that same point in history actually measured
@@ -1315,19 +1384,35 @@ provenance trusted a manifest-only environment variable ahead of the
 real Git commit), two high (an orchestration script silently ran 5 of
 12 published evaluations; a streaming consumer's per-user state was
 still unbounded after an earlier pass had bounded everything else), five
-medium, and three low. Every one has a fix committed on this branch
-with a fail-then-pass regression test, several verified against real
-Docker containers rather than mocks alone (the Redis-degraded-path and
-deployment-contract fixes). **None carries CI evidence yet** -- that is
-added once a real CI run against this branch is actually green, in a
-follow-up commit to this document, not asserted here from local runs.
+medium, and three low. All eleven fixes were verified against real CI
+(`PR #6`, run 33134350323, all four jobs green) and merged.
+
+**A further external review of that merged state found three of the
+eleven fixes were themselves incomplete**: `REDIS-DEGRADED-PATH-61`'s
+circuit breaker allowed a thundering herd of probes past cooldown
+instead of exactly one (no lock, no memory of an in-flight probe);
+`TIMESTAMP-CONTRACT-64`'s validator still accepted several real ISO
+8601 forms RFC3339's own grammar excludes; `DEPLOYMENT-CONTRACT-62`'s
+build script warned on a dirty tree and built anyway. Each is recorded
+in place on its own entry above with its own reproduction, fix commit,
+and regression test, rather than editing the earlier account of what
+`PR #6` shipped -- this register does not rewrite a prior finding's
+history when a later review reopens it, the same discipline
+EVAL-PROVENANCE-01's own account already establishes. New fix commits
+for all three are on this branch; they stay `open` until this branch
+has its own green CI run, not asserted from local runs, and this
+section will be revised again once that lands.
+
+The other eight findings from this round were not affected by the
+three reopened gaps and are marked verified closed above, against the
+same `PR #6` CI run.
 
 Combined with the 23 primary findings from the original review above,
-this project has now had 34 findings raised and addressed across two
-review rounds, by the same maintainer both times. This project is
-**still not** in a state where all review findings are closed: nothing
-about closing eleven more findings establishes that a further pass
-would not find others, and this round's own findings were themselves
-gaps in coverage an *earlier* verification pass had reported as
-complete.
+this project has now had 34 findings raised across two review rounds
+by the same maintainer both times -- 31 verified closed, 3 reopened
+and pending this branch's CI. This project is **still not** in a state
+where all review findings are closed: nothing about closing most of
+these findings establishes that a further pass would not find others,
+and three of this very round's own fixes were themselves gaps an
+*earlier* pass in the same round had reported as complete.
 
