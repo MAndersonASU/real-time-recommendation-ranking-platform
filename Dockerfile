@@ -32,8 +32,15 @@ RUN pip install --no-cache-dir --no-deps .
 # This image has no .git directory at all (only pyproject.toml and
 # src/ are copied in above), so recommender.tracking.experiment_log's
 # repository-discovery fallback would always resolve to None here --
-# passed in at build time instead, from a real `git rev-parse HEAD`
-# (docker-compose.yml's api build.args does this automatically).
+# meant to be passed in at build time instead, from a real `git
+# rev-parse HEAD`. Compose forwards this arg from the host environment
+# (docker-compose.yml's api build.args), but does not compute it --
+# Compose has no way to run a shell command inline for a build arg, so
+# a plain `docker compose build api` leaves this unset. `build-image.sh`
+# is the committed wrapper that actually supplies a real commit hash;
+# an image built without it (or without GIT_COMMIT_SHA set some other
+# way) still builds and runs correctly, it just carries no commit
+# identity for `recommender.tracking.experiment_log` to record.
 ARG GIT_COMMIT_SHA=""
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
