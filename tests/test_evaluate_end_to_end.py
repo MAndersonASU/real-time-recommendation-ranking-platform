@@ -231,28 +231,29 @@ def test_evaluate_end_to_end_has_no_leakage_from_future_impressions():
 def test_evaluate_end_to_end_reports_fallback_reasons_not_just_a_count():
     """Regression test proving a real dependency failure surfaces a real
     reason string, not just an opaque count. Only the served request's
-    own online-feature lookup (`pipeline.get_online_features`) is made
-    to fail -- the evaluation harness's own post-scoring state
-    bookkeeping (a separate call, against the same isolated in-memory
-    store) is untouched, matching the real distinction between "the
-    served request's dependency lookup failed" and "the evaluation
-    harness's own bookkeeping," which is not part of what
-    `safe_recommend` ever sees or protects.
-    """
-    import recommender.serving.pipeline as pipeline_module
+    own two-tower forward pass is made to fail -- the evaluation
+    harness's own post-scoring state bookkeeping (a separate call,
+    against the same isolated in-memory store) is untouched, matching
+    the real distinction between "the served request's dependency
+    lookup failed" and "the evaluation harness's own bookkeeping,"
+    which is not part of what `safe_recommend` ever sees or protects.
 
+    A broken two-tower model, not a failing Redis lookup: since
+    REDIS-DEGRADED-PATH-61, a Redis failure degrades to a real,
+    personalized response rather than falling back at all, so it can no
+    longer stand in for "a real dependency failure" here -- the two-tower
+    model genuinely is required for retrieval, so `recommend()` still
+    translates its failure into `DependencyUnavailableError`.
+    """
     context = _build_context()
 
-    def _raising_get_online_features(*args, **kwargs):
-        import redis as redis_module
-
-        raise redis_module.exceptions.ConnectionError("simulated")
-
-    with patch.object(pipeline_module, "get_online_features", side_effect=_raising_get_online_features):
+    with patch.object(
+        context.two_tower_model, "user_vector", side_effect=RuntimeError("simulated model failure")
+    ):
         report = evaluate_end_to_end(context, num_impressions=2, k=3, validation=VALIDATION_BEHAVIORS, news=NEWS)
 
     assert report["fallback_count"] == 2
-    assert report["fallback_reasons"] == {"redis_unavailable": 2}
+    assert report["fallback_reasons"] == {"two_tower_inference_failed": 2}
 
 
 def test_apply_impression_to_recent_state_and_isolated_redis_are_real_and_reusable():

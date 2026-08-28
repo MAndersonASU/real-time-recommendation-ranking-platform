@@ -1,6 +1,9 @@
 import json
+import time
 
 import redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from recommender.features.online_features import RecentUserFeatures
 
@@ -11,13 +14,19 @@ DEFAULT_TTL_SECONDS = 60 * 60 * 24  # a user with no new events in a day is stal
 # Real, finite connect/read timeouts: without them, a Redis that hangs
 # (not one that refuses the connection outright -- a network black
 # hole, an overloaded instance not responding) would block a request
-# indefinitely instead of raising the RedisError safe_recommend catches
-# to fall back to popularity ranking. A slow, hanging dependency is a
+# indefinitely instead of raising the RedisError the online feature
+# lookup catches to degrade gracefully. A slow, hanging dependency is a
 # real failure mode distinct from an immediate connection-refused
-# error, and the fallback path can only degrade gracefully from a
-# failure it actually sees.
-DEFAULT_SOCKET_CONNECT_TIMEOUT_SECONDS = 2.0
-DEFAULT_SOCKET_TIMEOUT_SECONDS = 2.0
+# error, and a degraded response can only be produced from a failure
+# actually seen.
+#
+# 0.2s, not the earlier 2.0s: `docs/operations/state-store.md` measured
+# real read latency at 0.29 ms p50 / 1.12 ms p99 against a healthy
+# container, so 200ms is already ~180x that p99 -- generous headroom
+# for jitter, nowhere close to what a request's own latency budget
+# (`docs/operations/inference-path.md`'s ~61ms p99 end-to-end) can absorb.
+DEFAULT_SOCKET_CONNECT_TIMEOUT_SECONDS = 0.2
+DEFAULT_SOCKET_TIMEOUT_SECONDS = 0.2
 
 
 def build_client(
@@ -30,7 +39,62 @@ def build_client(
         decode_responses=True,
         socket_connect_timeout=socket_connect_timeout,
         socket_timeout=socket_timeout,
+        # Explicit, not left to redis-py's own default: that default
+        # retries a connection error once with a backoff delay, which
+        # silently doubled a real failed lookup against a genuinely
+        # unreachable host from this client's own 2-second timeout to
+        # just over 4 seconds -- found by timing `build_client()` against
+        # a dead port, not assumed. A caller here needs to know it failed
+        # fast, not have that already-short timeout multiplied under it
+        # by a policy nothing in this module ever chose.
+        retry=Retry(NoBackoff(), 0),
+        retry_on_error=[],
     )
+
+
+class RedisCircuitBreaker:
+    """Trips after `failure_threshold` consecutive Redis failures and
+    stays open for `cooldown_seconds` -- so once Redis is genuinely
+    down, requests after the first few fail fast without even
+    attempting a connection, instead of every concurrent request paying
+    its own connect timeout against a host that is not coming back
+    within it. One probe request is let through once the cooldown
+    elapses, to detect recovery without waiting for an operator.
+
+    Shared across requests: one instance lives on `ServingContext`
+    (`recommender.serving.pipeline`), built once at service start, not
+    per request.
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        cooldown_seconds: float = 5.0,
+        clock=time.monotonic,
+    ) -> None:
+        self._failure_threshold = failure_threshold
+        self._cooldown_seconds = cooldown_seconds
+        self._clock = clock
+        self._consecutive_failures = 0
+        self._opened_at: float | None = None
+
+    def allow_request(self) -> bool:
+        if self._opened_at is None:
+            return True
+        return (self._clock() - self._opened_at) >= self._cooldown_seconds
+
+    def record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._opened_at = None
+
+    def record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._failure_threshold:
+            self._opened_at = self._clock()
+
+    @property
+    def is_open(self) -> bool:
+        return self._opened_at is not None and not self.allow_request()
 
 
 def _key(user_id: str) -> str:

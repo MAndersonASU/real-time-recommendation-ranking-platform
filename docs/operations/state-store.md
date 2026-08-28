@@ -35,3 +35,24 @@ container (`docker-compose.yml`), reads it back, and confirms every field
 matches — not a mock. It also measures real read latency over 200 lookups
 against the running container: **0.29 ms p50, 1.12 ms p99**. This is the
 number behind the component's "low-latency feature path" exit criterion.
+
+## Client timeout and retry policy
+
+`build_client` sets a 0.2-second connect and socket timeout, and an
+explicit, empty retry policy (`redis.retry.Retry(NoBackoff(), 0)`,
+`retry_on_error=[]`) — not left to redis-py's own default. That default
+retries a connection error once with a backoff delay, which was found
+(not assumed) to silently double a failed lookup's cost against an
+earlier, longer timeout. 0.2s is still ~180x this component's own
+measured 1.12ms p99 above, generous headroom for jitter against a
+healthy instance, while capping what an unhealthy one can cost a
+request.
+
+`RedisCircuitBreaker` (same module) sits in front of this: after
+`failure_threshold` consecutive failures it stops attempting the
+connection at all for `cooldown_seconds`, so a genuinely down Redis
+doesn't make every concurrent request separately pay the timeout above.
+One instance lives on `ServingContext`
+(`recommender.serving.pipeline`), shared across every request the
+process serves. See `docs/operations/serving-fallback.md` for what a
+degraded Redis actually does to a response.

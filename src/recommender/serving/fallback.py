@@ -64,6 +64,7 @@ def safe_recommend(
     request: RecommendationRequest,
     context: ServingContext,
     on_fallback: Callable[[str], None] | None = None,
+    on_redis_degraded: Callable[[], None] | None = None,
     stage_timings: dict[str, float] | None = None,
     use_recent_features: bool = True,
     include_matched_signals: bool = False,
@@ -78,8 +79,15 @@ def safe_recommend(
 
     Only `DependencyUnavailableError` triggers a fallback -- raised by
     `recommend()` at the specific call sites where a known dependency's
-    own library exception (Redis, the two-tower model, Faiss) was caught
-    and translated. Any other exception -- a real bug in feature
+    own library exception (the two-tower model, Faiss) was caught and
+    translated. A Redis failure is deliberately *not* one of these: it
+    degrades `recommend()`'s own online feature lookup to durable
+    features plus an empty recent-features record (`recommender.features.cold_start.get_online_features`)
+    and the request still completes as a real, personalized response --
+    Redis being down has no bearing on whether the durable features or
+    the trained model, index, and ranking pipeline can still run, so it
+    does not need the same full retreat to flat popularity those
+    failures do. Any other exception -- a real bug in feature
     construction, ranking, or reranking -- is not caught here and
     propagates to the caller, so it surfaces as a real error instead of
     a silently "successful" popularity response.
@@ -89,7 +97,11 @@ def safe_recommend(
     opt-in instrumentation of this exact branch, rather than a caller
     inferring "was this a fallback" from the response's feature flags,
     which a genuine cold-start response can also legitimately have both
-    set to False. `stage_timings`, `use_recent_features`,
+    set to False. `on_redis_degraded` is the equivalent signal for the
+    non-fallback Redis case above -- invoked when the online feature
+    lookup could not reach Redis, even though this call still returns a
+    real, personalized (non-fallback) response.
+    `stage_timings`, `use_recent_features`,
     `include_matched_signals`, and `capture_candidates` pass straight
     through to `recommend()` on the real path (there is no per-stage
     breakdown, recent-features toggle, matched-signals detail, or
@@ -105,6 +117,7 @@ def safe_recommend(
             use_recent_features=use_recent_features,
             include_matched_signals=include_matched_signals,
             capture_candidates=capture_candidates,
+            on_redis_degraded=on_redis_degraded,
         )
     except DependencyUnavailableError as exc:
         logger.exception(

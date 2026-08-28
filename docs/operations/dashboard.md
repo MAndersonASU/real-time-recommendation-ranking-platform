@@ -8,11 +8,24 @@ Implementation: `src/recommender/monitoring/dashboard.py`.
 
 ## Eleven numbers, not fifty
 
-Total requests, error rate, mean latency, fallback rate, empty-response
-rate, durable/recent cache hit rates, mean score, mean diversity,
-catalog coverage, and top-10 concentration — read live, directly from
-the same in-process Prometheus objects `/metrics` already exposes, not
-a second, separately-computed store.
+Recommend attempts, error rate, mean latency, fallback rate,
+empty-response rate, durable/recent cache hit rates, mean score, mean
+diversity, catalog coverage, and top-10 concentration — read live,
+directly from the same in-process Prometheus objects `/metrics` already
+exposes, not a second, separately-computed store.
+
+"Recommend attempts" (labeled "Total requests" until HTTP-METRICS-SCOPE-66)
+is scoped to valid `/recommend` attempts that reached the handler --
+every row on this page is about recommendation behavior, not raw HTTP
+traffic, so that scope matches the rest of the page. It is not the
+total request count for this service: a malformed request FastAPI
+rejects with a 422 before the handler runs, or a middleware-level 500,
+is real traffic this row never counted, because `recommend_requests_total`
+(what it reads) never saw it either. The true, all-routes total --
+every response this service sends, by route template, method and
+status class -- is `http_requests_total`, at `/metrics` only; it isn't
+curated onto this page because it's an operations signal, not a
+recommendation-behavior one.
 
 ## An honest substitute for real percentiles
 

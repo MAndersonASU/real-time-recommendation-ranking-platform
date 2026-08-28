@@ -13,11 +13,13 @@ from recommender.monitoring.artifact_manifest import (
 )
 from recommender.monitoring.dashboard import render_dashboard_html
 from recommender.monitoring.metrics import (
-    DURABLE_FEATURE_DATA_AGE,
     MODEL_VERSION,
     record_error,
     record_feature_lookup_latency,
+    record_http_request,
+    record_redis_degraded,
     record_response,
+    set_durable_feature_data_age,
     update_quality_gauges,
 )
 from recommender.monitoring.quality_signals import QualitySignalTracker
@@ -125,6 +127,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Recommendation Service", lifespan=lifespan)
 
 
+def _route_template(request: Request) -> str:
+    """The matched route's own path template (e.g. `/demo/{user_id}`),
+    not the resolved path with a real value in it -- bounded label
+    cardinality for HTTP_REQUESTS_TOTAL below, one series per route this
+    app actually defines rather than one per distinct value ever seen
+    in it. `"unmatched"` for a real 404 (no route in this app matched at
+    all), for the same reason: still bounded, regardless of how many
+    distinct nonexistent paths are ever requested.
+    """
+    route = request.scope.get("route")
+    return route.path if route is not None else "unmatched"
+
+
 @app.middleware("http")
 async def request_id_and_access_log(request: Request, call_next):
     """Every request gets a real, unique id -- generated here, attached
@@ -134,6 +149,15 @@ async def request_id_and_access_log(request: Request, call_next):
     a real failure gets diagnosed from: given one id from a client
     report or an alert, every log line for that specific request can be
     found, without scanning by timestamp and guessing.
+
+    Also the one place `HTTP_REQUESTS_TOTAL` is recorded (HTTP-METRICS-SCOPE-66):
+    every response this service ever sends passes through here, on
+    every route, whether or not it ever reached a route handler's own
+    body -- unlike `recommend_requests_total`, which only ever counted a
+    request that reached `/recommend`'s handler and passed FastAPI's own
+    request-body validation. A malformed request (rejected as a 422
+    before any handler runs) or a middleware-level 500 (below) is real
+    traffic that metric could never see.
     """
     request.state.request_id = new_request_id()
     start = time.perf_counter()
@@ -150,6 +174,7 @@ async def request_id_and_access_log(request: Request, call_next):
         # request already logs; never includes the exception's own
         # message or traceback in the client-facing response.
         duration_ms = (time.perf_counter() - start) * 1000
+        record_http_request(route=_route_template(request), method=request.method, status_code=500)
         logger.exception(
             "request_failed",
             extra={
@@ -167,6 +192,9 @@ async def request_id_and_access_log(request: Request, call_next):
     duration_ms = (time.perf_counter() - start) * 1000
 
     response.headers["X-Request-ID"] = request.state.request_id
+    record_http_request(
+        route=_route_template(request), method=request.method, status_code=response.status_code
+    )
     logger.info(
         "request_completed",
         extra={
@@ -207,9 +235,10 @@ def ready() -> dict:
 
     Redis is checked too, but reported as a separate, non-fatal
     dependency status rather than failing readiness outright: an
-    unreachable Redis degrades personalization (`safe_recommend` falls
-    back to popularity ranking) without making the service unable to
-    serve a valid response at all, so pulling it out of a load
+    unreachable Redis degrades one input to an already-running
+    pipeline -- recent clicks -- without making the service unable to
+    serve a real, personalized response on durable features
+    (`docs/operations/serving-fallback.md`), so pulling it out of a load
     balancer's rotation over a degraded-but-working Redis would be the
     wrong call.
     """
@@ -221,7 +250,7 @@ def ready() -> dict:
         context.redis_client.ping()
         redis_status = "ok"
     except Exception:  # noqa: BLE001 -- any real connection failure means "degraded", not a crash
-        redis_status = "degraded (falls back to popularity ranking)"
+        redis_status = "degraded (durable-features-only personalization)"
 
     # Feature-snapshot metadata is surfaced here rather than left
     # implicit. Readiness is deliberately not failed on staleness: this
@@ -229,7 +258,7 @@ def ready() -> dict:
     # dataset is the expected state, not an outage. An operator sees the
     # real data age instead of having to infer it from a restart time.
     snapshot = context.durable_cache.describe()
-    DURABLE_FEATURE_DATA_AGE.set(snapshot["data_age_seconds"] or 0.0)
+    set_durable_feature_data_age(snapshot["data_age_seconds"])
 
     return {
         "ready": True,
@@ -289,16 +318,24 @@ def demo(
 @app.post("/recommend", response_model=RecommendationResponse)
 def recommend_endpoint(payload: RecommendationRequest, http_request: Request) -> RecommendationResponse:
     fell_back = {"value": False, "reason": None}
+    redis_degraded = {"value": False}
 
     def _mark_fallback(reason: str) -> None:
         fell_back["value"] = True
         fell_back["reason"] = reason
 
+    def _mark_redis_degraded() -> None:
+        redis_degraded["value"] = True
+
     stage_timings: dict[str, float] = {}
     start = time.perf_counter()
     try:
         response = safe_recommend(
-            payload, _context(), on_fallback=_mark_fallback, stage_timings=stage_timings
+            payload,
+            _context(),
+            on_fallback=_mark_fallback,
+            on_redis_degraded=_mark_redis_degraded,
+            stage_timings=stage_timings,
         )
     except Exception:
         record_error()
@@ -309,6 +346,8 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
         fallback_reason=fell_back["reason"],
         latency_seconds=time.perf_counter() - start,
     )
+    if redis_degraded["value"]:
+        record_redis_degraded()
     if "feature_lookup_ms" in stage_timings:
         record_feature_lookup_latency(stage_timings["feature_lookup_ms"] / 1000)
 
@@ -339,6 +378,7 @@ def recommend_endpoint(payload: RecommendationRequest, http_request: Request) ->
                 "num_candidates_returned": len(response.recommendations),
                 "is_fallback": fell_back["value"],
                 "fallback_reason": fell_back["reason"],
+                "redis_degraded": redis_degraded["value"],
                 "durable_features_used": response.durable_features_used,
                 "recent_features_used": response.recent_features_used,
             },

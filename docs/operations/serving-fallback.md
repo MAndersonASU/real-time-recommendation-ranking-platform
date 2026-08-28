@@ -1,9 +1,10 @@
 # Failure-Safe Fallbacks
 
 Returns a safe, popularity-ranked response when a real dependency the
-main inference path needs — Redis, the model, the index — turns out to
-be unavailable, instead of the request failing outright. Implementation:
-`src/recommender/serving/fallback.py`.
+main inference path needs — the model, the index — turns out to be
+unavailable, instead of the request failing outright. Implementation:
+`src/recommender/serving/fallback.py`. Redis is deliberately not in
+that list any more — see "A Redis failure is not this" below.
 
 ## A different question than the online feature store's cold start
 
@@ -19,10 +20,10 @@ infrastructural kind of failure actually happens.
 
 `safe_recommend` catches exactly one exception type:
 `DependencyUnavailableError` (`recommender.serving.errors`). That type
-is raised only at the three real per-request dependency boundaries --
-the Redis lookup, the two-tower forward pass, and the Faiss search --
-where the underlying library's own exception is caught and translated,
-carrying the reason with it.
+is raised only at the two real per-request dependency boundaries where
+a failure genuinely prevents inference or retrieval -- the two-tower
+forward pass and the Faiss search -- where the underlying library's own
+exception is caught and translated, carrying the reason with it.
 
 An earlier version caught `(redis.exceptions.RedisError, RuntimeError,
 OSError)` directly. That was too broad to be safe: `RuntimeError` and
@@ -32,9 +33,39 @@ ranking or reranking could surface as a "successful" popularity
 response that looked fine from the outside.
 
 Translating at the boundary keeps the catch narrow without losing
-coverage: an unreachable feature store, an unusable model and an
-unreadable index still degrade gracefully, while a programming error
-propagates to the API's own error handling and is visible.
+coverage: an unusable model and an unreadable index still degrade
+gracefully, while a programming error propagates to the API's own error
+handling and is visible.
+
+## A Redis failure is not this
+
+A Redis failure used to be caught here too and treated exactly like an
+unusable model or index -- the same full retreat to flat, unpersonalized
+popularity (REDIS-DEGRADED-PATH-61). That conflated two genuinely
+different failures: the model and the index are required for retrieval
+and ranking to run at all, but Redis only ever supplies one input to an
+already-running pipeline -- a user's last 20 recent clicks
+(`docs/operations/state-store.md`). Everything else `recommend()` needs
+(durable features, the trained model, the Faiss index) is already in
+process memory, completely unaffected by Redis being down.
+
+`recommender.features.cold_start.get_online_features` now catches a
+Redis failure itself and reports it as an absent recent-features record
+-- the same shape as an ordinary user who simply has no live events yet,
+distinguished from that ordinary case only by a `redis_unavailable` flag
+callers that care can check. `recommend()` never raises
+`DependencyUnavailableError` for this any more, so `safe_recommend`
+never falls back over it either: the request still completes as a real,
+personalized response on durable features, just without the recent-
+clicks input. `on_redis_degraded` (a parameter on both `recommend` and
+`safe_recommend`) is the observability signal for this case --
+invoked when it happens, even though the response is not a fallback.
+
+A `RedisCircuitBreaker`, shared on `ServingContext`, sits in front of
+every attempt: once Redis has failed enough consecutive times it stops
+attempting the connection at all for a cooldown window, so a genuinely
+down Redis doesn't make every concurrent request separately pay the
+connect timeout (`docs/operations/state-store.md`).
 
 ## The fallback itself: the popularity baseline, one more time
 
@@ -54,9 +85,13 @@ at all.
 `verify_fallback.py` builds the real serving context — the real
 catalog, the real trained model, the real ranking pipeline — then
 points its Redis client at a port nothing is listening on: a genuine
-connection failure, not a simulated one. `safe_recommend` still returned
-a full 10-item, contract-valid response, correctly reporting no real
-personalization on either flag.
+connection failure, not a simulated one. Run against a real user with a
+genuine durable-feature record (not an arbitrary id, specifically so the
+result can't be mistaken for the flat-fallback case), `safe_recommend`
+returned a full 10-item, contract-valid response with
+`is_fallback: false` and `durable_features_used: true` — real
+personalization on durable features, only `recent_features_used` false,
+exactly the degraded-not-fallback behavior above.
 
 ## Cold-start retrieval: popularity, not a zero-vector search
 

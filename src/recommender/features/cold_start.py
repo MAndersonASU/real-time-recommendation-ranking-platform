@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import redis
 
 from recommender.features.online_features import DurableUserFeatures, RecentUserFeatures
-from recommender.features.state_store import load_recent_features
+from recommender.features.state_store import RedisCircuitBreaker, load_recent_features
 
 DEFAULT_DURABLE_FEATURES = DurableUserFeatures(
     user_id="", dominant_category=None, lifetime_click_count=0
@@ -15,18 +15,26 @@ DEFAULT_RECENT_FEATURES = RecentUserFeatures(
 
 @dataclass(frozen=True)
 class OnlineFeatureLookup:
-    """The combined durable + recent feature view for one user, plus two
+    """The combined durable + recent feature view for one user, plus
     flags recording whether either half was a genuine cold-start fallback
     rather than a real, found value -- callers that care about the
     distinction (offline evaluation, monitoring) can check these instead
     of trying to infer it from the values themselves, since a real user
     can legitimately have zero lifetime clicks or an empty recent list.
+
+    `redis_unavailable` is a narrower signal than `recent_is_fallback`:
+    the latter is also true for an ordinary user who simply has no
+    recent-events record yet, which is not a failure of anything. This
+    flag is only true when Redis itself could not be reached or was
+    skipped because the circuit breaker had it open -- the case a caller
+    monitoring infrastructure health actually wants to alert on.
     """
 
     durable: DurableUserFeatures
     recent: RecentUserFeatures
     durable_is_fallback: bool
     recent_is_fallback: bool
+    redis_unavailable: bool = False
 
 
 def get_online_features(
@@ -34,6 +42,7 @@ def get_online_features(
     durable_features_by_user: dict[str, DurableUserFeatures],
     redis_client: redis.Redis,
     use_recent_features: bool = True,
+    circuit_breaker: RedisCircuitBreaker | None = None,
 ) -> OnlineFeatureLookup:
     """Looks up both halves of a user's online features independently,
     since they can be missing for different, unrelated reasons: a user
@@ -45,17 +54,50 @@ def get_online_features(
     is already actively clicking. Neither case raises; both fall back to
     an explicit, neutral default instead.
 
+    A genuine Redis failure (connection refused, timed out) is handled
+    the same way: caught here and treated as an absent recent record,
+    not raised. `durable_features_by_user` and every trained model
+    artifact are already in process memory, unaffected by Redis being
+    down -- degrading only the one input Redis actually supplies, rather
+    than abandoning retrieval and ranking entirely for the flat
+    popularity fallback, is what lets a request stay genuinely
+    personalized (on durable features) through a Redis outage.
+
+    `circuit_breaker`, when given, is consulted before *and* updated
+    after every real attempt: `allow_request()` decides whether to try
+    at all (skipping the connection attempt entirely once open, so a
+    already-known-down Redis doesn't make every request pay its own
+    connect timeout), and `record_success`/`record_failure` report what
+    happened so later calls can make that decision.
+
     `use_recent_features=False` skips the Redis lookup entirely and
     always falls back to the same neutral default -- the recent-
     streaming-features ablation (docs/experiments/ablations.md), simulating a system
     with no live Kafka/Redis feed at all rather than merely an empty one.
+    This is a deliberate, per-call opt-out, not a failure, so it never
+    sets `redis_unavailable`.
     """
     durable = durable_features_by_user.get(user_id)
-    recent = load_recent_features(redis_client, user_id) if use_recent_features else None
+
+    recent = None
+    redis_unavailable = False
+    if use_recent_features:
+        if circuit_breaker is None or circuit_breaker.allow_request():
+            try:
+                recent = load_recent_features(redis_client, user_id)
+                if circuit_breaker is not None:
+                    circuit_breaker.record_success()
+            except redis.exceptions.RedisError:
+                redis_unavailable = True
+                if circuit_breaker is not None:
+                    circuit_breaker.record_failure()
+        else:
+            redis_unavailable = True
 
     return OnlineFeatureLookup(
         durable=durable if durable is not None else DEFAULT_DURABLE_FEATURES,
         recent=recent if recent is not None else DEFAULT_RECENT_FEATURES,
         durable_is_fallback=durable is None,
         recent_is_fallback=recent is None,
+        redis_unavailable=redis_unavailable,
     )

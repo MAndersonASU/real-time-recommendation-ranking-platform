@@ -18,16 +18,17 @@ what a Kafka interruption should and shouldn't affect.
 | Scenario | What was done | Result |
 |---|---|---|
 | Kafka interruption | Stopped `recommender-kafka`, rebuilt and started the API fresh | API started immediately, served a normal request correctly — no effect at all, confirming the dependency removal above was correct |
-| State-store (Redis) interruption | Stopped `recommender-redis` on the running API | `/ready` reported `degraded (falls back to popularity ranking)`; `/recommend` still returned a valid response via the popularity fallback |
-| Graceful fallback | Same as above | `durable_features_used: false` in the response — honestly reporting no real personalization happened, not disguising the fallback as a normal result |
+| State-store (Redis) interruption | Stopped `recommender-redis` on the running API | `/ready` reported `degraded (durable-features-only personalization)`; `/recommend` still returned a real, personalized response, not the popularity fallback (REDIS-DEGRADED-PATH-61 -- re-verified against these same live containers after that fix) |
+| Graceful degradation | Same as above | `durable_features_used: true`, `recent_features_used: false`, `is_fallback: false` in the response -- the trained ranking model and this user's real durable features still ran; only the recent-clicks input from Redis was empty. The first two requests after Redis stopped each took several seconds (a real cost of Docker's stopped-container networking in this environment, not an indefinite hang); the third, after the shared circuit breaker's 3-failure threshold tripped, returned in 0.29s -- it skipped attempting the connection entirely |
 | Service restart | `docker restart recommender-api` | Came back healthy and serving correctly, with no manual intervention |
 | Missing artifact | Renamed the real trained model file on disk, then restarted the container | Startup failed loudly with the exact diagnostic message from `docs/operations/configuration.md` (`"a required model/index/ranking-pipeline file was not found..."`), not a silent or confusing crash |
 
 ## Recovery, verified both ways
 
 Redis recovered on its own — restarting Redis alone was enough for the
-already-running API's next request to report `redis: "ok"` again, no
-API restart needed. The missing-artifact case needed the file restored
+already-running API's next request to report `redis: "ok"` again (and
+the circuit breaker to close again on that success), no API restart
+needed. The missing-artifact case needed the file restored
 *and* a restart, which is the correct, expected behavior: a process
 that failed to start because of a missing dependency has to be
 restarted once that dependency is back, not expected to somehow

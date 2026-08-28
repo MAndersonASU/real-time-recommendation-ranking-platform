@@ -121,21 +121,25 @@ is not gated on broker health.
 | Service | Required for | Behaviour when unavailable |
 |---|---|---|
 | Artifact bundle | Startup | Startup fails; `/ready` never becomes ready |
-| Redis | Recent user state | Request succeeds; falls back to popularity ranking |
+| Redis | Recent user state | Request succeeds; degrades to durable-features-only personalization, not the popularity fallback ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)) |
 | Kafka | Offline replay and consumption only | No effect on serving |
 
 ## Fallback behaviour for explicitly recognized dependency failures
 
 - Missing or unreadable artifact bundle stops startup rather than serving
   a silently degraded model.
-- A Redis, two-tower or Faiss dependency failure produces the explicit
+- A two-tower or Faiss dependency failure produces the explicit
   popularity fallback (`build_fallback_response`) -- the whole catalog
   ranked by training-set popularity, skipping retrieval, ranking and
   reranking entirely, not the narrower zero-norm-history cold-start
   path that still runs the full pipeline
   ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)).
-  A Redis dependency failure is this fallback, not the same thing as a
-  user simply having no recent history.
+  A Redis dependency failure is deliberately not this fallback: it only
+  empties the recent-clicks input to an already-running pipeline, so
+  durable features, the trained model, and ranking still produce a real
+  personalized response -- distinct both from this fallback and from a
+  user simply having no recent history (which looks the same on the
+  response but carries no infrastructure-failure signal).
 - Unexpected ranking, feature-construction or reranking errors are not
   caught by this fallback and propagate as correlated 500 responses
   instead of a silently "successful" popularity response.

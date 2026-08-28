@@ -88,7 +88,15 @@ def render_dashboard_html() -> str:
     d = build_dashboard_data()
     quality_available = d["total_requests"] > 0
     rows = [
-        ("Total requests", _fmt(d["total_requests"])),
+        # Not every HTTP request this service ever answers -- a 422
+        # (rejected before reaching this handler) or a middleware-level
+        # 500 never reaches `REQUEST_COUNT`, which this reads
+        # (HTTP-METRICS-SCOPE-66). That true, all-routes total is
+        # `http_requests_total` at `/metrics`; this row is scoped to
+        # valid /recommend attempts specifically, matching every other
+        # row on this page, which are all about recommendation
+        # behavior, not raw HTTP traffic.
+        ("Recommend attempts", _fmt(d["total_requests"])),
         ("Error rate", _fmt_pct(d["error_rate"])),
         ("Mean latency", _fmt(d["mean_latency_ms"], " ms")),
         ("Fallback rate", _fmt_pct(d["fallback_rate"])),

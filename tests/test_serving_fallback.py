@@ -1,4 +1,6 @@
 import logging
+import time
+from unittest.mock import patch
 
 import pytest
 import redis
@@ -25,6 +27,17 @@ def _dead_redis_client() -> redis.Redis:
     )
 
 
+def _broken_two_tower_patch(context):
+    """A real dependency failure that still triggers the full popularity
+    fallback -- unlike a Redis failure (see the degrade tests below),
+    the two-tower model is genuinely required for retrieval, so
+    `recommend()` still translates this into `DependencyUnavailableError`.
+    """
+    return patch.object(
+        context.two_tower_model, "user_vector", side_effect=RuntimeError("simulated model failure")
+    )
+
+
 def test_safe_recommend_matches_the_real_path_when_everything_works():
     context = _build_context()
     request = RecommendationRequest(user_id="u1", num_candidates=4)
@@ -40,15 +53,87 @@ def test_safe_recommend_matches_the_real_path_when_everything_works():
     )
 
 
-def test_safe_recommend_falls_back_on_a_real_redis_connection_failure():
+def test_safe_recommend_degrades_gracefully_on_a_real_redis_connection_failure():
+    """REDIS-DEGRADED-PATH-61: a Redis failure must not throw away
+    durable features and the trained model just because the live
+    feature store is unreachable. Fails on the pre-fix code (this used
+    to be indistinguishable from the two-tower/Faiss case below -- both
+    fell all the way back to flat popularity) and passes once a Redis
+    failure degrades to exactly the same response a deliberate
+    `use_recent_features=False` ablation run already produces: real
+    retrieval and ranking, on durable features, with an empty recent-
+    features input.
+    """
+    context = _build_context(redis_client=_dead_redis_client())
+    healthy_context = _build_context()
+    request = RecommendationRequest(user_id="u1", num_candidates=4)
+
+    degraded = safe_recommend(request, context)
+    without_recent_features = recommend(request, healthy_context, use_recent_features=False)
+
+    assert len(degraded.recommendations) == 4
+    assert degraded.recent_features_used is False
+    assert degraded.model_dump(exclude={"generated_at"}) == without_recent_features.model_dump(
+        exclude={"generated_at"}
+    )
+
+
+def test_safe_recommend_stays_fast_when_redis_is_down():
+    """The point of the short timeout and explicit no-retry policy
+    (`recommender.features.state_store.build_client`): a Redis failure
+    must not turn one request into a multi-second stall. Before that
+    fix, redis-py's own implicit retry-with-backoff silently doubled a
+    failed connection attempt's cost; 2 seconds here is generous
+    headroom above the configured 0.2s timeout for CI jitter, nowhere
+    near the several seconds the old implicit retry produced.
+    """
     context = _build_context(redis_client=_dead_redis_client())
     request = RecommendationRequest(user_id="u1", num_candidates=4)
 
-    response = safe_recommend(request, context)
+    start = time.perf_counter()
+    safe_recommend(request, context)
+    elapsed = time.perf_counter() - start
 
-    assert len(response.recommendations) == 4
-    assert response.durable_features_used is False
-    assert response.recent_features_used is False
+    assert elapsed < 2.0
+
+
+def test_safe_recommend_reports_redis_degraded_without_triggering_a_fallback():
+    context = _build_context(redis_client=_dead_redis_client())
+    request = RecommendationRequest(user_id="u1", num_candidates=4)
+    fallback_reasons = []
+    degraded_calls = []
+
+    safe_recommend(
+        request,
+        context,
+        on_fallback=fallback_reasons.append,
+        on_redis_degraded=lambda: degraded_calls.append(True),
+    )
+
+    assert fallback_reasons == []
+    assert degraded_calls == [True]
+
+
+def test_repeated_redis_failures_open_the_shared_circuit_breaker_and_skip_the_connection():
+    """Requests don't all wait for the same timeout: once the breaker on
+    `context` has seen enough consecutive failures, a later request must
+    not even attempt to connect -- proven by timing, since a skipped
+    attempt is far faster than the 0.2s connect timeout a real attempt
+    against this dead client would pay.
+    """
+    context = _build_context(redis_client=_dead_redis_client())
+    context.redis_circuit_breaker._failure_threshold = 2  # keep the test fast
+    request = RecommendationRequest(user_id="u1", num_candidates=4)
+
+    for _ in range(2):
+        safe_recommend(request, context)
+    assert context.redis_circuit_breaker.is_open is True
+
+    start = time.perf_counter()
+    safe_recommend(request, context)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.15
 
 
 def test_fallback_response_orders_by_descending_popularity():
@@ -77,9 +162,12 @@ def test_fallback_response_scores_are_bounded_and_never_claims_personalization()
 def test_safe_recommend_logs_the_real_exception_before_falling_back():
     """A fallback must be visible, not silent: safe_recommend logs the
     real exception (with traceback) every time it falls back, so a spike
-    in fallbacks is investigable from the logs.
+    in fallbacks is investigable from the logs. Exercised with a broken
+    two-tower model, not Redis -- a Redis failure no longer falls back
+    at all (see the degrade tests above), so it can't exercise this path
+    any more.
     """
-    context = _build_context(redis_client=_dead_redis_client())
+    context = _build_context()
     request = RecommendationRequest(user_id="u1", num_candidates=4)
     records = []
 
@@ -91,7 +179,8 @@ def test_safe_recommend_logs_the_real_exception_before_falling_back():
     handler = _Capture()
     logger.addHandler(handler)
     try:
-        safe_recommend(request, context)
+        with _broken_two_tower_patch(context):
+            safe_recommend(request, context)
     finally:
         logger.removeHandler(handler)
 
@@ -108,7 +197,7 @@ def test_safe_recommend_never_logs_the_raw_user_id():
     `/demo` already use.
     """
     raw_user_id = "a-very-identifiable-raw-user-id-12345"
-    context = _build_context(redis_client=_dead_redis_client())
+    context = _build_context()
     request = RecommendationRequest(user_id=raw_user_id, num_candidates=4)
     records = []
 
@@ -120,7 +209,8 @@ def test_safe_recommend_never_logs_the_raw_user_id():
     handler = _Capture()
     logger.addHandler(handler)
     try:
-        safe_recommend(request, context)
+        with _broken_two_tower_patch(context):
+            safe_recommend(request, context)
     finally:
         logger.removeHandler(handler)
 
@@ -131,13 +221,14 @@ def test_safe_recommend_never_logs_the_raw_user_id():
 
 
 def test_safe_recommend_falls_back_with_the_real_reason():
-    context = _build_context(redis_client=_dead_redis_client())
+    context = _build_context()
     request = RecommendationRequest(user_id="u1", num_candidates=4)
     reasons = []
 
-    safe_recommend(request, context, on_fallback=reasons.append)
+    with _broken_two_tower_patch(context):
+        safe_recommend(request, context, on_fallback=reasons.append)
 
-    assert reasons == ["redis_unavailable"]
+    assert reasons == ["two_tower_inference_failed"]
 
 
 def test_safe_recommend_lets_a_genuine_programming_bug_propagate_not_fall_back():
