@@ -696,16 +696,17 @@ reuse the existing `EVAL-*`/`STREAM-*` prefixes because they genuinely
 are that kind of finding; the other nine introduce new prefixes for
 kinds of gap this register had not previously named
 (`REPRO-*`, `DEPLOYMENT-*`, `DATA-PATH-*`, `TIMESTAMP-*`, `BANDIT-*`,
-`HTTP-METRICS-*`, `UNKNOWN-*`, `CI-*`). All eleven have a fix committed
-and a fail-then-pass regression test on this branch; **none has CI
-evidence yet** -- that is added in a follow-up commit once a real run
-is green, not claimed here from local runs (the mistake this register's
-own history already names once, in EVAL-PROVENANCE-01's account of
-CI reported as green from local runs while it was red).
+`HTTP-METRICS-*`, `UNKNOWN-*`, `CI-*`). All eleven have a fix committed,
+a fail-then-pass regression test, and are now verified against real
+CI: **run 33134350323** on this branch, all four jobs green, not
+claimed from local runs alone (the mistake this register's own
+history already names once, in EVAL-PROVENANCE-01's account of CI
+reported as green from local runs while it was red).
 
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
-**Severity** Critical · **Status** open (fix committed, CI verification pending)
+**Severity** Critical · **Status** verified closed
 **Fix commit** `912c00a` · **Tests** `tests/test_reports.py`
+**CI** run 33134350323 (all four jobs green)
 
 `source_commit()` tried `GIT_COMMIT_SHA` (meant for the container
 manifest, which has no `.git` directory) before falling back to a real
@@ -723,8 +724,9 @@ check (skipped on a shallow clone) confirming every recorded
 and set `fetch-depth: 0` on the job where that check can run.
 
 ## REPRO-ORCHESTRATION-59 — `evaluate_all.sh` ran 7 of the 12 published evaluations
-**Severity** High · **Status** open (fix committed, CI verification pending)
+**Severity** High · **Status** verified closed
 **Fix commit** `5dd91f9` · **Tests** `tests/test_orchestration_scripts.py`
+**CI** run 33134350323 (all four jobs green)
 
 The script's own header claimed it ran "every evaluation whose report
 is published." It ran 7: retrieval, end-to-end, tuning decisions,
@@ -743,8 +745,9 @@ without a matching script line fails this test instead of silently
 never running in the orchestrated pass.
 
 ## STREAM-MEMORY-60 — `StreamConsumer.user_states` was still unbounded
-**Severity** High · **Status** open (fix committed, CI verification pending)
+**Severity** High · **Status** verified closed
 **Fix commit** `97ac5e4` · **Tests** `tests/test_consumer.py`
+**CI** run 33134350323 (all four jobs green)
 
 An earlier pass bounded `_seen_event_ids` and the monitoring counters'
 `distinct_users`/`distinct_items`, with a comment describing the
@@ -762,9 +765,10 @@ never wired into a long-running production entrypoint -- confirmed true
 today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
+**CI** run 33134350323 (all four jobs green)
 
 Redis unavailability was caught the same way as a broken model or
 index -- the full retreat to `build_fallback_response`'s flat,
@@ -789,8 +793,9 @@ features, with the circuit breaker measurably speeding up the third
 request onward (~3-4s for the first two, 0.29s for the third).
 
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commit** `be8b5ce` · **Tests** `tests/test_deployment_contract.py`
+**CI** run 33134350323 (all four jobs green)
 
 `docs/architecture.md` said Redis is optional and startup does not gate
 on it (`DOC-FALLBACK-SCOPE-52` above), but `docker-compose.yml`'s `api`
@@ -812,8 +817,9 @@ calls `git rev-parse HEAD` before building, and corrected the
 Dockerfile's claim.
 
 ## DATA-PATH-CONSISTENCY-63 — `RECOMMENDER_DATA_ROOT` didn't move most of the project's own paths
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `5dd91f9`, `b992259`, `e615ff2` · **Tests** `tests/test_data_path_consistency.py`
+**CI** run 33134350323 (all four jobs green)
 
 `recommender.paths` exists specifically so `RECOMMENDER_DATA_ROOT`
 moves every data path a deployment might relocate, but only the
@@ -836,8 +842,9 @@ the discovery approach alone would miss (a reverted constant just drops
 out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commit** `063bbf5` · **Tests** `tests/test_streaming_schema.py`
+**CI** run 33134350323 (all four jobs green)
 
 The schema's timestamp validator accepted anything
 `datetime.fromisoformat` parses -- naive, space-separated, whatever --
@@ -858,9 +865,10 @@ situation: UTC is a pragmatic, disclosed assumption this project makes
 for comparison purposes, not a documented dataset fact.
 
 ## BANDIT-REVIEW-65 — A real evaluation invariant used `assert`; the Bandit table was stale
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `e615ff2` (assert -> ValueError), `7d5f2ef` (table and guards)
 **Tests** `tests/test_recent_features_ablation.py`, `tests/test_bandit_table_sync.py`
+**CI** run 33134350323 (all four jobs green)
 
 `recent_features_ablation.py`'s paired-sample digest check used a bare
 `assert`, compiled out entirely under `python -O` -- an unpaired
@@ -881,8 +889,9 @@ of silently falling out of the table again; a companion test AST-scans
 `src/recommender` for any `assert` statement at all.
 
 ## HTTP-METRICS-SCOPE-66 — `recommend_requests_total` never saw a 422 or a middleware-level 500
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commit** `b992259` · **Tests** `tests/test_app.py`, `tests/test_metrics.py`, `tests/test_dashboard.py`
+**CI** run 33134350323 (all four jobs green)
 
 `recommend_requests_total` only ever incremented inside
 `recommend_endpoint`'s own body, so a request FastAPI rejected with a
@@ -900,8 +909,9 @@ the two metrics' distinct scopes so they can be compared rather than
 conflated.
 
 ## UNKNOWN-DATA-AGE-67 — Unknown durable-feature data age reported as a false zero
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commit** `b992259` · **Tests** `tests/test_metrics.py`, `tests/test_app.py`
+**CI** run 33134350323 (all four jobs green)
 
 `/ready` set the durable-feature data-age gauge with
 `age_seconds or 0.0`. `None` (the newest-event time is genuinely
@@ -915,8 +925,9 @@ companion `durable_feature_snapshot_has_known_age` gauge so the same
 fact is queryable/alertable without a NaN-aware query.
 
 ## CI-COVERAGE-WORDING-68 — CI's coverage comment cited a number already wrong
-**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Severity** Low · **Status** verified closed
 **Fix commits** `912c00a` (wording), `4547c27` (regression test)
+**CI** run 33134350323 (all four jobs green)
 
 The comment above CI's coverage-floor command said "current coverage is
 ~64%"; a full run at that same point in history actually measured
@@ -1318,9 +1329,9 @@ still unbounded after an earlier pass had bounded everything else), five
 medium, and three low. Every one has a fix committed on this branch
 with a fail-then-pass regression test, several verified against real
 Docker containers rather than mocks alone (the Redis-degraded-path and
-deployment-contract fixes). **None carries CI evidence yet** -- that is
-added once a real CI run against this branch is actually green, in a
-follow-up commit to this document, not asserted here from local runs.
+deployment-contract fixes), and is now verified against real CI:
+**run 33134350323**, all four jobs green, not asserted from local
+runs alone.
 
 Combined with the 23 primary findings from the original review above,
 this project has now had 34 findings raised and addressed across two
