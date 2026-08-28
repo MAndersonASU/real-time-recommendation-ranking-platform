@@ -1,12 +1,12 @@
 import json
 import time
-from pathlib import Path
 
 from recommender.evaluation.contract import load_split
+from recommender.paths import mind_small_path
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import build_serving_context, recommend
 
-REPORT_PATH = Path("data/processed/mind_small/inference_path_verification_report.json")
+REPORT_PATH = mind_small_path("inference_path_verification_report.json")
 
 
 def verify_inference_path(num_users: int = 20) -> dict:

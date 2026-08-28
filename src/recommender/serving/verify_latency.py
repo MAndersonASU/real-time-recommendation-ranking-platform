@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import numpy as np
 
@@ -9,10 +8,11 @@ from recommender.evaluation.sampling import (
     describe_user_sample,
     sample_user_ids,
 )
+from recommender.paths import mind_small_path
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import build_serving_context, recommend
 
-REPORT_PATH = Path("data/processed/mind_small/latency_by_stage_report.json")
+REPORT_PATH = mind_small_path("latency_by_stage_report.json")
 
 
 def _percentile(values: list, pct: float) -> float:

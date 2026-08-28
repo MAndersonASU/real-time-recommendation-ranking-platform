@@ -3,7 +3,9 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-PROCESSED_DIR = Path("data/processed/mind_small")
+from recommender.paths import mind_small_path
+
+PROCESSED_DIR = mind_small_path()
 
 CTR_BY_CATEGORY_SQL = """
 WITH tokens AS (

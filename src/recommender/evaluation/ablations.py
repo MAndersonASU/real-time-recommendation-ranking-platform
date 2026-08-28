@@ -1,15 +1,15 @@
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from recommender.evaluation.contract import TOP_K, load_catalog
 from recommender.evaluation.evaluate_ranking import _evaluate_by_score
+from recommender.paths import mind_small_path
 from recommender.ranking.build_dataset import TRAIN_PATH, VALIDATION_PATH
 from recommender.ranking.features import FEATURE_COLUMNS
 from recommender.ranking.train import load_ranking_frame, train_ranking_model
 from recommender.tracking.experiment_log import log_run
 
-REPORT_PATH = Path("data/processed/mind_small/ablation_report.json")
+REPORT_PATH = mind_small_path("ablation_report.json")
 
 # `popularity` is already excluded from every trained ranking model
 # (recommender.ranking.train -- it scores worse than random on validation,

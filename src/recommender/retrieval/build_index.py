@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 
 import faiss
 import numpy as np
 import torch
 
 from recommender.evaluation.contract import load_catalog, load_split
+from recommender.paths import mind_small_path
 from recommender.retrieval.content_artifact import load_item_content
 from recommender.retrieval.features import (
     build_catalog_arrays,
@@ -22,9 +22,9 @@ from recommender.retrieval.index import (
 from recommender.retrieval.model import TwoTowerModel
 from recommender.retrieval.train import EMBEDDING_DIM, MODEL_PATH
 
-EXACT_INDEX_PATH = Path("data/processed/mind_small/faiss_exact.index")
-IVF_INDEX_PATH = Path("data/processed/mind_small/faiss_ivf.index")
-INDEX_REPORT_PATH = Path("data/processed/mind_small/faiss_index_report.json")
+EXACT_INDEX_PATH = mind_small_path("faiss_exact.index")
+IVF_INDEX_PATH = mind_small_path("faiss_ivf.index")
+INDEX_REPORT_PATH = mind_small_path("faiss_index_report.json")
 NLIST = 256
 TOP_N = 50
 NUM_QUERY_USERS = 500

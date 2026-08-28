@@ -1,7 +1,7 @@
 import json
 import time
-from pathlib import Path
 
+from recommender.paths import mind_small_path
 from recommender.streaming.consumer import StreamConsumer, run_consumer
 from recommender.streaming.kafka_client import (
     DEFAULT_BOOTSTRAP_SERVERS,
@@ -11,7 +11,7 @@ from recommender.streaming.kafka_client import (
 from recommender.streaming.recovery import report_consumer_lag
 from recommender.streaming.schema import EventType, make_event
 
-RECOVERY_REPORT_PATH = Path("data/processed/mind_small/recovery_verification_report.json")
+RECOVERY_REPORT_PATH = mind_small_path("recovery_verification_report.json")
 
 
 def _fresh_topic(prefix: str) -> str:

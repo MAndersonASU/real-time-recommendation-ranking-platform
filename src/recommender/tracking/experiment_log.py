@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_LOG_PATH = Path("data/processed/mind_small/experiment_log.jsonl")
+from recommender.paths import mind_small_path
+
+DEFAULT_LOG_PATH = mind_small_path("experiment_log.jsonl")
 
 # This file's own location anchors the git command to this project's
 # repo, not wherever the calling process's current working directory

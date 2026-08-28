@@ -1,16 +1,16 @@
 import json
 import time
-from pathlib import Path
 
 import psutil
 
 from recommender.evaluation.contract import load_split
+from recommender.paths import mind_small_path
 from recommender.retrieval.train import MODEL_PATH as RETRIEVAL_MODEL_PATH
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import build_serving_context, recommend
 
-RANKING_MODEL_PATH = Path("data/processed/mind_small/ranking_model.skops")
-FAISS_EXACT_INDEX_PATH = Path("data/processed/mind_small/faiss_exact.index")
+RANKING_MODEL_PATH = mind_small_path("ranking_model.skops")
+FAISS_EXACT_INDEX_PATH = mind_small_path("faiss_exact.index")
 NUM_REQUESTS = 30
 
 
@@ -90,7 +90,7 @@ def profile_hotspots() -> dict:
 
 def main() -> None:
     report = profile_hotspots()
-    report_path = Path("data/processed/mind_small/profile_hotspots_report.json")
+    report_path = mind_small_path("profile_hotspots_report.json")
     report_path.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

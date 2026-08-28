@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -13,10 +12,11 @@ from recommender.evaluation.metrics import (
     recall_at_k,
     reciprocal_rank,
 )
+from recommender.paths import mind_small_path
 from recommender.ranking.build_dataset import VALIDATION_PATH
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS, MODEL_PATH
 
-REPORT_PATH = Path("data/processed/mind_small/ranking_evaluation_report.json")
+REPORT_PATH = mind_small_path("ranking_evaluation_report.json")
 
 
 def _evaluate_by_score(rows: pd.DataFrame, score_column: str, k: int, catalog_size: int) -> dict:

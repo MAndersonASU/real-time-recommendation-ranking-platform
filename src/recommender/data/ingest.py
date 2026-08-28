@@ -2,9 +2,10 @@ import json
 from pathlib import Path
 
 from recommender.data.mind import load_behaviors, load_news
+from recommender.paths import data_path, mind_small_path
 
-RAW_DIR = Path("data/raw")
-PROCESSED_DIR = Path("data/processed/mind_small")
+RAW_DIR = data_path("raw")
+PROCESSED_DIR = mind_small_path()
 SPLITS = ("train", "dev")
 
 
