@@ -170,3 +170,53 @@ def test_a_non_replay_source_accepts_a_trailing_z_offset():
     )
 
     assert event.timestamp == "2019-11-14T08:00:00Z"
+
+
+# --- TIMESTAMP-CONTRACT-64 follow-up: _is_rfc3339 must reject anything
+# datetime.fromisoformat parses that RFC3339's own grammar does not ---
+
+
+@pytest.mark.parametrize(
+    ("label", "timestamp"),
+    [
+        ("space instead of T", "2019-11-14 08:00:00+00:00"),
+        ("seconds omitted", "2019-11-14T08:00+00:00"),
+        ("lowercase t separator", "2019-11-14t08:00:00+00:00"),
+        ("lowercase z offset", "2019-11-14T08:00:00z"),
+        ("missing offset entirely", "2019-11-14T08:00:00"),
+        ("offset with no colon", "2019-11-14T08:00:00+0000"),
+        ("offset with no minutes", "2019-11-14T08:00:00+00"),
+        ("date-only, no time", "2019-11-14"),
+        ("ordinal date form", "2019-318T08:00:00Z"),
+        ("impossible month", "2019-13-01T08:00:00Z"),
+        ("impossible hour", "2019-11-14T25:00:00Z"),
+        ("impossible day", "2019-02-30T08:00:00Z"),
+    ],
+)
+def test_non_replay_source_rejects_iso8601_forms_outside_rfc3339(label, timestamp):
+    """Regression test for a real bug, found by audit: `_is_rfc3339` only
+    checked that `datetime.fromisoformat` parsed the value and found a
+    timezone -- but `fromisoformat` accepts plenty of real ISO 8601
+    forms RFC3339's own grammar excludes (a space instead of "T",
+    omitted seconds, a lowercase "t"/"z", ...), so a non-replay event
+    with one of these could pass a validator whose own error message
+    claims "must be a timezone-aware RFC3339 datetime". Fails on the
+    pre-fix code (`_is_rfc3339` returns True for all of these) and
+    passes once a structural regex against RFC3339's own grammar runs
+    before `fromisoformat`, with `fromisoformat` still catching a
+    structurally valid but calendar-impossible date or time.
+    """
+    with pytest.raises(ValueError, match="timezone-aware RFC3339"):
+        InteractionEvent.from_json(_payload(source="synthetic_test", timestamp=timestamp))
+
+
+def test_non_replay_source_accepts_every_real_rfc3339_shape():
+    for timestamp in [
+        "2019-11-14T08:00:00Z",
+        "2019-11-14T08:00:00+00:00",
+        "2019-11-14T08:00:00-05:00",
+        "2019-11-14T08:00:00.123Z",
+        "2019-11-14T08:00:00.123456+00:00",
+    ]:
+        event = InteractionEvent.from_json(_payload(source="synthetic_test", timestamp=timestamp))
+        assert event.timestamp == timestamp

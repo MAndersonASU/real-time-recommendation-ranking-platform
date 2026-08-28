@@ -32,16 +32,38 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
+# RFC3339's own grammar (section 5.6), not merely "whatever
+# datetime.fromisoformat happens to parse": a literal, uppercase "T"
+# date/time separator (not a space, not lowercase "t" -- ISO 8601 permits
+# both as alternates, but RFC3339's ABNF does not), mandatory seconds
+# (`time-second` is not optional in `partial-time`), and a mandatory
+# offset -- literal uppercase "Z" or a numeric "+HH:MM"/"-HH:MM" (not
+# lowercase "z", not a bare "+00" or "+0000"). Fractional seconds are
+# optional, per `time-secfrac`.
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+)
+
+
 def _is_rfc3339(value: str) -> bool:
-    """A genuine RFC3339 datetime: parseable *and* timezone-aware. An
-    offset is not optional in RFC3339 -- a naive string like MIND's own
-    timestamps is not this format, whatever `fromisoformat` accepts.
+    """A genuine RFC3339 datetime, not merely a string
+    `datetime.fromisoformat` happens to accept -- that function is
+    intentionally more permissive than RFC3339 (it also parses MIND's
+    own space-separated, offset-less shape, ISO 8601 forms RFC3339
+    itself excludes, and RFC3339-*like* forms such as omitted seconds
+    or a lowercase "t"/"z"), so a structural regex against RFC3339's own
+    grammar runs first. `fromisoformat` still runs afterward, on values
+    that already passed the regex, to reject a structurally valid but
+    calendar-impossible date or time (month 13, hour 25, ...), which
+    the regex's fixed-width digit groups cannot catch by themselves.
+
     Required for a live event's own timestamp (`InteractionEvent.validate`,
     any `source` other than `REPLAY_SOURCE`); `_is_dataset_local_timestamp`
     below is the deliberately more permissive check for a replayed one.
     """
+    if not _RFC3339_RE.match(value):
+        return False
     try:
-        # Python 3.11's fromisoformat accepts a trailing Z directly.
         parsed = datetime.fromisoformat(value)
     except (ValueError, AttributeError):
         return False
