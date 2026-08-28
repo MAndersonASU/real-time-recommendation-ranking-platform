@@ -84,17 +84,22 @@ def test_recent_clicked_items_is_bounded_to_max_recent_items():
 
 
 def test_seen_event_ids_and_distinct_counters_stay_bounded_under_sustained_traffic():
-    """Regression test for a real bug, found by audit: `_seen_event_ids`
-    and the monitoring counters' `distinct_users`/`distinct_items` were
-    plain, unbounded sets -- a long-running consumer process grows them
-    forever, one entry per never-before-seen event id, user, or item.
-    Fails on the pre-fix code (a plain `set` keeps every entry, growing
-    past the cap) and passes once each is bounded with FIFO eviction. A
-    small cap here (not the real 100,000-entry production default)
-    keeps this test fast while still exercising the real code path.
+    """Regression test for a real bug, found by audit: `_seen_event_ids`,
+    the monitoring counters' `distinct_users`/`distinct_items`, and
+    `user_states` were plain, unbounded sets/dicts -- a long-running
+    consumer process grows them forever, one entry per never-before-seen
+    event id, user, or item. Fails on the pre-fix code (a plain `set` or
+    `dict` keeps every entry, growing past the cap) and passes once each
+    is bounded with eviction. A small cap here (not the real
+    100,000-entry production default) keeps this test fast while still
+    exercising the real code path.
     """
     max_size = 5
-    consumer = StreamConsumer(max_seen_event_ids=max_size, max_distinct_tracked=max_size)
+    consumer = StreamConsumer(
+        max_seen_event_ids=max_size,
+        max_distinct_tracked=max_size,
+        max_tracked_users=max_size,
+    )
 
     for i in range(max_size + 10):
         event = make_event(EventType.CLICK, f"U{i}", f"N{i}", 1, "2019-11-14T08:00:00")
@@ -103,8 +108,51 @@ def test_seen_event_ids_and_distinct_counters_stay_bounded_under_sustained_traff
     assert len(consumer._seen_event_ids) == max_size
     assert len(consumer.counters.distinct_users) == max_size
     assert len(consumer.counters.distinct_items) == max_size
+    assert len(consumer.user_states) == max_size
     # Still real, working dedup within the current window, not just bounded:
     assert consumer.counters.total_processed == max_size + 10
+
+
+def test_user_states_reproduces_the_reported_unbounded_growth_bug():
+    """The exact scenario from the audit report: a 1,000-user run left
+    `user_states` holding all 1,000 entries while the other counters
+    correctly stayed at their configured cap of 10 -- proof `user_states`
+    was the one structure the earlier bounding pass missed.
+    """
+    cap = 10
+    consumer = StreamConsumer(
+        max_seen_event_ids=cap, max_distinct_tracked=cap, max_tracked_users=cap
+    )
+
+    for i in range(1000):
+        event = make_event(EventType.CLICK, f"U{i}", f"N{i}", 1, "2019-11-14T08:00:00")
+        consumer.process(event.to_json())
+
+    assert len(consumer.user_states) == cap
+    assert len(consumer.counters.distinct_users) == cap
+
+
+def test_user_states_evicts_least_recently_touched_not_oldest_inserted():
+    """LRU, not FIFO: a user who keeps sending events must not be
+    evicted just because they were the first one seen, as long as
+    something else is genuinely idle.
+    """
+    max_size = 3
+    consumer = StreamConsumer(max_tracked_users=max_size)
+
+    for user in ["U1", "U2", "U3"]:
+        consumer.process(
+            make_event(EventType.CLICK, user, "N1", 1, "2019-11-14T08:00:00").to_json()
+        )
+    # U1 is the oldest insertion, but touch it again -- it should now
+    # outlive U2, the next-oldest, once a new user forces an eviction.
+    consumer.process(make_event(EventType.CLICK, "U1", "N2", 1, "2019-11-14T08:00:00").to_json())
+    consumer.process(make_event(EventType.CLICK, "U4", "N1", 1, "2019-11-14T08:00:00").to_json())
+
+    assert "U1" in consumer.user_states
+    assert "U2" not in consumer.user_states
+    assert "U3" in consumer.user_states
+    assert "U4" in consumer.user_states
 
 
 def test_different_users_are_tracked_independently():

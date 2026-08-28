@@ -11,14 +11,14 @@ from recommender.streaming.schema import SCHEMA_VERSION, EventType, InteractionE
 
 MAX_RECENT_ITEMS = 20
 
-# `_seen_event_ids` and the monitoring counters' `distinct_users`/
-# `distinct_items` are bounded to a fixed capacity, evicting the
-# oldest-inserted entry once full -- a plain, unbounded `set` would let
-# a long-running consumer process grow them forever, one entry per
-# never-before-seen event id, user, or item, for as long as the process
-# runs. A disclosed, intentional tradeoff, not a full fix for the
-# underlying problem: `distinct_users`/
-# `distinct_items` now mean "distinct among the most recently tracked
+# `_seen_event_ids`, the monitoring counters' `distinct_users`/
+# `distinct_items`, and `user_states` (below) are all bounded to a fixed
+# capacity, evicting the oldest entry once full -- a plain, unbounded
+# `set` or `dict` would let a long-running consumer process grow them
+# forever, one entry per never-before-seen event id, user, or item, for
+# as long as the process runs. A disclosed, intentional tradeoff, not a
+# full fix for the underlying problem: `distinct_users`/`distinct_items`
+# now mean "distinct among the most recently tracked
 # `MAX_DISTINCT_TRACKED` entries," not "distinct across this process's
 # entire lifetime" -- and duplicate detection only catches a redelivery
 # that arrives within the same window. A durable, cross-restart dedup
@@ -27,6 +27,17 @@ MAX_RECENT_ITEMS = 20
 # this only fixes the unbounded in-process memory growth.
 MAX_SEEN_EVENT_IDS = 100_000
 MAX_DISTINCT_TRACKED = 100_000
+
+# For SyncingStreamConsumer, `user_states` is a read-through cache over
+# Redis, which stays authoritative -- an evicted entry is just reloaded
+# from Redis on that user's next event, nothing is lost. For the plain
+# in-process StreamConsumer, it is the only copy of that state, so
+# eviction here is a real, permanent loss of a user's recent history;
+# that class is scoped to finite verification runs (see its docstring),
+# never wired into a long-running production entrypoint, so this bound
+# exists to cap worst-case memory rather than to be exercised in
+# practice.
+MAX_TRACKED_USERS = 100_000
 
 # Bounded retry for an offset commit. A commit failure is usually
 # transient (a rebalance, a briefly unreachable broker), so a few
@@ -71,6 +82,43 @@ class BoundedSet:
         return NotImplemented
 
 
+class BoundedUserStates:
+    """A dict-like `user_id -> UserState` cache bounded to `max_size`
+    entries, LRU eviction (oldest-accessed, not oldest-inserted, since a
+    read here means "this user is still active" as much as a write does).
+
+    Only the subset of dict's interface the two consumers and their
+    tests actually use: indexing, `in`, `len`, and `setdefault`.
+    """
+
+    def __init__(self, max_size: int) -> None:
+        self._max_size = max_size
+        self._data: OrderedDict[str, UserState] = OrderedDict()
+
+    def __contains__(self, user_id: str) -> bool:
+        return user_id in self._data
+
+    def __getitem__(self, user_id: str) -> "UserState":
+        state = self._data[user_id]
+        self._data.move_to_end(user_id)
+        return state
+
+    def __setitem__(self, user_id: str, state: "UserState") -> None:
+        self._data[user_id] = state
+        self._data.move_to_end(user_id)
+        if len(self._data) > self._max_size:
+            self._data.popitem(last=False)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def setdefault(self, user_id: str, default: "UserState") -> "UserState":
+        if user_id in self._data:
+            return self[user_id]
+        self[user_id] = default
+        return default
+
+
 @dataclass
 class UserState:
     """Recent, in-process state for one user -- not a durable store; a
@@ -102,14 +150,23 @@ class StreamConsumer:
     or already-seen, then updates state for what's left. A malformed
     message is counted and discarded, never raised -- one bad message
     must not be able to stop the stream.
+
+    A finite verification utility, not a production-capable consumer:
+    `user_states` is this class's only copy of per-user state (no
+    durable backing), so bounding it caps worst-case memory but does not
+    prevent a long-running process from silently losing old users'
+    history to eviction. `SyncingStreamConsumer` (`live_sync.py`) is the
+    production-shaped subclass -- it treats Redis as authoritative and
+    `user_states` there is a disposable read-through cache.
     """
 
     def __init__(
         self,
         max_seen_event_ids: int = MAX_SEEN_EVENT_IDS,
         max_distinct_tracked: int = MAX_DISTINCT_TRACKED,
+        max_tracked_users: int = MAX_TRACKED_USERS,
     ) -> None:
-        self.user_states: dict[str, UserState] = {}
+        self.user_states = BoundedUserStates(max_tracked_users)
         self.counters = MonitoringCounters(
             distinct_users=BoundedSet(max_distinct_tracked),
             distinct_items=BoundedSet(max_distinct_tracked),
