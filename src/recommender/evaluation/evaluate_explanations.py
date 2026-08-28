@@ -1,6 +1,5 @@
 import json
 import re
-from pathlib import Path
 
 from recommender.evaluation.contract import load_catalog, load_split
 from recommender.evaluation.sampling import (
@@ -14,10 +13,11 @@ from recommender.explanation.generation import (
     generate_explanation,
 )
 from recommender.explanation.retrieval import retrieve_support_context
+from recommender.paths import mind_small_path
 from recommender.serving.contract import RecommendationRequest
 from recommender.serving.pipeline import ServingContext, build_serving_context, recommend
 
-REPORT_PATH = Path("data/processed/mind_small/explanation_evaluation_report.json")
+REPORT_PATH = mind_small_path("explanation_evaluation_report.json")
 DEFAULT_NUM_USERS = 60
 DEFAULT_NUM_CANDIDATES = 3
 
@@ -160,13 +160,15 @@ def evaluate_explanations(
 
 
 def main() -> None:
-    from recommender.evaluation.publish import publish_explanation_report
+    from recommender.evaluation.publish import output_dir_from_argv, publish_explanation_report
 
     context = build_serving_context()
     report = evaluate_explanations(context)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
-    published = publish_explanation_report(report, sampling=report["sampling"])
+    published = publish_explanation_report(
+        report, sampling=report["sampling"], output_dir=output_dir_from_argv()
+    )
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 

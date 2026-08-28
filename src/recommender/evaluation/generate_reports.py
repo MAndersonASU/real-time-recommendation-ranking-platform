@@ -21,10 +21,11 @@ it means they must be re-run rather than re-labelled.
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-from recommender.evaluation.reports import REPORTS_DIR, validate_report
+from recommender.evaluation.reports import PROJECT_ROOT, REPORTS_DIR, validate_report
 
 EXPECTED_REPORTS = (
     "retrieval-evaluation",
@@ -76,6 +77,60 @@ def check_reports(directory: Path = REPORTS_DIR) -> list[str]:
     return problems
 
 
+def _is_shallow_clone() -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=10, check=False,
+        )
+        return result.stdout.strip() == "true"
+    except (subprocess.SubprocessError, OSError):
+        return True  # can't tell -- treat as shallow, skip the check
+
+
+def check_commits_are_real_ancestors(directory: Path = REPORTS_DIR) -> list[str]:
+    """Each report's recorded `source_commit` must be a real commit that
+    is actually reachable from `HEAD` -- not just a well-formed-looking
+    hash.
+
+    `validate_report`'s hash-format check (EVAL-PROVENANCE-58) rejects a
+    string like "banana", but a syntactically valid 40-character hex
+    string that simply never existed, or that belongs to some other
+    unrelated history, would still pass it. This is the check that
+    catches that: it needs the actual commit objects present, so it is
+    a no-op on a shallow clone (the default for `actions/checkout`)
+    rather than reporting false failures for commits genuinely present
+    only in the fuller history a public reader might not have fetched.
+    """
+    directory = Path(directory)
+    if not directory.exists() or _is_shallow_clone():
+        return []
+
+    problems = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+            commit = report["provenance"]["source_commit"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue  # already reported by check_reports
+        exists = subprocess.run(
+            ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+            cwd=PROJECT_ROOT, capture_output=True, timeout=10, check=False,
+        )
+        if exists.returncode != 0:
+            problems.append(f"{path.name}: source_commit {commit} does not exist in this repository")
+            continue
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, "HEAD"],
+            cwd=PROJECT_ROOT, capture_output=True, timeout=10, check=False,
+        )
+        if ancestor.returncode != 0:
+            problems.append(
+                f"{path.name}: source_commit {commit} exists but is not an ancestor of HEAD"
+            )
+    return problems
+
+
 def main() -> None:
     if not REPORTS_DIR.exists():
         print(
@@ -99,6 +154,19 @@ def main() -> None:
         raise SystemExit(1)
     for name in EXPECTED_REPORTS:
         print(f"valid    {name}")
+
+    if _is_shallow_clone():
+        print(
+            "\nskipped  commit-ancestry check (shallow clone -- fetch full history "
+            "to run it)"
+        )
+        return
+    ancestry_problems = check_commits_are_real_ancestors()
+    if ancestry_problems:
+        for problem in ancestry_problems:
+            print(f"INVALID  {problem}", file=sys.stderr)
+        raise SystemExit(1)
+    print("valid    every recorded source_commit exists and is a real ancestor")
 
 
 if __name__ == "__main__":

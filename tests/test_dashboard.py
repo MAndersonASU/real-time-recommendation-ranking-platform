@@ -32,7 +32,7 @@ def test_render_dashboard_html_produces_a_real_html_page():
     html = render_dashboard_html()
 
     assert "<html>" in html
-    assert "Total requests" in html
+    assert "Recommend attempts" in html
     assert "Error rate" in html
 
 

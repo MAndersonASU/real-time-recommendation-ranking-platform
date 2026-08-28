@@ -1,10 +1,10 @@
 import json
-from pathlib import Path
 
 import pandas as pd
 import skops.io as sio
 
 from recommender.evaluation.contract import TOP_K, load_catalog, load_split
+from recommender.paths import mind_small_path
 from recommender.ranking.baselines import build_content_vectors
 from recommender.ranking.build_dataset import VALIDATION_PATH
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS, MODEL_PATH
@@ -15,7 +15,7 @@ from recommender.reranking.freshness import (
     compute_first_seen,
 )
 
-REPORT_PATH = Path("data/processed/mind_small/failure_analysis_report.json")
+REPORT_PATH = mind_small_path("failure_analysis_report.json")
 
 HISTORY_LENGTH_BINS = [-1, 0, 5, 20, 10_000]
 HISTORY_LENGTH_LABELS = ["0", "1-5", "6-20", "20+"]

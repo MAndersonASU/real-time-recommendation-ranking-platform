@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 
+from recommender.paths import mind_small_path
 from recommender.serving.pipeline import build_serving_context
 from recommender.tracking.experiment_log import log_run
 from recommender.tracking.replay_evaluation import evaluate_via_replay
 
-REPORT_PATH = Path("data/processed/mind_small/replay_evaluation_report.json")
+REPORT_PATH = mind_small_path("replay_evaluation_report.json")
 
 
 def main() -> None:

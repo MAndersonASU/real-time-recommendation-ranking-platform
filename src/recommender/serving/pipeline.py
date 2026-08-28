@@ -1,18 +1,18 @@
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import faiss
 import numpy as np
 import pandas as pd
-import redis
 import skops.io as sio
 import torch
 
 from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import CATALOG_PATH, load_catalog, load_split
 from recommender.features.cold_start import get_online_features
-from recommender.features.state_store import build_client
+from recommender.features.state_store import RedisCircuitBreaker, build_client
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.features import content_profile, hour_of_day
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
@@ -80,6 +80,10 @@ class ServingContext:
     first_seen: pd.Series
     popularity: pd.Series
     redis_client: object
+    # Shared across every request this process serves, not rebuilt per
+    # call -- the whole point of a circuit breaker is state that
+    # persists between requests (recommender.features.state_store.RedisCircuitBreaker).
+    redis_circuit_breaker: RedisCircuitBreaker = field(default_factory=RedisCircuitBreaker)
 
 
 def _load_two_tower_model(num_categories: int, num_subcategories: int) -> TwoTowerModel:
@@ -211,6 +215,7 @@ def recommend(
     use_recent_features: bool = True,
     include_matched_signals: bool = False,
     capture_candidates: list | None = None,
+    on_redis_degraded: Callable[[], None] | None = None,
 ) -> RecommendationResponse:
     """Online features -> user embedding -> candidate retrieval -> ranking
     -> reranking -> a Top-K response, exactly the inference path's own
@@ -252,6 +257,17 @@ def recommend(
     (`MatchedSignals`, recommender.serving.contract) at the exact point
     they already exist in `slate` -- opt-in, since only the explanation
     layer (recommender.explanation) needs this, not an ordinary request.
+
+    `on_redis_degraded`, when given a callable, is invoked (with no
+    arguments) if the online feature lookup could not reach Redis --
+    real failure or the circuit breaker skipping the attempt, either way
+    (recommender.features.cold_start.get_online_features). This request
+    still completes and still returns a real, durable-features-backed
+    response; the callback exists purely so a caller can record the
+    infrastructure signal ("Redis itself is degraded") separately from
+    the ordinary, non-failure case of a user who simply has no recent
+    events yet -- both leave `recent_features_used` False on the
+    response, and that flag alone cannot tell them apart.
     """
     def _stage_start() -> float:
         return time.perf_counter() if stage_timings is not None else 0.0
@@ -261,15 +277,15 @@ def recommend(
             stage_timings[name] = (time.perf_counter() - start) * 1000
 
     t = _stage_start()
-    try:
-        lookup = get_online_features(
-            request.user_id,
-            context.durable_cache.features_by_user,
-            context.redis_client,
-            use_recent_features=use_recent_features,
-        )
-    except redis.exceptions.RedisError as exc:
-        raise DependencyUnavailableError("redis_unavailable") from exc
+    lookup = get_online_features(
+        request.user_id,
+        context.durable_cache.features_by_user,
+        context.redis_client,
+        use_recent_features=use_recent_features,
+        circuit_breaker=context.redis_circuit_breaker,
+    )
+    if lookup.redis_unavailable and on_redis_degraded is not None:
+        on_redis_degraded()
     history_ids = lookup.recent.recent_clicked_items
     _stage_end("feature_lookup_ms", t)
 
@@ -358,13 +374,16 @@ def recommend(
 
     # Falls back to a genuinely UTC clock, not bare local wall-clock
     # time, when a caller (e.g. /demo, which never sets request_time)
-    # supplies none -- every other naive timestamp in this project
-    # represents naive-but-UTC-by-convention (MIND's own timestamps,
-    # `first_seen`, and so on), and on a server whose OS timezone isn't
-    # UTC, a bare `datetime.now()` would be naive-but-*local*, silently
-    # inconsistent with that convention. `datetime.now(UTC)` is
-    # genuinely UTC; `.replace(tzinfo=None)` keeps it naive-typed so it
-    # stays directly comparable to those other naive-UTC values rather
+    # supplies none -- every other naive timestamp in this project is
+    # *treated* as UTC by pragmatic, disclosed convention (MIND's own
+    # timestamps, `first_seen`, and so on), even though MIND's real
+    # timezone is undocumented and therefore actually unknown
+    # (`docs/engineering-review-register.md`'s FEATURE-TIMEZONE-20). On
+    # a server whose OS timezone isn't UTC, a bare `datetime.now()`
+    # would be naive-but-*local*, silently inconsistent with that
+    # convention. `datetime.now(UTC)` is genuinely UTC;
+    # `.replace(tzinfo=None)` keeps it naive-typed so it stays directly
+    # comparable to those other naive, UTC-by-convention values rather
     # than needing every downstream consumer to become timezone-aware.
     has_real_request_time = request.request_time is not None
     request_time = request.request_time or datetime.now(UTC).replace(tzinfo=None)

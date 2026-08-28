@@ -1,6 +1,5 @@
 import json
 import time
-from pathlib import Path
 
 from recommender.features.online_features import RecentUserFeatures
 from recommender.features.state_store import (
@@ -8,8 +7,9 @@ from recommender.features.state_store import (
     load_recent_features,
     save_recent_features,
 )
+from recommender.paths import mind_small_path
 
-REPORT_PATH = Path("data/processed/mind_small/redis_connectivity_report.json")
+REPORT_PATH = mind_small_path("redis_connectivity_report.json")
 CHECK_USER_ID = "connectivity-check-user"
 N_LOOKUPS = 200
 

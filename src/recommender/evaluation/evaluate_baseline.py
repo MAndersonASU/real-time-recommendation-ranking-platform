@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -13,6 +12,7 @@ from recommender.evaluation.metrics import (
     recall_at_k,
     reciprocal_rank,
 )
+from recommender.paths import mind_small_path
 from recommender.ranking.baselines import (
     build_collaborative_factors,
     build_content_vectors,
@@ -22,7 +22,7 @@ from recommender.ranking.baselines import (
     rank_by_popularity,
 )
 
-REPORT_PATH = Path("data/processed/mind_small/baseline_report.json")
+REPORT_PATH = mind_small_path("baseline_report.json")
 
 
 def _aggregate(model: str, k: int, per_impression: dict, recommended_items: set, catalog_size: int) -> dict:

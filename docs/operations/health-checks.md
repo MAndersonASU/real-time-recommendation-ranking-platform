@@ -25,10 +25,12 @@ right now. Two dependencies are checked, and treated very differently:
   before startup finishes gets a real `503`, not a response built
   against a context that doesn't exist.
 - **Redis** — checked with a real `ping()`, but reported as a
-  *dependency status*, not a readiness gate. An unreachable Redis
-  degrades personalization — `safe_recommend` already falls back to
-  popularity ranking (`docs/operations/serving-fallback.md`) — without making the
-  service unable to serve a valid response at all. Failing readiness
+  *dependency status*, not a readiness gate. An unreachable Redis only
+  empties one input to an already-running pipeline — the recent-clicks
+  record — while durable features, the trained model, and the ranking
+  pipeline keep serving real, personalized responses
+  (`docs/operations/serving-fallback.md`), without the service becoming
+  unable to serve a valid response at all. Failing readiness
   outright over a degraded-but-working Redis would pull a perfectly
   serviceable instance out of a load balancer's rotation for the wrong
   reason.
@@ -44,6 +46,23 @@ right now. Two dependencies are checked, and treated very differently:
 ```
 
 A degraded Redis reports the same `ready: true`, with
-`"redis": "degraded (falls back to popularity ranking)"` instead —
+`"redis": "degraded (durable-features-only personalization)"` instead —
 verified with a real, unmocked connection failure the same way
-`docs/operations/serving-fallback.md` verified the fallback path itself.
+`docs/operations/serving-fallback.md` verified the degraded path itself.
+
+## This holds at container startup too, not just mid-request
+
+`docker-compose.yml`'s `api` service has no `depends_on` entry for Redis
+(DEPLOYMENT-CONTRACT-62): `build_serving_context` never connects to
+Redis during startup, only constructs a client object, lazily connected
+on its first real command, so there was never a real dependency here to
+gate on. Verified against the live containers with Redis never started
+at all, not merely stopped: `docker compose up -d api` alone (`redis`
+never created) still reached a healthy `/health`, `/ready` still
+reported `ready: true` with the same degraded Redis status shown
+above, and `/recommend` returned a real, personalized response. An
+earlier version of this compose file did block API
+startup on Redis's health check — a real gap between what
+`docs/architecture.md` claimed ("Redis is optional, startup does not
+gate on it") and what the file actually did, found by this
+verification.

@@ -1,14 +1,14 @@
 import json
-from pathlib import Path
 
 import pandas as pd
 import skops.io as sio
 
+from recommender.paths import mind_small_path
 from recommender.ranking.build_dataset import VALIDATION_PATH
 from recommender.ranking.calibration import calibration_bins, expected_calibration_error
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS, MODEL_PATH
 
-INSPECTION_REPORT_PATH = Path("data/processed/mind_small/ranking_calibration_report.json")
+INSPECTION_REPORT_PATH = mind_small_path("ranking_calibration_report.json")
 
 
 def inspect_scores() -> dict:

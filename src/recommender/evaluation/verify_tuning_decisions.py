@@ -1,6 +1,5 @@
 import json
 from functools import lru_cache
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -21,6 +20,7 @@ from recommender.evaluation.tuning_fold import (
     split_rows_by_impression_ids,
     split_train_for_tuning,
 )
+from recommender.paths import mind_small_path
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.build_dataset import TRAIN_PATH
 from recommender.ranking.features import history_ids_from_raw
@@ -45,7 +45,7 @@ from recommender.serving.pipeline import MIN_RETRIEVAL_CANDIDATES, RETRIEVAL_MUL
 # every comparison's own output.
 COMPARISON_SAMPLE_IMPRESSIONS = 1500
 
-REPORT_PATH = Path("data/processed/mind_small/tuning_decisions_verification_report.json")
+REPORT_PATH = mind_small_path("tuning_decisions_verification_report.json")
 
 # Real numbers as originally reported, measured on `validation` -- the
 # leaked measurements this verification re-checks against the tune
@@ -787,7 +787,7 @@ def verify_retrieval_depth(
 
 
 def main() -> None:
-    from recommender.evaluation.publish import publish_tuning_report
+    from recommender.evaluation.publish import output_dir_from_argv, publish_tuning_report
 
     report = {
         "popularity_exclusion": verify_popularity_exclusion(),
@@ -801,7 +801,9 @@ def main() -> None:
     # Every section here draws its own sample; the diversity-cap section's
     # description stands for the run, and each section carries its own
     # alongside its numbers.
-    published = publish_tuning_report(report, sampling=collect_sampling(report))
+    published = publish_tuning_report(
+        report, sampling=collect_sampling(report), output_dir=output_dir_from_argv()
+    )
     print(json.dumps(report, indent=2))
     print(f"published {published}")
 

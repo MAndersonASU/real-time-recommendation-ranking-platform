@@ -147,6 +147,50 @@ def test_validate_rejects_a_report_with_no_source_commit():
         validate_report(report)
 
 
+@pytest.mark.parametrize(
+    "bad_commit",
+    [
+        "banana",
+        "0" * 39,  # one char short
+        "0" * 41,  # one char long
+        "g" * 40,  # not hex
+        ("a1b2c3d4e5" * 4).upper(),  # a real hash's length, wrong case
+        123,
+    ],
+    ids=["not-hex-like", "too-short", "too-long", "non-hex-chars", "uppercase", "not-a-string"],
+)
+def test_validate_rejects_a_malformed_source_commit(bad_commit):
+    """EVAL-PROVENANCE-58: a nonempty value used to be accepted outright.
+    `GIT_COMMIT_SHA=banana` made this exact string reach a published
+    report and pass validation -- checked here directly, not just via
+    the resolver, so a future validator regression is caught even if
+    something else constructs a report by hand.
+    """
+    report = _report()
+    report["provenance"]["source_commit"] = bad_commit
+
+    with pytest.raises(ValueError, match="hex commit hash"):
+        validate_report(report)
+
+
+def test_source_commit_ignores_git_commit_sha_env_var(monkeypatch):
+    """EVAL-PROVENANCE-58: an evaluation report's provenance must always
+    reflect the real repository state, never a caller-supplied
+    environment variable. `GIT_COMMIT_SHA` remains correct for
+    recommender.monitoring.artifact_manifest and
+    recommender.tracking.experiment_log, which run inside containers
+    with no `.git` directory to discover a commit from -- this
+    function is not that case.
+    """
+    from recommender.evaluation import reports as reports_module
+
+    real_commit = reports_module._git("rev-parse", "HEAD")
+    monkeypatch.setenv("GIT_COMMIT_SHA", "banana")
+
+    assert reports_module.source_commit() == real_commit
+    assert reports_module.source_commit() != "banana"
+
+
 def test_validate_rejects_a_metric_with_no_definition():
     """A number with no stated definition is not a result, it is a
     number. `recall@k` in particular has several defensible definitions

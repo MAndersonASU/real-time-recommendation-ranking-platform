@@ -1,11 +1,11 @@
 import json
 import time
-from pathlib import Path
 
 import pandas as pd
 
 from recommender.data.mind import explode_impressions
 from recommender.evaluation.contract import load_split
+from recommender.paths import mind_small_path
 from recommender.streaming.kafka_client import (
     DEFAULT_BOOTSTRAP_SERVERS,
     build_producer,
@@ -15,7 +15,7 @@ from recommender.streaming.schema import EventType, make_event
 
 TOPIC = "interaction-events"
 DEFAULT_SPEED = 3600.0  # 1 simulated hour per real second
-REPLAY_REPORT_PATH = Path("data/processed/mind_small/replay_producer_report.json")
+REPLAY_REPORT_PATH = mind_small_path("replay_producer_report.json")
 
 
 def order_and_limit(exploded: pd.DataFrame, limit: int | None = None) -> pd.DataFrame:

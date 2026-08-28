@@ -4,8 +4,9 @@ from pathlib import Path
 import pandas as pd
 
 from recommender.data.mind import explode_impressions
+from recommender.paths import mind_small_path
 
-PROCESSED_DIR = Path("data/processed/mind_small")
+PROCESSED_DIR = mind_small_path()
 SPLITS = ("train", "dev")
 
 

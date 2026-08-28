@@ -80,12 +80,15 @@ services:
       # all (recommender.tracking.experiment_log's repository-discovery
       # fallback only works for local development). Compose can't run a
       # shell command inline -- set GIT_COMMIT_SHA in the host
-      # environment before building for this to carry a real value,
-      # e.g.:
+      # environment before building for this to carry a real value, or
+      # use the committed wrapper that does exactly that:
+      #   bash build-image.sh
+      # equivalent to:
       #   GIT_COMMIT_SHA=$(git rev-parse HEAD) docker compose build api
-      # Left unset, the image still builds fine; experiment_log simply
-      # falls back to no commit identity at all inside the container
-      # (matching today's prior behavior) rather than failing.
+      # Left unset (a plain `docker compose build api`), the image
+      # still builds fine; experiment_log simply falls back to no
+      # commit identity at all inside the container (matching today's
+      # prior behavior) rather than failing.
       args:
         GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
     container_name: recommender-api
@@ -108,14 +111,23 @@ services:
       # Trained model, index, ranking pipeline, and reserved splits --
       # gitignored local research output, never baked into the image.
       - ./data:/app/data:ro
-    depends_on:
-      redis:
-        condition: service_healthy
-      # Not kafka: the live API never consumes from or produces to Kafka
-      # at request time (only the offline replay and consumer scripts
-      # do), so blocking API startup on Kafka's health would be an
-      # unnecessary coupling -- found and removed while testing
-      # what a Kafka interruption should and shouldn't affect.
+    # No depends_on at all, deliberately: the API's own startup
+    # (`recommender.serving.pipeline.build_serving_context`) never
+    # connects to Redis -- it only constructs a client object, lazily
+    # connected on first real command -- so gating container startup on
+    # `redis: condition: service_healthy` was a real coupling this
+    # process doesn't have (DEPLOYMENT-CONTRACT-62), the same kind
+    # already found and removed for Kafka below. `/ready` still checks
+    # Redis with a real `ping()` and reports it as a degraded, non-fatal
+    # dependency status if it's down (`docs/operations/health-checks.md`);
+    # this only changes when Compose is willing to start the container at
+    # all, not what the running service reports.
+    #
+    # Kafka was never in this list either: the live API doesn't consume
+    # from or produce to Kafka at request time (only the offline replay
+    # and consumer scripts do), so blocking API startup on Kafka's
+    # health would be an unnecessary coupling -- found and removed while
+    # testing what a Kafka interruption should and shouldn't affect.
     healthcheck:
       # No curl/wget in the slim base image -- urllib is already there.
       # /health is process liveness only (not /ready), matching what a

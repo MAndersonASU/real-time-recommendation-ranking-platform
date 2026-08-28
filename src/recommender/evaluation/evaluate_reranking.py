@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -8,6 +7,7 @@ import skops.io as sio
 from recommender.evaluation.contract import TOP_K, load_catalog, load_split
 from recommender.evaluation.metrics import catalog_coverage, hit_rate_at_k, reciprocal_rank
 from recommender.evaluation.retrieval_metrics import ndcg_at_n_known_total, recall_at_n_known_total
+from recommender.paths import mind_small_path
 from recommender.ranking.baselines import build_content_vectors
 from recommender.ranking.build_dataset import VALIDATION_PATH
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS, MODEL_PATH
@@ -20,7 +20,7 @@ from recommender.reranking.freshness import (
     compute_first_seen,
 )
 
-REPORT_PATH = Path("data/processed/mind_small/reranking_evaluation_report.json")
+REPORT_PATH = mind_small_path("reranking_evaluation_report.json")
 
 
 def _relevance_metrics(ordered: pd.DataFrame, k: int, true_relevant_count: int) -> dict:

@@ -24,11 +24,19 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Test with coverage floor
-        # A modest, real floor -- current coverage is ~64%; set below
-        # that to leave headroom rather than chasing the number itself.
-        # Meant to catch a real regression (a whole module losing its
-        # tests), not to be raised just to look better; raise only when
-        # real new coverage has actually landed.
+        # A modest, real floor, deliberately set with headroom below
+        # actual coverage rather than pinned to it -- the true, current
+        # percentage is only ever real at the exact commit it was
+        # measured on, and hardcoding it here is a claim that goes stale
+        # on the very next commit (CI-COVERAGE-WORDING-68: an earlier
+        # version of this comment said "~64%"; a full run at that same
+        # point in history actually measured 61.28%). Run
+        # `pytest --cov=recommender --cov-report=term-missing` locally
+        # for the real, current number instead of trusting a number in
+        # this comment. This floor is meant to catch a real regression
+        # (a whole module losing its tests), not to be raised just to
+        # look better; raise only when real new coverage has actually
+        # landed.
         run: pytest -q --cov=recommender --cov-report=term-missing --cov-fail-under=60
       - name: Static security analysis
         run: bandit -r src/recommender -ll
@@ -46,6 +54,11 @@ jobs:
     # on its own, so it can't.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          # generate_reports's commit-ancestry check needs real commit
+          # objects to walk; a shallow clone makes it a no-op instead of a
+          # false failure, but this job is where it should actually run.
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"

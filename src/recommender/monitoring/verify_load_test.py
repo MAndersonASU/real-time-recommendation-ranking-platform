@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 
 from recommender.evaluation.contract import load_split
 from recommender.monitoring.load_test import sweep_concurrency
+from recommender.paths import mind_small_path
 from recommender.serving.pipeline import build_serving_context
 
-REPORT_PATH = Path("data/processed/mind_small/load_test_report.json")
+REPORT_PATH = mind_small_path("load_test_report.json")
 NUM_USERS = 50
 
 

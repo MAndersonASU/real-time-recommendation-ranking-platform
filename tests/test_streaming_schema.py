@@ -126,3 +126,47 @@ def test_a_valid_event_still_round_trips():
     restored = InteractionEvent.from_json(original.to_json())
 
     assert restored == original
+
+
+# --- TIMESTAMP-CONTRACT-64: a non-replay source needs a real RFC3339
+# timestamp, not merely something datetime.fromisoformat happens to parse ---
+
+
+def test_a_replay_source_still_accepts_mind_style_naive_timestamps():
+    # REPLAY_SOURCE (the default `source`) is exactly the one place
+    # MIND's own naive, dataset-local timestamp shape is legitimate.
+    event = InteractionEvent.from_json(_payload(timestamp="2019-11-14 08:00:00"))
+
+    assert event.timestamp == "2019-11-14 08:00:00"
+
+
+def test_a_non_replay_source_rejects_a_naive_timestamp():
+    """Regression test for a real bug, found by audit: the validator
+    accepted a naive timestamp (no timezone offset) for every source,
+    including one that is not a replay of historical MIND data, while
+    its own error message claimed "must be an RFC3339 datetime" -- RFC3339
+    requires an offset, so a naive string was never actually RFC3339.
+    Fails on the pre-fix code (a naive string passes regardless of
+    source) and passes once a non-replay source is held to the real
+    standard its error message already claimed.
+    """
+    with pytest.raises(ValueError, match="timezone-aware RFC3339"):
+        InteractionEvent.from_json(
+            _payload(source="synthetic_test", timestamp="2019-11-14T08:00:00")
+        )
+
+
+def test_a_non_replay_source_accepts_a_real_timezone_aware_timestamp():
+    event = InteractionEvent.from_json(
+        _payload(source="synthetic_test", timestamp="2019-11-14T08:00:00+00:00")
+    )
+
+    assert event.timestamp == "2019-11-14T08:00:00+00:00"
+
+
+def test_a_non_replay_source_accepts_a_trailing_z_offset():
+    event = InteractionEvent.from_json(
+        _payload(source="synthetic_test", timestamp="2019-11-14T08:00:00Z")
+    )
+
+    assert event.timestamp == "2019-11-14T08:00:00Z"

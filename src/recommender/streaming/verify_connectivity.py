@@ -1,7 +1,7 @@
 import json
 import time
-from pathlib import Path
 
+from recommender.paths import mind_small_path
 from recommender.streaming.kafka_client import (
     DEFAULT_BOOTSTRAP_SERVERS,
     build_consumer,
@@ -9,7 +9,7 @@ from recommender.streaming.kafka_client import (
     ensure_topic,
 )
 
-REPORT_PATH = Path("data/processed/mind_small/kafka_connectivity_report.json")
+REPORT_PATH = mind_small_path("kafka_connectivity_report.json")
 
 
 def verify_connectivity(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS) -> dict:

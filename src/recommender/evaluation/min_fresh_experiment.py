@@ -315,7 +315,10 @@ def main(limit: int | None = None, reuse_outcomes: bool = False) -> None:
         }
     )
 
-    from recommender.evaluation.publish import publish_min_fresh_experiment_report
+    from recommender.evaluation.publish import (
+        output_dir_from_argv,
+        publish_min_fresh_experiment_report,
+    )
 
     published = publish_min_fresh_experiment_report(
         summary,
@@ -329,6 +332,7 @@ def main(limit: int | None = None, reuse_outcomes: bool = False) -> None:
             "bootstrap_resamples": BOOTSTRAP_RESAMPLES,
             "bootstrap_unit": "user (clustered), not impression",
         },
+        output_dir=output_dir_from_argv(),
     )
     print(json.dumps(summary, indent=2))
     print(f"published {published}")

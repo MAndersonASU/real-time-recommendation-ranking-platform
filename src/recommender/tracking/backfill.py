@@ -1,9 +1,9 @@
 import json
-from pathlib import Path
 
+from recommender.paths import mind_small_path
 from recommender.tracking.experiment_log import log_run
 
-REPORTS_DIR = Path("data/processed/mind_small")
+REPORTS_DIR = mind_small_path()
 
 
 def _numeric(d: dict) -> dict:

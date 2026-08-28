@@ -1,15 +1,15 @@
 import json
 import time
 import zipfile
-from pathlib import Path
 
 from recommender.data.ingest import ingest_split
+from recommender.paths import data_path, mind_small_path
 
-RAW_ZIP_DIR = Path("data/raw")
-RAW_LARGE_DIR = Path("data/raw_large")
-PROCESSED_LARGE_DIR = Path("data/processed/mind_large")
-SMALL_REPORT_PATH = Path("data/processed/mind_small/ingestion_report.json")
-REPORT_PATH = Path("data/processed/mind_large/ingestion_report.json")
+RAW_ZIP_DIR = data_path("raw")
+RAW_LARGE_DIR = data_path("raw_large")
+PROCESSED_LARGE_DIR = data_path("processed", "mind_large")
+SMALL_REPORT_PATH = mind_small_path("ingestion_report.json")
+REPORT_PATH = data_path("processed", "mind_large", "ingestion_report.json")
 
 ZIP_NAMES = {"train": "MINDlarge_train.zip", "dev": "MINDlarge_dev.zip"}
 

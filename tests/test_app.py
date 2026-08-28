@@ -70,6 +70,98 @@ def test_recommend_endpoint_rejects_an_invalid_request():
     assert response.status_code == 422
 
 
+def test_a_422_is_counted_by_http_requests_total_but_not_recommend_requests_total():
+    """Regression test for a real bug, found by audit: `recommend_requests_total`
+    only ever incremented inside `recommend_endpoint`'s own body, so a
+    request FastAPI rejects with a 422 before that handler ever runs
+    (malformed body -- here, num_candidates=0 fails its own gt=0
+    constraint) was real traffic no metric ever counted, even though the
+    dashboard used to label the derived number "Total requests" (now
+    "Recommend attempts", the honest scope). Fails on the pre-fix code
+    (HTTP_REQUESTS_TOTAL doesn't exist, nothing records this 422
+    anywhere) and passes once the access-log middleware records every
+    response regardless of whether a handler ran.
+    """
+    from recommender.monitoring.metrics import HTTP_REQUESTS_TOTAL, REQUEST_COUNT
+
+    def _count(counter, **labels):
+        return counter.labels(**labels)._value.get()
+
+    http_before = _count(HTTP_REQUESTS_TOTAL, route="/recommend", method="POST", status_class="4xx")
+    recommend_before = _count(REQUEST_COUNT, outcome="success") + _count(REQUEST_COUNT, outcome="error")
+
+    response = _client().post("/recommend", json={"user_id": "u1", "num_candidates": 0})
+
+    assert response.status_code == 422
+    assert _count(HTTP_REQUESTS_TOTAL, route="/recommend", method="POST", status_class="4xx") == http_before + 1
+    # The narrower, handler-scoped metric correctly still does not see
+    # a request that never reached the handler.
+    after = _count(REQUEST_COUNT, outcome="success") + _count(REQUEST_COUNT, outcome="error")
+    assert after == recommend_before
+
+
+def test_a_middleware_level_500_is_counted_by_http_requests_total():
+    from unittest.mock import patch
+
+    from recommender.monitoring.metrics import HTTP_REQUESTS_TOTAL
+
+    def _count(counter, **labels):
+        return counter.labels(**labels)._value.get()
+
+    client = TestClient(app_module.app, raise_server_exceptions=False)
+    _client()  # ensures _state["context"] / _state["quality_tracker"] are set
+    before = _count(HTTP_REQUESTS_TOTAL, route="/recommend", method="POST", status_class="5xx")
+
+    with patch.object(app_module, "safe_recommend", side_effect=RuntimeError("simulated unhandled bug")):
+        response = client.post("/recommend", json={"user_id": "u1", "num_candidates": 3})
+
+    assert response.status_code == 500
+    assert _count(HTTP_REQUESTS_TOTAL, route="/recommend", method="POST", status_class="5xx") == before + 1
+
+
+def test_http_requests_total_labels_by_route_template_not_the_resolved_path():
+    """A raw resolved path (`/demo/u1`, `/demo/u2`, ...) would give this
+    counter one label series per distinct user id ever requested --
+    unbounded cardinality. The route template (`/demo/{user_id}`) is
+    what FastAPI actually matched, and is what gets recorded -- proven
+    with two different real user ids in the path, both landing under
+    the one template label. Uses the query-validation 422 (matches
+    `test_demo_endpoint_rejects_an_out_of_range_num_candidates_with_422_not_500`
+    above), which routing resolves before validation runs, rather than a
+    full render, so this stays independent of the demo page's own
+    explanation pipeline.
+    """
+    from recommender.monitoring.metrics import HTTP_REQUESTS_TOTAL
+
+    def _count(counter, **labels):
+        return counter.labels(**labels)._value.get()
+
+    client = _client()
+    before = _count(HTTP_REQUESTS_TOTAL, route="/demo/{user_id}", method="GET", status_class="4xx")
+
+    first = client.get("/demo/u1", params={"num_candidates": 0})
+    second = client.get("/demo/some-other-user", params={"num_candidates": 0})
+
+    assert first.status_code == 422
+    assert second.status_code == 422
+    assert _count(HTTP_REQUESTS_TOTAL, route="/demo/{user_id}", method="GET", status_class="4xx") == before + 2
+
+
+def test_http_requests_total_labels_an_unmatched_path_with_a_bounded_literal():
+    from recommender.monitoring.metrics import HTTP_REQUESTS_TOTAL
+
+    def _count(counter, **labels):
+        return counter.labels(**labels)._value.get()
+
+    client = _client()
+    before = _count(HTTP_REQUESTS_TOTAL, route="unmatched", method="GET", status_class="4xx")
+
+    response = client.get("/this-route-does-not-exist")
+
+    assert response.status_code == 404
+    assert _count(HTTP_REQUESTS_TOTAL, route="unmatched", method="GET", status_class="4xx") == before + 1
+
+
 def test_ready_reports_ready_and_redis_ok_when_everything_works():
     response = _client().get("/ready")
 
@@ -78,6 +170,37 @@ def test_ready_reports_ready_and_redis_ok_when_everything_works():
     assert body["ready"] is True
     assert body["dependencies"]["model_index_ranking"] == "ok"
     assert body["dependencies"]["redis"] == "ok"
+
+
+def test_ready_reports_unknown_data_age_as_nan_not_a_false_zero():
+    """Regression test for a real bug, found by audit: `/ready` set the
+    durable-feature data-age gauge with `age_seconds or 0.0`, which
+    folds "the newest-event time is genuinely unknown" (`None`) into
+    "the snapshot is 0 seconds old" -- both are falsy in Python. Fails
+    on the pre-fix code (the gauge reads a real 0.0) and passes once
+    `None` is reported as `NaN` and a separate availability gauge, not
+    silently as fresh.
+    """
+    import dataclasses
+    import math
+
+    from recommender.monitoring.metrics import (
+        DURABLE_FEATURE_DATA_AGE,
+        DURABLE_FEATURE_SNAPSHOT_HAS_KNOWN_AGE,
+    )
+
+    client = _client()
+    context = app_module._state["context"]
+    app_module._state["context"] = dataclasses.replace(
+        context, durable_cache=dataclasses.replace(context.durable_cache, data_as_of=None)
+    )
+
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["durable_features"]["data_age_seconds"] is None
+    assert math.isnan(DURABLE_FEATURE_DATA_AGE._value.get())
+    assert DURABLE_FEATURE_SNAPSHOT_HAS_KNOWN_AGE._value.get() == 0
 
 
 def test_ready_stays_ready_but_reports_redis_degraded_on_a_real_connection_failure():

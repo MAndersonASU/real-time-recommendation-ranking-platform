@@ -1,12 +1,12 @@
 import json
-from pathlib import Path
 
 from recommender.evaluation.sampling import DEFAULT_SAMPLE_SEED
+from recommender.paths import mind_small_path
 from recommender.serving.pipeline import build_serving_context
 from recommender.tracking.experiment_log import log_run
 from recommender.tracking.replay_evaluation import evaluate_via_replay
 
-REPORT_PATH = Path("data/processed/mind_small/recent_features_ablation_report.json")
+REPORT_PATH = mind_small_path("recent_features_ablation_report.json")
 
 
 def run_recent_features_ablation(sample_seed: int = DEFAULT_SAMPLE_SEED) -> dict:
@@ -25,9 +25,20 @@ def run_recent_features_ablation(sample_seed: int = DEFAULT_SAMPLE_SEED) -> dict
     with_recent = evaluate_via_replay(context, sample_seed=sample_seed, use_recent_features=True)
     without_recent = evaluate_via_replay(context, sample_seed=sample_seed, use_recent_features=False)
 
-    assert with_recent["sampling"]["selected_ids_sha256"] == without_recent["sampling"]["selected_ids_sha256"], (
-        "the two arms sampled different impressions; this is no longer a paired comparison"
-    )
+    # `assert` is unsuitable here: it is compiled out entirely under
+    # `python -O` (BANDIT-REVIEW-65, Bandit B101 -- an assert used for
+    # anything beyond a debugging aid is a real hazard, not a style
+    # preference), which would let this specific invariant -- that both
+    # arms scored the exact same sample -- silently stop being checked
+    # and let an unpaired comparison continue and publish.
+    with_digest = with_recent["sampling"]["selected_ids_sha256"]
+    without_digest = without_recent["sampling"]["selected_ids_sha256"]
+    if with_digest != without_digest:
+        raise ValueError(
+            "the two arms sampled different impressions -- this is no longer a paired "
+            f"comparison (with_recent digest {with_digest!r}, without_recent digest "
+            f"{without_digest!r})"
+        )
 
     return {
         "with_recent_features": with_recent,

@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 
 import pandas as pd
 
 from recommender.data.splits import assert_no_time_leakage, time_aware_split
+from recommender.paths import mind_small_path
 
-PROCESSED_DIR = Path("data/processed/mind_small")
+PROCESSED_DIR = mind_small_path()
 SPLITS_DIR = PROCESSED_DIR / "splits"
 
 

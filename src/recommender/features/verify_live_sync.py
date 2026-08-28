@@ -1,9 +1,9 @@
 import json
 import time
-from pathlib import Path
 
 from recommender.features.live_sync import SyncingStreamConsumer
 from recommender.features.state_store import build_client, load_recent_features
+from recommender.paths import mind_small_path
 from recommender.streaming.consumer import run_consumer
 from recommender.streaming.kafka_client import (
     DEFAULT_BOOTSTRAP_SERVERS,
@@ -12,7 +12,7 @@ from recommender.streaming.kafka_client import (
 )
 from recommender.streaming.schema import EventType, make_event
 
-REPORT_PATH = Path("data/processed/mind_small/live_sync_verification_report.json")
+REPORT_PATH = mind_small_path("live_sync_verification_report.json")
 
 
 def verify_live_sync(

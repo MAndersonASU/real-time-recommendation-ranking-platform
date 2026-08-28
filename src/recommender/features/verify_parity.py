@@ -1,14 +1,14 @@
 import json
-from pathlib import Path
 
 import pandas as pd
 
 from recommender.features.online_features import recent_features_from_user_state
 from recommender.features.parity import compute_recent_features_offline
+from recommender.paths import mind_small_path
 from recommender.streaming.consumer import StreamConsumer
 from recommender.streaming.replay_producer import events_for_row, load_replay_events
 
-REPORT_PATH = Path("data/processed/mind_small/parity_verification_report.json")
+REPORT_PATH = mind_small_path("parity_verification_report.json")
 
 
 def verify_parity(min_distinct_times: int = 5) -> dict:

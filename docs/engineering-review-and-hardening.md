@@ -106,10 +106,29 @@ reproduced by public CI, which runs against synthetic artifacts only.
 
 ### Bandit low-severity findings
 
+This table is reviewed by category, not transcribed as a one-time
+snapshot: `evaluation/generate_reports.py` alone carries three separate
+B603/B607 locations by itself (its own commit-ancestry check, added for
+EVAL-PROVENANCE-58, calls `git` twice more), and an earlier version of
+this table listed three files for that category where six now exist
+(BANDIT-REVIEW-65 -- found by re-running Bandit directly rather than
+trusting the table already matched the source). The category-level
+assessment below still holds for all six; a new call site in a
+seventh file would need the same review, not an assumption that the
+category's rationale still applies without checking.
+
 | ID | Location | Assessment |
 |---|---|---|
 | B105 | `data/schema.py`, `evaluation/publish.py` | False positives — Bandit matches identifiers containing "pass". One is a regex for a MIND impression token (`<news_id>-<0\|1>`); the other is the metric key `lexical_policy_pass_rate`. Neither is a credential. |
-| B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py` | Real category, low risk. Each calls `git` with a fully static argument list and no user input, to record the commit a result came from. Left unsuppressed rather than silenced, since the category is legitimate even where these instances are safe. |
+| B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py`, `evaluation/build_receipt.py`, `evaluation/generate_reports.py`, `features/verify_aof_recovery.py` | Real category, low risk. Each calls `git` or `docker` with a fully static argument list and no user input, to record the commit a result came from or to verify a real container's recovery behaviour. Left unsuppressed rather than silenced, since the category is legitimate even where these instances are safe. |
+
+B101 (`assert` used outside a test) doesn't appear above because it no
+longer exists, not because it was ever reviewed and accepted:
+`tracking/recent_features_ablation.py` used a bare `assert` for a real
+evaluation invariant (the paired-sample digest check), which `python -O`
+compiles out entirely -- an unpaired comparison could have silently
+continued and published. Fixed by replacing it with an explicit
+`ValueError` (BANDIT-REVIEW-65).
 
 ### `pip-audit` caveat
 
