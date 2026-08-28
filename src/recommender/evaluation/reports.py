@@ -24,7 +24,6 @@ user identifiers, no article text.
 
 import hashlib
 import json
-import os
 import re
 import subprocess
 from datetime import UTC, datetime
@@ -81,8 +80,29 @@ def _git(*args: str) -> str | None:
         return None
 
 
+_COMMIT_HASH_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
 def source_commit() -> str | None:
-    return os.environ.get("GIT_COMMIT_SHA") or _git("rev-parse", "HEAD")
+    """The real commit this evaluation ran from, always from `git
+    rev-parse HEAD` -- never from `GIT_COMMIT_SHA`.
+
+    An earlier version preferred `GIT_COMMIT_SHA` when set, the same
+    fallback `recommender.monitoring.artifact_manifest` and
+    `recommender.tracking.experiment_log` correctly use, because a
+    container built from a source archive has no `.git` directory to
+    discover a commit from at all. An evaluation report is a different
+    case: it always runs from a real checkout with `.git` present (the
+    licensed dataset this depends on is never baked into a container
+    image), so there is no reason to trust an environment variable
+    over the actual repository state, and every reason not to --
+    `GIT_COMMIT_SHA=banana` made `validate_report` accept a report
+    stamped with a commit that was never real, reopening exactly the
+    provenance weakness EVAL-PROVENANCE-01 fixed. `validate_report`
+    additionally requires this to look like a real commit hash, so a
+    malformed value cannot reach a published report through any path.
+    """
+    return _git("rev-parse", "HEAD")
 
 
 def working_tree_is_clean() -> bool:
@@ -202,8 +222,20 @@ def validate_report(report: dict) -> None:
     missing_provenance = [f for f in REQUIRED_PROVENANCE_FIELDS if f not in provenance]
     if missing_provenance:
         raise ValueError(f"provenance is missing: {missing_provenance}")
-    if not provenance.get("source_commit"):
+    commit = provenance.get("source_commit")
+    if not commit:
         raise ValueError("provenance has no source commit")
+    if not isinstance(commit, str) or not _COMMIT_HASH_RE.match(commit):
+        # A nonempty string was previously accepted outright.
+        # `GIT_COMMIT_SHA=banana` produced exactly this: a report
+        # stamped with a value that looks like provenance but was never
+        # a real commit. A genuine `git rev-parse HEAD` is always a
+        # 40-character lowercase hex string; anything else is rejected
+        # here regardless of where it came from.
+        raise ValueError(
+            f"provenance.source_commit {commit!r} is not a 40-character lowercase "
+            "hex commit hash"
+        )
     if provenance.get("working_tree_clean") is not True:
         raise ValueError(
             "report was produced from a dirty working tree, so its recorded commit "
