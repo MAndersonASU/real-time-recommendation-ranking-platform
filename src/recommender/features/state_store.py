@@ -1,5 +1,7 @@
 import json
+import threading
 import time
+from enum import Enum
 
 import redis
 from redis.backoff import NoBackoff
@@ -52,18 +54,48 @@ def build_client(
     )
 
 
+class _BreakerState(Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
 class RedisCircuitBreaker:
     """Trips after `failure_threshold` consecutive Redis failures and
     stays open for `cooldown_seconds` -- so once Redis is genuinely
     down, requests after the first few fail fast without even
     attempting a connection, instead of every concurrent request paying
     its own connect timeout against a host that is not coming back
-    within it. One probe request is let through once the cooldown
-    elapses, to detect recovery without waiting for an operator.
+    within it. Exactly one probe request is let through once the
+    cooldown elapses, to detect recovery without waiting for an
+    operator.
+
+    Explicit CLOSED / OPEN / HALF_OPEN states under a lock, not a
+    stateless time comparison: `allow_request()` used to be
+    `now - opened_at >= cooldown`, computed fresh on every call with no
+    memory of whether a probe was already dispatched -- once the
+    cooldown elapsed, *every* concurrent caller got the same `True`
+    answer simultaneously (reproduced directly: 8 threads racing
+    `allow_request()` right after cooldown all got `True`), which is
+    the thundering herd this breaker exists to prevent, not fix. The
+    transition to HALF_OPEN happens inside the same locked call that
+    returns the probe's `True`, so it is the *first* caller past the
+    lock that claims the slot; every other concurrent (or merely
+    later) caller sees `HALF_OPEN` already claimed and gets `False`
+    until the probe's own `record_success`/`record_failure` resolves it.
+
+    A probe caller that never calls either -- an exception type
+    `get_online_features` doesn't itself catch, escaping before either
+    method runs -- leaves the breaker stuck in `HALF_OPEN` until the
+    next real failure or success reaches it some other way. Every
+    current caller (`cold_start.get_online_features`) always calls one
+    or the other, so this is a real but currently unreached edge case,
+    not a gap this class silently papers over.
 
     Shared across requests: one instance lives on `ServingContext`
     (`recommender.serving.pipeline`), built once at service start, not
-    per request.
+    per request -- exactly the situation where an unlocked read-check-act
+    sequence like the original `allow_request()` is unsafe.
     """
 
     def __init__(
@@ -75,26 +107,47 @@ class RedisCircuitBreaker:
         self._failure_threshold = failure_threshold
         self._cooldown_seconds = cooldown_seconds
         self._clock = clock
+        self._lock = threading.Lock()
         self._consecutive_failures = 0
         self._opened_at: float | None = None
+        self._state = _BreakerState.CLOSED
 
     def allow_request(self) -> bool:
-        if self._opened_at is None:
-            return True
-        return (self._clock() - self._opened_at) >= self._cooldown_seconds
+        with self._lock:
+            if self._state is _BreakerState.CLOSED:
+                return True
+            if self._state is _BreakerState.HALF_OPEN:
+                # A probe is already in flight; everyone else degrades
+                # immediately rather than also paying a connect attempt.
+                return False
+            # OPEN: allow exactly the first caller past the cooldown to
+            # become the probe, atomically -- the state flip happens
+            # before the lock is released, so no other thread can also
+            # observe "cooldown elapsed, no probe claimed yet". `_opened_at`
+            # is always set together with entering OPEN (record_failure,
+            # or the reopen branch below), so it is never None here.
+            if self._opened_at is not None and (self._clock() - self._opened_at) >= self._cooldown_seconds:
+                self._state = _BreakerState.HALF_OPEN
+                return True
+            return False
 
     def record_success(self) -> None:
-        self._consecutive_failures = 0
-        self._opened_at = None
+        with self._lock:
+            self._consecutive_failures = 0
+            self._opened_at = None
+            self._state = _BreakerState.CLOSED
 
     def record_failure(self) -> None:
-        self._consecutive_failures += 1
-        if self._consecutive_failures >= self._failure_threshold:
-            self._opened_at = self._clock()
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._state is _BreakerState.HALF_OPEN or self._consecutive_failures >= self._failure_threshold:
+                self._opened_at = self._clock()
+                self._state = _BreakerState.OPEN
 
     @property
     def is_open(self) -> bool:
-        return self._opened_at is not None and not self.allow_request()
+        with self._lock:
+            return self._state is not _BreakerState.CLOSED
 
 
 def _key(user_id: str) -> str:
