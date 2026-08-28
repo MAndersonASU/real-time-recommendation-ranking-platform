@@ -688,6 +688,248 @@ Binds `127.0.0.1` by default; `API_BIND_HOST` widens it deliberately.
 
 ---
 
+## Follow-up findings (2026-08-27 verification round)
+
+Eleven findings from a further verification pass, not a continuation of
+the numbered set above -- `EVAL-PROVENANCE-58` and `STREAM-MEMORY-60`
+reuse the existing `EVAL-*`/`STREAM-*` prefixes because they genuinely
+are that kind of finding; the other nine introduce new prefixes for
+kinds of gap this register had not previously named
+(`REPRO-*`, `DEPLOYMENT-*`, `DATA-PATH-*`, `TIMESTAMP-*`, `BANDIT-*`,
+`HTTP-METRICS-*`, `UNKNOWN-*`, `CI-*`). All eleven have a fix committed
+and a fail-then-pass regression test on this branch; **none has CI
+evidence yet** -- that is added in a follow-up commit once a real run
+is green, not claimed here from local runs (the mistake this register's
+own history already names once, in EVAL-PROVENANCE-01's account of
+CI reported as green from local runs while it was red).
+
+## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
+**Severity** Critical · **Status** open (fix committed, CI verification pending)
+**Fix commit** `912c00a` · **Tests** `tests/test_reports.py`
+
+`source_commit()` tried `GIT_COMMIT_SHA` (meant for the container
+manifest, which has no `.git` directory) before falling back to a real
+`git rev-parse HEAD`, and the validator only checked the field was
+nonempty. `GIT_COMMIT_SHA=banana` reproduced it directly: the report's
+`source_commit` came back `"banana"` and validation passed. The
+12 committed reports' real provenance was unaffected -- their actual
+commits are well-formed -- this was a validator weakness, not evidence
+their existing provenance is false.
+
+Fixed by resolving `source_commit` from Git HEAD unconditionally and
+requiring a 40-character lowercase hex hash. Also added an optional CI
+check (skipped on a shallow clone) confirming every recorded
+`source_commit` is a real, existing commit and an ancestor of `HEAD`,
+and set `fetch-depth: 0` on the job where that check can run.
+
+## REPRO-ORCHESTRATION-59 — `evaluate_all.sh` ran 7 of the 12 published evaluations
+**Severity** High · **Status** open (fix committed, CI verification pending)
+**Fix commit** `5dd91f9` · **Tests** `tests/test_orchestration_scripts.py`
+
+The script's own header claimed it ran "every evaluation whose report
+is published." It ran 7: retrieval, end-to-end, tuning decisions,
+explanations, and the min-fresh experiment were missing, because those
+five modules never accepted `--output-dir` at all. `rebuild.sh`
+similarly never built the fit-only bundle `tuning-decisions` needs for
+a leakage-free comparison. Both scripts also hardcoded the Windows venv
+layout, failing on macOS/Linux despite the README documenting both.
+
+Wired `--output-dir` into the five missing modules, added them and the
+two fit-only build commands to the scripts, and added venv-layout
+detection. A new test statically discovers every module the script
+should run from the same `EXPECTED_REPORTS` contract
+`generate_reports.py` already enforces, so a future evaluation added
+without a matching script line fails this test instead of silently
+never running in the orchestrated pass.
+
+## STREAM-MEMORY-60 — `StreamConsumer.user_states` was still unbounded
+**Severity** High · **Status** open (fix committed, CI verification pending)
+**Fix commit** `97ac5e4` · **Tests** `tests/test_consumer.py`
+
+An earlier pass bounded `_seen_event_ids` and the monitoring counters'
+`distinct_users`/`distinct_items`, with a comment describing the
+unbounded-memory problem as fixed -- but `user_states` stayed a plain
+dict. A 1,000-user run reproduced it directly: `user_states` held all
+1,000 entries while the bounded structures correctly capped at 10.
+
+Added `BoundedUserStates`, an LRU-evicting cache (recently *touched*,
+not just recently inserted, survives eviction). For
+`SyncingStreamConsumer` this is a disposable read-through cache over
+Redis, which stays authoritative, so eviction loses nothing real. The
+plain `StreamConsumer` has no other copy of this state, so its
+docstring now explicitly scopes it as a finite verification utility,
+never wired into a long-running production entrypoint -- confirmed true
+today (only `verify_*.py` scripts construct it).
+
+## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate)
+**Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
+
+Redis unavailability was caught the same way as a broken model or
+index -- the full retreat to `build_fallback_response`'s flat,
+unpersonalized popularity -- even though Redis only supplies one input
+(recent clicks) to an already-running pipeline; durable features, the
+trained model, and ranking are all unaffected by Redis being down.
+Reproduced directly: `build_client()` against a dead port took ~4s
+(redis-py's own implicit retry-with-backoff, never configured by this
+project), with no explicit retry policy set anywhere.
+
+`get_online_features` now catches a Redis failure and reports it as an
+absent recent-features record (the same shape as an ordinary cold
+user, distinguished by a narrower `redis_unavailable` flag), so
+`recommend()` completes as a real, personalized response on durable
+features. A new `RedisCircuitBreaker`, shared on `ServingContext`,
+skips the connection attempt entirely once Redis has failed enough
+consecutive times. `build_client()` now sets an explicit 0.2s timeout
+and no-retry policy. Live-verified against real Docker containers, not
+only mocks: Redis stopped mid-run and Redis never started at all both
+leave `/ready` degraded but `/recommend` still personalized on durable
+features, with the circuit breaker measurably speeding up the third
+request onward (~3-4s for the first two, 0.29s for the third).
+
+## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commit** `be8b5ce` · **Tests** `tests/test_deployment_contract.py`
+
+`docs/architecture.md` said Redis is optional and startup does not gate
+on it (`DOC-FALLBACK-SCOPE-52` above), but `docker-compose.yml`'s `api`
+service had `depends_on: redis: condition: service_healthy`, genuinely
+blocking container startup until Redis reported healthy.
+`build_serving_context` never connects to Redis during startup -- it
+only constructs a client object, lazily connected on first real
+command -- so this was a real coupling the process itself never had.
+Separately, the Dockerfile claimed Compose supplies a real
+`GIT_COMMIT_SHA` "automatically"; false, since Compose cannot run a
+shell command inline for a build arg and only forwards whatever the
+host environment already set.
+
+Removed the `depends_on` gate and live-verified against the containers
+with Redis never started at all (not merely stopped): the API still
+reached a healthy `/ready` and served real, personalized `/recommend`
+responses. Added `build-image.sh`, the committed wrapper that actually
+calls `git rev-parse HEAD` before building, and corrected the
+Dockerfile's claim.
+
+## DATA-PATH-CONSISTENCY-63 — `RECOMMENDER_DATA_ROOT` didn't move most of the project's own paths
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `5dd91f9`, `b992259`, `e615ff2` · **Tests** `tests/test_data_path_consistency.py`
+
+`recommender.paths` exists specifically so `RECOMMENDER_DATA_ROOT`
+moves every data path a deployment might relocate, but only the
+serving-critical artifact paths (the trained model, index, ranking
+pipeline) actually went through `data_path()`/`mind_small_path()`.
+Every ingestion, evaluation, and tracking module still built its own
+path from a bare `Path("data/...")` literal, relative to the process's
+working directory, so the override silently didn't apply to most of
+the project's own commands.
+
+Migrated all 27 remaining hardcoded constants (58 total across the
+project, once the already-correct ones are included). A new test
+discovers every `data_path()`/`mind_small_path()` constant statically
+(rather than hand-listing modules, which goes stale the moment a new
+one is added), then -- in a real subprocess, with a different working
+directory and a temporary `RECOMMENDER_DATA_ROOT` -- imports every one
+and checks it actually resolves beneath the override; a companion test
+bans a bare `Path("data/...")` literal outright, catching a regression
+the discovery approach alone would miss (a reverted constant just drops
+out of what gets discovered rather than failing loudly).
+
+## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commit** `063bbf5` · **Tests** `tests/test_streaming_schema.py`
+
+The schema's timestamp validator accepted anything
+`datetime.fromisoformat` parses -- naive, space-separated, whatever --
+for every event regardless of `source`, while its own error message
+claimed `"must be an RFC3339 datetime"` (RFC3339 requires a timezone
+offset; a naive string is not that). Separately, comments in
+`cache.py` and `pipeline.py` called MIND's timestamps "naive-but-UTC by
+convention," contradicting this register's own `FEATURE-TIMEZONE-20`
+entry above, which correctly says MIND does not document its
+timestamps' timezone at all -- the real zone is unknown, not UTC.
+
+Split the check in two: `_is_dataset_local_timestamp` for a replayed
+MIND event (still accepts MIND's real naive shape, honestly named and
+documented as not RFC3339), and a genuinely strict `_is_rfc3339` --
+parseable *and* timezone-aware -- required for any other source.
+Corrected the `cache.py`/`pipeline.py` comments to state the real
+situation: UTC is a pragmatic, disclosed assumption this project makes
+for comparison purposes, not a documented dataset fact.
+
+## BANDIT-REVIEW-65 — A real evaluation invariant used `assert`; the Bandit table was stale
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `e615ff2` (assert -> ValueError), `7d5f2ef` (table and guards)
+**Tests** `tests/test_recent_features_ablation.py`, `tests/test_bandit_table_sync.py`
+
+`recent_features_ablation.py`'s paired-sample digest check used a bare
+`assert`, compiled out entirely under `python -O` -- an unpaired
+comparison (the two arms scoring different impression samples) could
+have silently continued and published. Separately, the Bandit
+low-severity findings table (`docs/engineering-review-and-hardening.md`)
+claimed findings were "reviewed by category" but listed only 3 of the
+6 real files carrying a B404/B603/B607 subprocess finding -- found by
+actually re-running Bandit against the checked-out source, not by
+re-reading the table.
+
+Replaced the `assert` with an explicit `ValueError`. Updated the table
+to list all six files; the category-level assessment (a static
+`git`/`docker` argument list, no user input) still holds for all of
+them. A new test re-runs Bandit directly and checks the table's file
+list against it, so a new subprocess call site fails this test instead
+of silently falling out of the table again; a companion test AST-scans
+`src/recommender` for any `assert` statement at all.
+
+## HTTP-METRICS-SCOPE-66 — `recommend_requests_total` never saw a 422 or a middleware-level 500
+**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Fix commit** `b992259` · **Tests** `tests/test_app.py`, `tests/test_metrics.py`, `tests/test_dashboard.py`
+
+`recommend_requests_total` only ever incremented inside
+`recommend_endpoint`'s own body, so a request FastAPI rejected with a
+422 before the handler ran, or a middleware-level 500, was real traffic
+no metric counted -- reproduced directly against a `TestClient`, where
+a malformed `/recommend` body left the counter completely empty. The
+dashboard labeled the derived number "Total requests" regardless.
+
+Added `http_requests_total`, recorded once in the access-log middleware
+for every response on every route, labeled by the matched route
+*template* (not the resolved path, to keep cardinality bounded) and
+status class. Renamed the dashboard's label to "Recommend attempts" to
+match what `recommend_requests_total` actually measures, and documented
+the two metrics' distinct scopes so they can be compared rather than
+conflated.
+
+## UNKNOWN-DATA-AGE-67 — Unknown durable-feature data age reported as a false zero
+**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Fix commit** `b992259` · **Tests** `tests/test_metrics.py`, `tests/test_app.py`
+
+`/ready` set the durable-feature data-age gauge with
+`age_seconds or 0.0`. `None` (the newest-event time is genuinely
+unknown, e.g. an empty behaviors frame) and a real `0.0` are both falsy
+in Python, so unknown age silently reported as perfectly fresh.
+
+`set_durable_feature_data_age` now sets the gauge to real `NaN` --
+Prometheus's own convention for "no value," distinct from every real
+age this gauge can otherwise hold -- when the age is unknown, plus a
+companion `durable_feature_snapshot_has_known_age` gauge so the same
+fact is queryable/alertable without a NaN-aware query.
+
+## CI-COVERAGE-WORDING-68 — CI's coverage comment cited a number already wrong
+**Severity** Low · **Status** open (fix committed, CI verification pending)
+**Fix commits** `912c00a` (wording), `4547c27` (regression test)
+
+The comment above CI's coverage-floor command said "current coverage is
+~64%"; a full run at that same point in history actually measured
+61.28%, and a fresh run today measures 62.20% -- the number goes stale
+on the very next commit regardless of which value is written.
+
+Removed the volatile percentage; the comment now states only the
+enforced `--cov-fail-under=60` floor and points at running coverage
+locally for the real, current number. A new test statically bans a
+`"coverage is X%"` pattern from reappearing in the comment.
+
+---
+
 ## Documentation findings
 
 | ID | Title | Status |
@@ -951,9 +1193,12 @@ None was fixed by weakening a check.
 
 ### How to read the counts
 
-The headline tally counts the **23 primary findings** in this register
+The headline tally counts the **34 primary findings** in this register
 (`EVAL-*`, `STREAM-*`, `ARTIFACT-*`, `MANIFEST-*`, `FEATURE-*`,
-`SUPPLY-*`, `API-*`, `SCHEMA-*`) and nothing else.
+`SUPPLY-*`, `API-*`, `SCHEMA-*`, `REPRO-*`, `REDIS-*`, `DEPLOYMENT-*`,
+`DATA-PATH-*`, `TIMESTAMP-*`, `BANDIT-*`, `HTTP-METRICS-*`, `UNKNOWN-*`,
+`CI-*`) and nothing else -- 23 from the original review, 11 more from
+the follow-up verification round above.
 
 `DOC-*` and `TEST-*` findings are tracked in their own table above.
 `LIMIT-*` and `HIST-*` entries are **not findings at all** -- they are
@@ -1061,3 +1306,28 @@ reported as green from local runs while it was red. Those are recorded
 in place rather than summarised away, because a register that lists only
 the tidy findings is less useful than one that shows what actually went
 wrong.
+
+## Follow-up verification round (2026-08-27)
+
+A further verification pass found and fixed eleven more findings,
+recorded above under "Follow-up findings" -- one critical (evaluation
+provenance trusted a manifest-only environment variable ahead of the
+real Git commit), two high (an orchestration script silently ran 5 of
+12 published evaluations; a streaming consumer's per-user state was
+still unbounded after an earlier pass had bounded everything else), five
+medium, and three low. Every one has a fix committed on this branch
+with a fail-then-pass regression test, several verified against real
+Docker containers rather than mocks alone (the Redis-degraded-path and
+deployment-contract fixes). **None carries CI evidence yet** -- that is
+added once a real CI run against this branch is actually green, in a
+follow-up commit to this document, not asserted here from local runs.
+
+Combined with the 23 primary findings from the original review above,
+this project has now had 34 findings raised and addressed across two
+review rounds, by the same maintainer both times. This project is
+**still not** in a state where all review findings are closed: nothing
+about closing eleven more findings establishes that a further pass
+would not find others, and this round's own findings were themselves
+gaps in coverage an *earlier* verification pass had reported as
+complete.
+
