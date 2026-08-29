@@ -734,9 +734,11 @@ and test suite self-contradictory** -- summarized on the follow-up
 paragraph of each entry below, with its own reproduction (or, for
 `TIMESTAMP-CONTRACT-64`, its own textual inconsistency against an
 already-correct comment elsewhere in the same file), fix commit and
-regression test. New fix commits for all three are on this branch;
-they stay `open` until this branch has its own green CI run, not
-asserted from local runs alone.
+regression test. All three fixes passed
+[PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9)'s
+own CI run (33263672952, all four jobs green) and are marked verified
+closed above; the merge (`a52d04c`) was confirmed once more by a
+post-merge run on `main` (33266339509).
 
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
 **Severity** Critical · **Status** verified closed
@@ -800,10 +802,10 @@ never wired into a long-running production entrypoint -- confirmed true
 today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below), `5c32706` (probe-release on every exit path, below), `efaea84` (outcome classification, below)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
-**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
+**CI** [PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9) run 33263672952 (all four jobs green); merged as `a52d04c`, confirmed again on `main` by run 33266339509
 
 **Reopened by external review of the merged fix.** `RedisCircuitBreaker.allow_request()`
 computed `now - opened_at >= cooldown` fresh on every call with no
@@ -892,10 +894,10 @@ and three consecutive malformed records against a `failure_threshold`
 of 2 -- all fail on the pre-fix code.
 
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below), `9cf0852` (self-anchoring, whole-tree refusal, below), `1cf8464` (test-only), `208dcdd` (explicit Compose file, below)
 **Tests** `tests/test_deployment_contract.py`
-**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
+**CI** [PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9) run 33263672952 (all four jobs green); merged as `a52d04c`, confirmed again on `main` by run 33266339509
 
 **Reopened by external review of the merged fix.** `build-image.sh`
 detected a dirty working tree but only printed a warning and continued
@@ -1021,10 +1023,10 @@ the discovery approach alone would miss (a reverted constant just drops
 out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Severity** Medium · **Status** verified closed
 **Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below), `28d578d` (range-checked offset, canonical profile documented, below), `f72a556` (terminology correction, below)
 **Tests** `tests/test_streaming_schema.py`, `tests/test_documentation.py`
-**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
+**CI** [PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9) run 33263672952 (all four jobs green); merged as `a52d04c`, confirmed again on `main` by run 33266339509
 
 The schema's timestamp validator accepted anything
 `datetime.fromisoformat` parses -- naive, space-separated, whatever --
@@ -1605,4 +1607,34 @@ where all review findings are closed: nothing about closing most of
 these findings establishes that a further pass would not find others,
 and three of this very round's own fixes were themselves gaps an
 *earlier* pass in the same round had reported as complete.
+
+**This section's own promised revision, delayed across two further
+rounds.** The paragraph above said this section would be revised once
+the three reopened findings had their own green CI -- that CI run
+(`PR #6`) was green, but the tally sentence itself was never actually
+revised at the time, and later carried forward unedited through two
+more review rounds that each reopened and re-closed the same three
+findings again (`PR #7`, then `PR #8`), leaving "31 verified closed, 3
+reopened and pending this branch's CI" cited as if still current long
+after it no longer was -- an external review of that stale sentence,
+against the register's already-correct individual entries, is itself
+what triggered this correction. The sentence above is left as first
+written rather than edited in place, matching this register's own
+discipline of recording a defect rather than quietly erasing it.
+
+The real, current count, reflecting every reopening and reclosure
+through `PR #9`: still 34 findings raised in total, none added or
+removed by this correction. All 34 are marked verified closed above as
+of `PR #9`'s CI run (33263672952, all four jobs green), merged as
+`a52d04c` and confirmed once more by a post-merge run on `main`
+(33266339509) -- three of them (`REDIS-DEGRADED-PATH-61`,
+`DEPLOYMENT-CONTRACT-62`, `TIMESTAMP-CONTRACT-64`) for the fourth,
+third and fourth time respectively, each time after a further external
+review found the previous closure incomplete. That history, not a
+clean first pass, is what "verified closed" means for those three
+entries, and is recorded in full on each one above. As stated
+repeatedly throughout this register: this does not mean the project is
+now free of defects, only that every finding raised by a review so
+far, including gaps in earlier fixes for the same finding, has a
+reproduction, a fix, a regression test and a green CI run behind it.
 
