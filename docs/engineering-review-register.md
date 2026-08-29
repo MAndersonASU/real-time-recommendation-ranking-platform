@@ -714,8 +714,17 @@ account of what shipped in `PR #6` -- the same discipline this
 register already applies to itself in EVAL-PROVENANCE-01's account of
 being reopened. The other eight findings' fixes were not affected and
 are marked verified closed against the same `PR #6` CI run. The three
-reopened findings stay at `open` until their new fixes have their own
+reopened findings stayed at `open` until their new fixes had their own
 green CI run, not asserted from local runs alone.
+
+**A second external review, of the fixes that landed in
+[PR #7](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/7),
+found each of those same three findings still incomplete a further
+time** -- summarized on the follow-up paragraph of each entry below,
+with its own reproduction, fix commit and regression test, and
+verified against [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8)'s
+own CI run (33259679161, all four jobs green) before being marked
+verified closed here.
 
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
 **Severity** Critical · **Status** verified closed
@@ -779,9 +788,10 @@ never wired into a long-running production entrypoint -- confirmed true
 today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below)
+**Severity** Medium · **Status** verified closed
+**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below), `5c32706` (probe-release on every exit path, below)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
+**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
 **Reopened by external review of the merged fix.** `RedisCircuitBreaker.allow_request()`
 computed `now - opened_at >= cooldown` fresh on every call with no
@@ -818,10 +828,34 @@ leave `/ready` degraded but `/recommend` still personalized on durable
 features, with the circuit breaker measurably speeding up the third
 request onward (~3-4s for the first two, 0.29s for the third).
 
+**Reopened a second time by external review of `de457c3`.** The
+concurrency-safe state machine correctly serialised the HALF_OPEN probe
+claim, but `get_online_features` only reported `record_success`/
+`record_failure` from an `except redis.exceptions.RedisError` clause --
+an exception that reached that call for any other reason (malformed
+JSON actually stored under the key, `load_recent_features`'s bare
+`json.loads`) matched neither the `try` block's success path nor that
+`except`, so it reported nothing at all. The breaker's one HALF_OPEN
+probe slot, already claimed by `allow_request()`, was never released,
+leaving the breaker stuck refusing every later request regardless of
+Redis's real health. Reproduced directly with a fake client whose `get`
+returns `"not valid json {{{"`: a single call left `allow_request()`
+`False` forever afterward.
+
+**Fixed in `5c32706`.** Every exit path from the Redis lookup now
+reports exactly one of `record_success`/`record_failure` before
+control leaves, including a bare `except Exception` branch that still
+re-raises the original exception after reporting the failure -- the
+exception is a real bug (corrupted state), not a Redis connectivity
+failure, so it is not swallowed, only its effect on the breaker's
+bookkeeping is handled. `tests/test_cold_start.py::test_a_malformed_redis_record_still_lets_a_later_request_probe_again`
+covers exactly this case and fails on the pre-fix code.
+
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below)
+**Severity** Medium · **Status** verified closed
+**Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below), `9cf0852` (self-anchoring, whole-tree refusal, below), `1cf8464` (test-only)
 **Tests** `tests/test_deployment_contract.py`
+**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
 **Reopened by external review of the merged fix.** `build-image.sh`
 detected a dirty working tree but only printed a warning and continued
@@ -859,6 +893,43 @@ responses. Added `build-image.sh`, the committed wrapper that actually
 calls `git rev-parse HEAD` before building, and corrected the
 Dockerfile's claim.
 
+**Reopened a second time by external review of `81483fd`.** Two
+further gaps in the same script. First, `build-image.sh` had no
+directory of its own: every command inside it (`git status`, `git
+rev-parse`, `docker compose` reading `docker-compose.yml`) resolved
+relative to whatever directory the caller happened to be in when they
+invoked it, not the repository the script lives in. Reproduced
+directly: running it from an unrelated directory failed outright
+("not a git repository") instead of operating on this repository, and
+from inside a *different* git repository it would silently have read
+that repository's commit and dirty state instead of this one's.
+Second, the dirty-tree refusal only checked an enumerated list of
+paths (`src/`, `Dockerfile`, `pyproject.toml`,
+`requirements-lock.txt`) -- real gaps, since `docker-compose.yml` (the
+build context, args and Dockerfile path are all defined there),
+`.dockerignore` (controls what actually reaches the build context) and
+any Compose override file are just as image-affecting and were not
+checked at all, so a dirty `docker-compose.yml` or `.dockerignore`
+built without refusing.
+
+**Fixed in `9cf0852`.** The script now anchors itself to its own
+directory (`SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)";
+cd "$SCRIPT_DIR"`) before running any git or docker command, so its
+behaviour no longer depends on the caller's working directory. The
+dirty-tree check now covers the whole working tree
+(`git status --porcelain`, no pathspec) rather than an enumerated
+list, so it cannot miss a build input the list forgot to name, today
+or after a future change to the build -- the same trade this project's
+evaluation-report provenance check already makes. Verified against a
+real, isolated `git worktree` checkout: a dirty `docker-compose.yml`
+refuses, a dirty `.dockerignore` refuses, invocation from a third,
+unrelated directory still correctly resolves the worktree's own
+commit and dirty state, and a clean tree still reaches a real `docker
+compose build` invocation. Live-verified once more directly against
+this repository with a real Docker daemon: a genuinely dirty
+`README.md` refuses before Docker runs, and a clean tree completes a
+real image build end to end.
+
 ## DATA-PATH-CONSISTENCY-63 — `RECOMMENDER_DATA_ROOT` didn't move most of the project's own paths
 **Severity** Medium · **Status** verified closed
 **Fix commits** `5dd91f9`, `b992259`, `e615ff2` · **Tests** `tests/test_data_path_consistency.py`
@@ -885,9 +956,10 @@ the discovery approach alone would miss (a reverted constant just drops
 out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
-**Severity** Medium · **Status** open (fix committed, CI verification pending)
-**Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below)
+**Severity** Medium · **Status** verified closed
+**Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below), `28d578d` (range-checked offset, canonical profile documented, below)
 **Tests** `tests/test_streaming_schema.py`
+**CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
 The schema's timestamp validator accepted anything
 `datetime.fromisoformat` parses -- naive, space-separated, whatever --
@@ -921,6 +993,31 @@ which still runs afterward to reject a structurally valid but
 calendar-impossible date or time the regex alone can't catch. New
 tests cover both reported false positives plus lowercase separators, a
 colon-less offset, and impossible dates.
+
+**Reopened a third time by external review of `35c01b3`.** The
+structural regex matched an offset shaped like `[+-]\d{2}:\d{2}` without
+range-checking the hour or minute, and `datetime.fromisoformat` -- run
+afterward specifically to catch calendar-impossible values -- does not
+catch this case either: it normalizes an out-of-range offset via
+timedelta arithmetic instead of rejecting it, so `+00:60` parsed
+successfully as equivalent to `+01:00` rather than raising. Reproduced
+directly: `"2019-11-14T08:00:00+00:60"` passed `_is_rfc3339`.
+
+**Fixed in `28d578d`.** The offset's hour and minute are now
+range-checked in the regex itself (`(?:[01]\d|2[0-3])` for 00-23,
+`[0-5]\d` for 00-59) rather than deferred to `fromisoformat`'s more
+permissive arithmetic. This also settled a standing ambiguity: RFC3339
+itself permits a lowercase `t`/`z` separator and a UTC leap second
+(`23:59:60`), neither of which this project's validator has ever
+accepted, and Python's `datetime` cannot represent a leap second at
+all. Rather than silently keep a narrower behaviour under a
+full-RFC3339 name, the docstring and the validator's own error message
+now explicitly describe **this project's canonical profile**:
+uppercase `T`/`Z` only, mandatory seconds, a range-checked
+`+HH:MM`/`-HH:MM` offset if not `Z`, no leap second -- a deliberately
+narrower, fully-specified subset of RFC3339, not full RFC3339. New
+tests cover out-of-range offset hours and minutes on both signs and a
+leap-second timestamp, confirming all are rejected.
 
 ## BANDIT-REVIEW-65 — A real evaluation invariant used `assert`; the Bandit table was stale
 **Severity** Medium · **Status** verified closed
