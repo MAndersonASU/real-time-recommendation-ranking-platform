@@ -8,6 +8,7 @@ the doc and the file, not a documentation wording issue.
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -378,6 +379,66 @@ _EVIL_COMPOSE_CONTENT = (
     "      dockerfile: Dockerfile.evil\n"
 )
 
+# A unique marker inside the real, committed docker-compose.yml's `api`
+# service block -- used by the fake `docker` below to prove the `-f`
+# value it received really is this repository's own file, by content,
+# rather than by comparing path strings across a script that may run
+# under a POSIX-style path (MSYS/Git Bash on Windows) against a Python
+# `tempfile` path in Windows form, which would not compare equal even
+# when they name the same location.
+REAL_COMPOSE_MARKER = "container_name: recommender-api"
+
+
+def _fake_docker_dir(capture_file: Path) -> Path:
+    """A directory holding a stand-in `docker` executable that, instead
+    of running a real build, records which `-f`/`--project-directory`
+    values it was called with and -- resolved entirely inside bash, on
+    whatever machine runs the test, never compared against a Python-side
+    path string -- whether those values actually name this repository's
+    own committed `docker-compose.yml` and its own directory. Exits 0
+    unconditionally, so the wrapper script's own exit code reflects
+    only whether *it* reached and issued the docker compose invocation,
+    not whether a real image build happened to succeed.
+
+    Lets `test_compose_file_env_var_cannot_redirect_the_build_configuration`
+    and its unrelated-directory variant assert a real success exit code
+    without depending on a reachable Docker daemon -- the separate
+    `test_a_clean_tree_still_reaches_the_real_build_invocation` above
+    covers a real end-to-end build against a real daemon.
+    """
+    stub_dir = Path(tempfile.mkdtemp())
+    stub = stub_dir / "docker"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "f_value=\"\"\n"
+        "proj_value=\"\"\n"
+        "prev=\"\"\n"
+        "for arg in \"$@\"; do\n"
+        "  case \"$prev\" in\n"
+        "    -f) f_value=\"$arg\" ;;\n"
+        "    --project-directory) proj_value=\"$arg\" ;;\n"
+        "  esac\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
+        "{\n"
+        "  if [ -n \"$f_value\" ] && [ -f \"$f_value\" ] && "
+        f"grep -qF {shlex.quote(REAL_COMPOSE_MARKER)} \"$f_value\"; then\n"
+        "    echo \"f_value_is_real_compose_file=yes\"\n"
+        "  else\n"
+        "    echo \"f_value_is_real_compose_file=no ($f_value)\"\n"
+        "  fi\n"
+        "  if [ -n \"$proj_value\" ] && [ -f \"$proj_value/Dockerfile\" ]; then\n"
+        "    echo \"proj_value_is_real_repo_dir=yes\"\n"
+        "  else\n"
+        "    echo \"proj_value_is_real_repo_dir=no ($proj_value)\"\n"
+        "  fi\n"
+        f"}} > {shlex.quote(str(capture_file))}\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub_dir
+
 
 def test_compose_file_env_var_cannot_redirect_the_build_configuration():
     """Regression test for a real bug, found by external review: a bare
@@ -393,13 +454,16 @@ def test_compose_file_env_var_cannot_redirect_the_build_configuration():
     that defines no `api` service at all, a bare `docker compose build
     api` (no explicit `-f`) fails with "no such service: api" -- proof
     it read the wrong file entirely, not this repository's own
-    docker-compose.yml. Fails on the pre-fix script (that error
-    reaches stderr) and passes once `-f`/`--project-directory` pin the
-    build to this script's own directory regardless of `COMPOSE_FILE`.
+    docker-compose.yml.
 
-    Doesn't need a reachable Docker daemon: `docker compose` resolves
-    which file it is building *from* -- and so reports "no such
-    service" -- before ever trying to run a build against one.
+    A fake `docker` on `PATH` (ahead of the real one) stands in for the
+    real build, so this test can assert the script's own exit code
+    reaches 0 -- proving it actually issued the build, not merely that
+    one specific error string is absent, which an unrelated failure
+    could also satisfy -- and that the `-f`/`--project-directory`
+    values it received are genuinely this repository's own
+    docker-compose.yml and its own directory, without needing a
+    reachable Docker daemon for a real build.
     """
     bash = shutil.which("bash")
     if bash is None:
@@ -410,13 +474,20 @@ def test_compose_file_env_var_cannot_redirect_the_build_configuration():
     with (
         tempfile.TemporaryDirectory() as worktree_dir,
         tempfile.TemporaryDirectory() as evil_dir,
+        tempfile.TemporaryDirectory() as capture_dir,
     ):
         _prepared_worktree(worktree_dir)
         try:
             evil_compose = Path(evil_dir) / "evil-compose.yml"
             evil_compose.write_text(_EVIL_COMPOSE_CONTENT, encoding="utf-8")
+            capture_file = Path(capture_dir) / "docker_stub_capture.txt"
+            fake_docker_dir = _fake_docker_dir(capture_file)
 
-            env = dict(os.environ, COMPOSE_FILE=str(evil_compose))
+            env = dict(
+                os.environ,
+                COMPOSE_FILE=str(evil_compose),
+                PATH=f"{fake_docker_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+            )
             result = subprocess.run(
                 [bash, "build-image.sh"],
                 cwd=worktree_dir, capture_output=True, text=True, timeout=120, check=False, env=env,
@@ -426,6 +497,13 @@ def test_compose_file_env_var_cannot_redirect_the_build_configuration():
                 "COMPOSE_FILE redirected the build away from this repository's own "
                 f"docker-compose.yml: stdout={result.stdout!r} stderr={result.stderr!r}"
             )
+            assert result.returncode == 0, (
+                f"expected the committed Compose configuration to build successfully; "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+            capture = capture_file.read_text(encoding="utf-8")
+            assert "f_value_is_real_compose_file=yes" in capture, capture
+            assert "proj_value_is_real_repo_dir=yes" in capture, capture
         finally:
             _remove_worktree(worktree_dir)
 
@@ -434,7 +512,8 @@ def test_invocation_from_an_unrelated_directory_with_compose_file_set_still_uses
     """Both external-review gaps at once: an unrelated invocation
     directory and a `COMPOSE_FILE` pointed elsewhere, together -- proof
     neither alone, nor combined, can redirect the build away from this
-    repository's own committed docker-compose.yml.
+    repository's own committed docker-compose.yml. See the test above
+    for why a fake `docker` stands in for the real build.
     """
     bash = shutil.which("bash")
     if bash is None:
@@ -446,13 +525,20 @@ def test_invocation_from_an_unrelated_directory_with_compose_file_set_still_uses
         tempfile.TemporaryDirectory() as worktree_dir,
         tempfile.TemporaryDirectory() as evil_dir,
         tempfile.TemporaryDirectory() as unrelated_cwd,
+        tempfile.TemporaryDirectory() as capture_dir,
     ):
         _prepared_worktree(worktree_dir)
         try:
             evil_compose = Path(evil_dir) / "evil-compose.yml"
             evil_compose.write_text(_EVIL_COMPOSE_CONTENT, encoding="utf-8")
+            capture_file = Path(capture_dir) / "docker_stub_capture.txt"
+            fake_docker_dir = _fake_docker_dir(capture_file)
 
-            env = dict(os.environ, COMPOSE_FILE=str(evil_compose))
+            env = dict(
+                os.environ,
+                COMPOSE_FILE=str(evil_compose),
+                PATH=f"{fake_docker_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+            )
             result = subprocess.run(
                 [bash, str(Path(worktree_dir) / "build-image.sh")],
                 cwd=unrelated_cwd, capture_output=True, text=True, timeout=120, check=False, env=env,
@@ -462,5 +548,12 @@ def test_invocation_from_an_unrelated_directory_with_compose_file_set_still_uses
             assert "no such service: api" not in result.stderr, (
                 f"stdout={result.stdout!r} stderr={result.stderr!r}"
             )
+            assert result.returncode == 0, (
+                f"expected the committed Compose configuration to build successfully; "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+            capture = capture_file.read_text(encoding="utf-8")
+            assert "f_value_is_real_compose_file=yes" in capture, capture
+            assert "proj_value_is_real_repo_dir=yes" in capture, capture
         finally:
             _remove_worktree(worktree_dir)
