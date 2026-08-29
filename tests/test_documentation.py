@@ -277,6 +277,66 @@ def test_no_blanket_retrieval_improvement_claim() -> None:
     assert not offenders, "; ".join(offenders)
 
 
+# TIMESTAMP-CONTRACT-64, documentation-terminology finding: RFC3339
+# itself permits a lowercase "t"/"z" as a case-insensitive alternate to
+# "T"/"Z" (see recommender.streaming.schema's top-of-file comment, right
+# above `_RFC3339_RE`); only this project's own narrower canonical
+# profile excludes them. A claim that RFC3339 itself excludes a
+# lowercase separator previously appeared in both the validator's own
+# docstring and its test suite, contradicting that same top-of-file
+# comment.
+RFC3339_LOWERCASE_EXCLUSION_MISATTRIBUTION = re.compile(
+    r"(?i)RFC\s*3339[^.]{0,100}exclud[a-z]*[^.]{0,60}lowercase"
+)
+
+PYTHON_SOURCE = [
+    path
+    for path in sorted((ROOT / "src").rglob("*.py")) + sorted((ROOT / "tests").rglob("*.py"))
+    # This file's own guard below deliberately contains the banned
+    # wording as a comment and as a fixture string proving the pattern
+    # fires, which is not a real documentation claim to flag.
+    if path.name != "test_documentation.py"
+]
+
+
+def test_no_rfc3339_lowercase_exclusion_misattribution() -> None:
+    """RFC3339 permits lowercase 't'/'z'; only this project's own
+    canonical profile excludes them. Guards against
+    TIMESTAMP-CONTRACT-64's documentation-terminology gap reappearing
+    in prose, docstrings, comments or test names.
+    """
+    offenders = []
+    for path in list(MARKDOWN) + PYTHON_SOURCE:
+        text = path.read_text(encoding="utf-8")
+        text = prose_of(text) if path in MARKDOWN else text
+        for match in RFC3339_LOWERCASE_EXCLUSION_MISATTRIBUTION.finditer(text):
+            offenders.append(f"{md_id(path)}: {match.group(0)!r}")
+    assert not offenders, (
+        "misattributes lowercase t/z exclusion to RFC3339 itself, rather "
+        "than to this project's own narrower profile: " + "; ".join(offenders)
+    )
+
+
+def test_rfc3339_lowercase_exclusion_misattribution_pattern_fires() -> None:
+    """The pattern above actually catches the exact wording this pass
+    found and corrected in schema.py and test_streaming_schema.py, and
+    does not fire on the corrected wording that replaced it.
+    """
+    broken = (
+        'fromisoformat accepts several ISO 8601 forms RFC3339\'s own '
+        'grammar excludes (omitted seconds, a lowercase "t"/"z").'
+    )
+    assert RFC3339_LOWERCASE_EXCLUSION_MISATTRIBUTION.search(broken)
+
+    fixed = (
+        "forms RFC3339's own grammar genuinely excludes (a space instead "
+        'of "T", omitted seconds), and forms RFC3339 itself permits as '
+        "a case-insensitive alternate but this project's narrower "
+        'canonical profile intentionally does not (a lowercase "t"/"z").'
+    )
+    assert not RFC3339_LOWERCASE_EXCLUSION_MISATTRIBUTION.search(fixed)
+
+
 def test_blanket_retrieval_improvement_claim_pattern_fires() -> None:
     """The pattern above actually catches the exact wording this pass
     found and corrected in six files.

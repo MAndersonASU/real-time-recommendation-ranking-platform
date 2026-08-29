@@ -198,13 +198,21 @@ def test_a_non_replay_source_accepts_a_trailing_z_offset():
         ("leap second, not representable at all", "2019-11-14T23:59:60Z"),
     ],
 )
-def test_non_replay_source_rejects_iso8601_forms_outside_rfc3339(label, timestamp):
+def test_non_replay_source_rejects_forms_outside_canonical_profile(label, timestamp):
     """Regression test for two real bugs, both found by audit.
 
     First round: `_is_rfc3339` only checked that `datetime.fromisoformat`
     parsed the value and found a timezone -- but `fromisoformat` accepts
-    plenty of real ISO 8601 forms RFC3339's own grammar excludes (a
-    space instead of "T", omitted seconds, a lowercase "t"/"z", ...).
+    plenty of real ISO 8601 forms this project's canonical profile does
+    not accept. Some of those forms are genuinely excluded by RFC3339's
+    own grammar (a space instead of "T", omitted seconds). Others --
+    a lowercase "t"/"z" -- RFC3339 itself permits as a case-insensitive
+    alternate; this project's own narrower profile is what excludes
+    them, not RFC3339. (This test was previously named
+    `test_non_replay_source_rejects_iso8601_forms_outside_rfc3339`,
+    which read as a claim about RFC3339 itself rather than about this
+    project's own canonical profile -- corrected along with the
+    docstrings and error messages that made the same conflation.)
 
     Second round: even after a structural regex was added, the offset's
     own hour and minute weren't range-checked -- `"+00:60"` (minute 60,
@@ -217,9 +225,9 @@ def test_non_replay_source_rejects_iso8601_forms_outside_rfc3339(label, timestam
     accept it either, and says so in `_is_rfc3339`'s own docstring.
 
     Fails on either pre-fix version (all of these parse) and passes
-    once the regex enforces RFC3339's actual grammar *and* range-checks
-    the offset fields, with `fromisoformat` still catching a
-    structurally valid but calendar-impossible date or time.
+    once the regex enforces this project's canonical profile *and*
+    range-checks the offset fields, with `fromisoformat` still catching
+    a structurally valid but calendar-impossible date or time.
     """
     with pytest.raises(ValueError, match="RFC3339"):
         InteractionEvent.from_json(_payload(source="synthetic_test", timestamp=timestamp))
