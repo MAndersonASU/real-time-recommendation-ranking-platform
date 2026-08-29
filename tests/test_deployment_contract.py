@@ -110,15 +110,20 @@ def _prepared_worktree(worktree_dir: str) -> None:
     """`git worktree add` checks out committed `HEAD` -- it cannot see
     this script's own uncommitted, in-progress fix, so the checked-out
     copy of build-image.sh is overwritten with the real one on disk
-    right now. That overwrite is then committed *inside the worktree*
-    (a throwaway commit against its own disposable history, never
-    touching this repository's real one) so the worktree's own `HEAD`
-    genuinely reflects the updated script -- otherwise, now that the
-    dirty check covers the whole tree rather than an enumerated list,
-    the worktree would itself always show build-image.sh as locally
-    modified relative to its own HEAD, and every "clean tree" test
-    scenario below would refuse regardless of what it's actually
-    trying to test.
+    right now. If that overwrite actually changed anything (the fix is
+    still uncommitted in this repository), it's committed *inside the
+    worktree* -- a throwaway commit against its own disposable history,
+    never touching this repository's real one -- so the worktree's own
+    `HEAD` genuinely reflects the updated script. Once the fix is
+    itself committed here, the copy is a no-op and there is nothing to
+    commit; `git commit` would exit nonzero for "nothing to commit" in
+    that case, so the commit is skipped rather than run unconditionally.
+    Either way, the worktree ends up clean relative to its own HEAD --
+    which matters now that the dirty check covers the whole tree rather
+    than an enumerated list, so a build-image.sh that was left
+    perpetually "modified" relative to the worktree's HEAD would make
+    every "clean tree" test scenario below refuse regardless of what
+    it's actually testing.
     """
     import shutil
 
@@ -127,10 +132,14 @@ def _prepared_worktree(worktree_dir: str) -> None:
         cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
     )
     shutil.copyfile(BUILD_IMAGE_SCRIPT, Path(worktree_dir) / "build-image.sh")
-    subprocess.run(
-        ["git", "commit", "-am", "test: sync build-image.sh with the working copy under test"],
+    if subprocess.run(
+        ["git", "status", "--porcelain"],
         cwd=worktree_dir, capture_output=True, text=True, timeout=30, check=True,
-    )
+    ).stdout.strip():
+        subprocess.run(
+            ["git", "commit", "-am", "test: sync build-image.sh with the working copy under test"],
+            cwd=worktree_dir, capture_output=True, text=True, timeout=30, check=True,
+        )
 
 
 def _remove_worktree(worktree_dir: str) -> None:
