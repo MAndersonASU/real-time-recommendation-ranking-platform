@@ -895,9 +895,10 @@ Dockerfile's claim.
 
 **Reopened a second time by external review of `81483fd`.** Two
 further gaps in the same script. First, `build-image.sh` had no
-directory of its own: every command inside it (`git status`, `git
-rev-parse`, `docker compose` reading `docker-compose.yml`) resolved
-relative to whatever directory the caller happened to be in when they
+directory of its own: every command inside it (`git status`,
+`git rev-parse`, `docker compose` reading `docker-compose.yml`)
+resolved relative to whatever directory the caller happened to be in
+when they
 invoked it, not the repository the script lives in. Reproduced
 directly: running it from an unrelated directory failed outright
 ("not a git repository") instead of operating on this repository, and
