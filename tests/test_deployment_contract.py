@@ -20,6 +20,20 @@ DOCKERFILE = REPO_ROOT / "Dockerfile"
 BUILD_IMAGE_SCRIPT = REPO_ROOT / "build-image.sh"
 
 
+def _docker_daemon_available() -> bool:
+    """`shutil.which("docker")` only proves the CLI binary exists, not
+    that a daemon is actually reachable behind it (a real, seen state
+    locally: Docker Desktop installed but not currently running) --
+    `docker info` is the cheap, real way to tell the two apart.
+    """
+    if shutil.which("docker") is None:
+        return False
+    result = subprocess.run(
+        ["docker", "info"], capture_output=True, text=True, timeout=10, check=False
+    )
+    return result.returncode == 0
+
+
 def _api_service_block() -> str:
     text = COMPOSE_FILE.read_text(encoding="utf-8")
     # Service blocks are top-level keys under `services:`, indented two
@@ -96,10 +110,20 @@ def _prepared_worktree(worktree_dir: str) -> None:
     """`git worktree add` checks out committed `HEAD` -- it cannot see
     this script's own uncommitted, in-progress fix, so the checked-out
     copy of build-image.sh is overwritten with the real one on disk
-    right now. The worktree's only remaining job is to supply an
-    independent, controllable git-status baseline (a real, clean commit
-    history) for the dirty-tree check to run against -- not to also
-    freeze the script under test at some older, possibly-unfixed commit.
+    right now. If that overwrite actually changed anything (the fix is
+    still uncommitted in this repository), it's committed *inside the
+    worktree* -- a throwaway commit against its own disposable history,
+    never touching this repository's real one -- so the worktree's own
+    `HEAD` genuinely reflects the updated script. Once the fix is
+    itself committed here, the copy is a no-op and there is nothing to
+    commit; `git commit` would exit nonzero for "nothing to commit" in
+    that case, so the commit is skipped rather than run unconditionally.
+    Either way, the worktree ends up clean relative to its own HEAD --
+    which matters now that the dirty check covers the whole tree rather
+    than an enumerated list, so a build-image.sh that was left
+    perpetually "modified" relative to the worktree's HEAD would make
+    every "clean tree" test scenario below refuse regardless of what
+    it's actually testing.
     """
     import shutil
 
@@ -108,6 +132,14 @@ def _prepared_worktree(worktree_dir: str) -> None:
         cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, check=True,
     )
     shutil.copyfile(BUILD_IMAGE_SCRIPT, Path(worktree_dir) / "build-image.sh")
+    if subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=worktree_dir, capture_output=True, text=True, timeout=30, check=True,
+    ).stdout.strip():
+        subprocess.run(
+            ["git", "commit", "-am", "test: sync build-image.sh with the working copy under test"],
+            cwd=worktree_dir, capture_output=True, text=True, timeout=30, check=True,
+        )
 
 
 def _remove_worktree(worktree_dir: str) -> None:
@@ -177,8 +209,8 @@ def test_a_clean_tree_still_reaches_the_real_build_invocation():
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("no bash on PATH")
-    if shutil.which("docker") is None:
-        pytest.skip("no docker on PATH")
+    if not _docker_daemon_available():
+        pytest.skip("no docker daemon reachable")
 
     with tempfile.TemporaryDirectory() as worktree_dir:
         _prepared_worktree(worktree_dir)
@@ -194,16 +226,23 @@ def test_a_clean_tree_still_reaches_the_real_build_invocation():
             _remove_worktree(worktree_dir)
 
 
-def test_a_dirty_file_outside_image_affecting_paths_does_not_refuse():
-    """A change to something the image doesn't contain (docs here) must
-    not block the build -- the check is scoped to what actually affects
-    the image, not "any uncommitted change anywhere in the repo".
+def test_a_dirty_file_anywhere_in_the_tree_refuses_the_build():
+    """Regression test for a real bug, found by external review of the
+    prior fix: that version scoped the dirty check to a hand-enumerated
+    list of paths (src/, Dockerfile, pyproject.toml,
+    requirements-lock.txt), which missed real build inputs --
+    docker-compose.yml (the build context, args and Dockerfile path are
+    all defined there) and .dockerignore (controls what actually
+    reaches the build context) were not checked at all, so a dirty
+    change to either still built and shipped unnoticed. Requiring the
+    *entire* tree clean is the fix: it cannot miss a build input an
+    enumerated list forgot to name. A dirty file under docs/ -- which
+    does not affect the image at all -- now also refuses, a deliberate,
+    accepted cost of not depending on the list staying complete.
     """
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("no bash on PATH")
-    if shutil.which("docker") is None:
-        pytest.skip("no docker on PATH")
 
     with tempfile.TemporaryDirectory() as worktree_dir:
         _prepared_worktree(worktree_dir)
@@ -214,10 +253,116 @@ def test_a_dirty_file_outside_image_affecting_paths_does_not_refuse():
 
             result = subprocess.run(
                 [bash, "build-image.sh"],
-                cwd=worktree_dir, capture_output=True, text=True, timeout=300, check=False,
+                cwd=worktree_dir, capture_output=True, text=True, timeout=120, check=False,
             )
 
-            assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
-            assert "refusing to build" not in result.stderr
+            assert result.returncode != 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            assert "refusing to build" in result.stderr
+            assert "_dirty_marker_for_test.md" in result.stderr
+        finally:
+            _remove_worktree(worktree_dir)
+
+
+def test_a_dirty_docker_compose_file_refuses_the_build():
+    """`docker-compose.yml` itself defines the build context, args and
+    Dockerfile path for the very image this script builds -- a dirty
+    copy is exactly as image-affecting as a dirty Dockerfile, and an
+    enumerated-paths check that named the latter but not the former
+    would still miss this.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+
+    with tempfile.TemporaryDirectory() as worktree_dir:
+        _prepared_worktree(worktree_dir)
+        try:
+            compose_file = Path(worktree_dir) / "docker-compose.yml"
+            with compose_file.open("a", encoding="utf-8") as f:
+                f.write("\n# intentionally uncommitted, for this test only\n")
+
+            result = subprocess.run(
+                [bash, "build-image.sh"],
+                cwd=worktree_dir, capture_output=True, text=True, timeout=120, check=False,
+            )
+
+            assert result.returncode != 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            assert "refusing to build" in result.stderr
+            assert "docker-compose.yml" in result.stderr
+        finally:
+            _remove_worktree(worktree_dir)
+
+
+def test_a_dirty_dockerignore_file_refuses_the_build():
+    """`.dockerignore` controls what actually reaches the build context
+    Docker sees -- a dirty copy can change what a `COPY` instruction
+    picks up just as much as editing the Dockerfile itself.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+
+    with tempfile.TemporaryDirectory() as worktree_dir:
+        _prepared_worktree(worktree_dir)
+        try:
+            dockerignore = Path(worktree_dir) / ".dockerignore"
+            with dockerignore.open("a", encoding="utf-8") as f:
+                f.write("\n# intentionally uncommitted, for this test only\n")
+
+            result = subprocess.run(
+                [bash, "build-image.sh"],
+                cwd=worktree_dir, capture_output=True, text=True, timeout=120, check=False,
+            )
+
+            assert result.returncode != 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            assert "refusing to build" in result.stderr
+            assert ".dockerignore" in result.stderr
+        finally:
+            _remove_worktree(worktree_dir)
+
+
+def test_invocation_from_an_unrelated_directory_still_operates_on_this_repo():
+    """Regression test for a real bug, found by external review: every
+    command in this script (git status/rev-parse, docker compose
+    reading docker-compose.yml) used to be relative to the caller's
+    cwd, not the script's own location. Reproduced directly: running
+    `bash build-image.sh` from a plain scratch directory failed with a
+    raw `fatal: not a git repository` instead of operating on this
+    repository at all -- and from inside a *different* git repository,
+    it would have silently read that repository's commit and status
+    instead of this one's, which is worse than an outright failure.
+
+    Runs the worktree's own copy of the script (not this repo's) with
+    `cwd` set to a third, unrelated scratch directory -- neither the
+    worktree nor this repository -- and confirms it still correctly
+    resolves and reports *the worktree's own* dirty file, proving the
+    anchor to the script's own directory actually works, not merely
+    that it no longer crashes.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+
+    with (
+        tempfile.TemporaryDirectory() as worktree_dir,
+        tempfile.TemporaryDirectory() as unrelated_cwd,
+    ):
+        _prepared_worktree(worktree_dir)
+        try:
+            dirty_file = Path(worktree_dir) / "src" / "recommender" / "_dirty_marker_for_test.py"
+            dirty_file.write_text("# intentionally uncommitted, for this test only\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [bash, str(Path(worktree_dir) / "build-image.sh")],
+                cwd=unrelated_cwd, capture_output=True, text=True, timeout=120, check=False,
+            )
+
+            assert "not a git repository" not in result.stderr, (
+                f"the script did not resolve its own repository from an unrelated cwd: "
+                f"stderr={result.stderr!r}"
+            )
+            assert result.returncode != 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            assert "refusing to build" in result.stderr
+            assert "_dirty_marker_for_test.py" in result.stderr
         finally:
             _remove_worktree(worktree_dir)

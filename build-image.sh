@@ -20,25 +20,41 @@
 # entry to a commit.
 set -euo pipefail
 
+# Anchored to this script's own directory, not the caller's cwd:
+# every command below (git status/rev-parse, docker compose reading
+# docker-compose.yml) is otherwise relative to wherever this script
+# happens to be invoked from, found by direct reproduction -- running
+# it from an unrelated directory failed outright ("not a git
+# repository") instead of operating on this repository, and from
+# inside a *different* git repository it would silently have read that
+# repository's commit and status rather than this one's.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 COMMIT="$(git rev-parse HEAD)"
 
-# Refuses a dirty build outright, rather than warning and continuing:
-# an uncommitted or untracked change under one of these paths is copied
-# into the image by the Dockerfile (`COPY src/ ./src/`,
-# `COPY pyproject.toml ./`, `COPY requirements-lock.txt ./`) or changes
-# the build recipe itself (Dockerfile), while the image is labeled with
-# $COMMIT regardless -- the same provenance mismatch this project
-# refuses for an evaluation report from a dirty tree
-# (`recommender.evaluation.reports.working_tree_is_clean`), not treated
-# any more leniently here just because it's a build script instead of
-# a report. A change *outside* these paths (docs, this script itself)
-# doesn't affect what the image actually contains, so it's not checked.
-DIRTY_IMAGE_FILES="$(git status --porcelain -- src Dockerfile pyproject.toml requirements-lock.txt)"
+# Refuses any dirty build outright, rather than warning and continuing
+# or trying to enumerate every path that happens to affect the image
+# today. An earlier version checked only src/, Dockerfile,
+# pyproject.toml and requirements-lock.txt -- real gaps, since
+# docker-compose.yml (the build context, args and Dockerfile path are
+# all defined there), .dockerignore (controls what actually reaches
+# the build context) and any Compose override file are just as
+# image-affecting and were not checked at all. Requiring the *entire*
+# working tree clean is the safer rule: it cannot miss a build input
+# this list forgot to name, today or after a future change to the
+# build. A change to something that doesn't affect the image at all
+# (this script, most of docs/) still blocks a build under this rule --
+# a real, accepted cost for not depending on an enumerated list staying
+# complete, the same trade this project's evaluation-report provenance
+# check already makes (`recommender.evaluation.reports.working_tree_is_clean`
+# refuses a dirty tree outright, not just a dirty subset of it).
+DIRTY_FILES="$(git status --porcelain)"
 
-if [ -n "$DIRTY_IMAGE_FILES" ]; then
-  echo "refusing to build: these image-affecting paths are dirty (uncommitted or" >&2
-  echo "untracked) relative to commit $COMMIT:" >&2
-  echo "$DIRTY_IMAGE_FILES" >&2
+if [ -n "$DIRTY_FILES" ]; then
+  echo "refusing to build: the working tree is not clean (uncommitted or" >&2
+  echo "untracked changes) relative to commit $COMMIT:" >&2
+  echo "$DIRTY_FILES" >&2
   echo "" >&2
   echo "Docker would copy the actual working-tree contents into the image while it" >&2
   echo "is labeled with commit $COMMIT, which would not describe what the image" >&2

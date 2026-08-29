@@ -32,30 +32,63 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
-# RFC3339's own grammar (section 5.6), not merely "whatever
-# datetime.fromisoformat happens to parse": a literal, uppercase "T"
-# date/time separator (not a space, not lowercase "t" -- ISO 8601 permits
-# both as alternates, but RFC3339's ABNF does not), mandatory seconds
-# (`time-second` is not optional in `partial-time`), and a mandatory
-# offset -- literal uppercase "Z" or a numeric "+HH:MM"/"-HH:MM" (not
-# lowercase "z", not a bare "+00" or "+0000"). Fractional seconds are
-# optional, per `time-secfrac`.
+# This project's canonical RFC3339 profile -- a deliberately narrower,
+# fully-specified subset of RFC3339 (section 5.6), not the full
+# permissive grammar. Every restriction below is enforced here, stated
+# in _is_rfc3339's docstring, echoed in InteractionEvent.validate's
+# error message, and exercised by tests/test_streaming_schema.py --
+# code, error message, docs and tests describe the same contract, and
+# if the contract ever changes, all four move together:
+#
+#   - a literal, uppercase "T" date/time separator: not a space, not
+#     lowercase "t". RFC3339 itself permits a space or "t" as
+#     ISO-8601-derived alternates; this profile picks the one
+#     unambiguous machine-readable shape rather than accepting all of
+#     them, since a live producer this project controls has no reason
+#     to emit anything else.
+#   - mandatory seconds (`time-second` is not optional in RFC3339's
+#     `partial-time`), no leap second: RFC3339's grammar permits a
+#     ":60" second for a leap second, but Python's `datetime` cannot
+#     represent one at all (`fromisoformat` rejects it, same as any
+#     other out-of-range value) -- this profile does not accept one
+#     either, rather than silently truncating or misparsing it. A
+#     genuinely leap-second-aware live feed is out of scope for what
+#     this project's serving path needs.
+#   - a mandatory offset: literal uppercase "Z", or a numeric
+#     "+HH:MM"/"-HH:MM" with the hour and minute each *range*-checked
+#     (00-23, 00-59), not merely two digits. `datetime.fromisoformat`
+#     does not enforce that range on an offset -- it treats the offset
+#     as a plain timedelta, so "+00:60" silently normalizes to
+#     "+01:00" instead of being rejected, found by direct
+#     reproduction, not assumed. Not lowercase "z", not a bare "+00"
+#     or "+0000".
+#   - fractional seconds are optional, per `time-secfrac`.
+_OFFSET_HOUR = r"(?:[01]\d|2[0-3])"  # 00-23
+_OFFSET_MINUTE = r"[0-5]\d"  # 00-59
 _RFC3339_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+    rf"^\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}(\.\d+)?"
+    rf"(Z|[+-]{_OFFSET_HOUR}:{_OFFSET_MINUTE})$"
 )
 
 
 def _is_rfc3339(value: str) -> bool:
-    """A genuine RFC3339 datetime, not merely a string
-    `datetime.fromisoformat` happens to accept -- that function is
-    intentionally more permissive than RFC3339 (it also parses MIND's
-    own space-separated, offset-less shape, ISO 8601 forms RFC3339
-    itself excludes, and RFC3339-*like* forms such as omitted seconds
-    or a lowercase "t"/"z"), so a structural regex against RFC3339's own
-    grammar runs first. `fromisoformat` still runs afterward, on values
-    that already passed the regex, to reject a structurally valid but
-    calendar-impossible date or time (month 13, hour 25, ...), which
-    the regex's fixed-width digit groups cannot catch by themselves.
+    """This project's canonical RFC3339 profile, not the full permissive
+    grammar and not merely a string `datetime.fromisoformat` happens to
+    accept. Three ways `fromisoformat` alone is not this profile:
+
+    - It also parses MIND's own space-separated, offset-less shape and
+      several ISO 8601 forms RFC3339 itself excludes (omitted seconds,
+      a lowercase "t"/"z") -- rejected here by the structural regex
+      above, which runs first.
+    - It silently normalizes an out-of-range offset minute/hour
+      ("+00:60" becomes "+01:00") instead of rejecting it -- the regex
+      above range-checks the offset's own hour and minute instead of
+      accepting any two digits.
+    - `fromisoformat` still runs *after* the regex, on values that
+      already passed it, to reject a structurally valid but
+      calendar-impossible date or time (month 13, hour 25, ...), which
+      the regex's fixed-width date/main-time digit groups cannot catch
+      by themselves.
 
     Required for a live event's own timestamp (`InteractionEvent.validate`,
     any `source` other than `REPLAY_SOURCE`); `_is_dataset_local_timestamp`
@@ -178,7 +211,9 @@ class InteractionEvent:
                 )
         elif not _is_rfc3339(self.timestamp):
             raise ValueError(
-                f"timestamp must be a timezone-aware RFC3339 datetime for source "
+                f"timestamp must be RFC3339 (this project's canonical profile: "
+                f"uppercase 'T'/'Z', a range-checked +HH:MM/-HH:MM offset if not "
+                f"'Z', mandatory seconds, no leap second) for source "
                 f"{self.source!r}, got {self.timestamp!r}"
             )
 

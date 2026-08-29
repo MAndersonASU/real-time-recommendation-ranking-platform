@@ -1,3 +1,6 @@
+import json
+
+import pytest
 import redis
 
 from recommender.features.cold_start import (
@@ -177,3 +180,45 @@ def test_an_open_circuit_breaker_skips_the_redis_call_entirely():
     assert calls == []
     assert result.redis_unavailable is True
     assert result.recent == DEFAULT_RECENT_FEATURES
+
+
+def test_a_malformed_redis_record_still_lets_a_later_request_probe_again():
+    """Regression test for a real bug, found by external review: a probe
+    attempt that raises something other than `RedisError` -- here,
+    malformed JSON actually stored under the key, which `load_recent_features`
+    parses with a bare `json.loads` -- reached neither `record_success`
+    nor `record_failure`, since the `except RedisError` clause doesn't
+    match a `JSONDecodeError`. The breaker's one HALF_OPEN probe slot
+    was claimed by `allow_request()` and never released, so it had no
+    way to ever probe again: `RedisCircuitBreaker` has no timeout-based
+    recovery from a stuck HALF_OPEN, only `record_success`/`record_failure`
+    resolve it.
+
+    Fails on the pre-fix code (a later `allow_request()` stays `False`
+    forever after the malformed-JSON exception) and passes once every
+    exit path -- including one that re-raises -- reports an outcome to
+    the breaker first. The exception itself must still propagate: it is
+    a real bug (corrupted state, not a Redis failure), not something
+    this function is allowed to silently swallow.
+    """
+    breaker = RedisCircuitBreaker(failure_threshold=1, cooldown_seconds=0.0)
+    breaker.record_failure()  # opens it; cooldown=0.0, so a probe is already eligible
+
+    class _MalformedRedis:
+        def get(self, key):
+            return "not valid json {{{"
+
+    with pytest.raises(json.JSONDecodeError):
+        get_online_features("u1", durable_features_by_user={}, redis_client=_MalformedRedis(), circuit_breaker=breaker)
+
+    # The probe slot must be released -- a later request can attempt a
+    # real connection again, not be stuck reporting redis_unavailable
+    # forever regardless of Redis's actual health. Calling
+    # `get_online_features` directly (rather than checking
+    # `breaker.allow_request()` first) matters here: `allow_request()`
+    # itself claims the probe slot as a side effect, so a standalone
+    # check beforehand would consume the very probe this assertion
+    # means to observe.
+    result = get_online_features("u1", durable_features_by_user={}, redis_client=_FakeRedis(), circuit_breaker=breaker)
+    assert result.redis_unavailable is False
+    assert breaker.is_open is False
