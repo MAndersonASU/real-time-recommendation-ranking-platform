@@ -150,7 +150,7 @@ def test_a_non_replay_source_rejects_a_naive_timestamp():
     source) and passes once a non-replay source is held to the real
     standard its error message already claimed.
     """
-    with pytest.raises(ValueError, match="timezone-aware RFC3339"):
+    with pytest.raises(ValueError, match="RFC3339"):
         InteractionEvent.from_json(
             _payload(source="synthetic_test", timestamp="2019-11-14T08:00:00")
         )
@@ -191,22 +191,37 @@ def test_a_non_replay_source_accepts_a_trailing_z_offset():
         ("impossible month", "2019-13-01T08:00:00Z"),
         ("impossible hour", "2019-11-14T25:00:00Z"),
         ("impossible day", "2019-02-30T08:00:00Z"),
+        ("offset minute 60, out of range", "2019-11-14T08:00:00+00:60"),
+        ("offset minute 99, out of range", "2019-11-14T08:00:00+00:99"),
+        ("negative offset minute 60, out of range", "2019-11-14T08:00:00-00:60"),
+        ("offset hour 24, out of range", "2019-11-14T08:00:00+24:00"),
+        ("leap second, not representable at all", "2019-11-14T23:59:60Z"),
     ],
 )
 def test_non_replay_source_rejects_iso8601_forms_outside_rfc3339(label, timestamp):
-    """Regression test for a real bug, found by audit: `_is_rfc3339` only
-    checked that `datetime.fromisoformat` parsed the value and found a
-    timezone -- but `fromisoformat` accepts plenty of real ISO 8601
-    forms RFC3339's own grammar excludes (a space instead of "T",
-    omitted seconds, a lowercase "t"/"z", ...), so a non-replay event
-    with one of these could pass a validator whose own error message
-    claims "must be a timezone-aware RFC3339 datetime". Fails on the
-    pre-fix code (`_is_rfc3339` returns True for all of these) and
-    passes once a structural regex against RFC3339's own grammar runs
-    before `fromisoformat`, with `fromisoformat` still catching a
+    """Regression test for two real bugs, both found by audit.
+
+    First round: `_is_rfc3339` only checked that `datetime.fromisoformat`
+    parsed the value and found a timezone -- but `fromisoformat` accepts
+    plenty of real ISO 8601 forms RFC3339's own grammar excludes (a
+    space instead of "T", omitted seconds, a lowercase "t"/"z", ...).
+
+    Second round: even after a structural regex was added, the offset's
+    own hour and minute weren't range-checked -- `"+00:60"` (minute 60,
+    out of RFC3339's 00-59 range) reached `fromisoformat`, which
+    silently normalizes it to `"+01:00"` via plain timedelta arithmetic
+    instead of rejecting it, so it passed anyway. A leap second
+    (`":60"` as the *seconds* field) is separately rejected here too --
+    RFC3339's grammar permits it, but Python's `datetime` cannot
+    represent one at all, so this project's canonical profile does not
+    accept it either, and says so in `_is_rfc3339`'s own docstring.
+
+    Fails on either pre-fix version (all of these parse) and passes
+    once the regex enforces RFC3339's actual grammar *and* range-checks
+    the offset fields, with `fromisoformat` still catching a
     structurally valid but calendar-impossible date or time.
     """
-    with pytest.raises(ValueError, match="timezone-aware RFC3339"):
+    with pytest.raises(ValueError, match="RFC3339"):
         InteractionEvent.from_json(_payload(source="synthetic_test", timestamp=timestamp))
 
 
