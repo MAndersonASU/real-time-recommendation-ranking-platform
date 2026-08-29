@@ -222,3 +222,83 @@ def test_a_malformed_redis_record_still_lets_a_later_request_probe_again():
     result = get_online_features("u1", durable_features_by_user={}, redis_client=_FakeRedis(), circuit_breaker=breaker)
     assert result.redis_unavailable is False
     assert breaker.is_open is False
+
+
+def test_a_malformed_redis_record_does_not_trip_the_breaker_as_a_connectivity_failure():
+    """Regression test for REDIS-DEGRADED-PATH-61 reopened a third time,
+    found by external review: the previous fix released the probe slot
+    by calling `record_failure()` from the `except Exception` branch --
+    which does release it, but as a *failure*, indistinguishable from a
+    real connectivity problem. A single malformed stored record (Redis
+    answered; the value it stored is corrupt, which says nothing about
+    whether Redis itself is reachable) therefore still counted toward
+    tripping the breaker exactly as if Redis had failed to respond.
+
+    A `cooldown_seconds` of 60, not 0.0, matters here: 0.0 would let the
+    very next call probe straight past a wrongly-opened breaker anyway,
+    masking the bug behind a passing assertion. With a real cooldown,
+    a breaker that wrongly opened refuses the next request outright;
+    one that never opened serves it immediately. Fails on the pre-fix
+    code (`breaker.is_open` is `True`, and the following healthy
+    request reports `redis_unavailable=True` despite `_FakeRedis` never
+    having been given a chance to answer).
+    """
+    breaker = RedisCircuitBreaker(failure_threshold=1, cooldown_seconds=60.0)
+
+    class _MalformedRedis:
+        def get(self, key):
+            return "not valid json {{{"
+
+    with pytest.raises(json.JSONDecodeError):
+        get_online_features("u1", durable_features_by_user={}, redis_client=_MalformedRedis(), circuit_breaker=breaker)
+
+    assert breaker.is_open is False
+
+    result = get_online_features("u1", durable_features_by_user={}, redis_client=_FakeRedis(), circuit_breaker=breaker)
+    assert result.redis_unavailable is False
+
+
+def test_a_schema_mismatched_redis_record_raises_without_tripping_the_breaker():
+    """Same guarantee as the malformed-JSON case above, for a record that
+    is valid JSON but missing a field `parse_recent_features` requires
+    (`KeyError` rather than `json.JSONDecodeError`) -- a different
+    exception type, so it also exercises that the fix does not depend
+    on catching one specific exception class.
+    """
+    breaker = RedisCircuitBreaker(failure_threshold=1, cooldown_seconds=60.0)
+
+    class _SchemaMismatchedRedis:
+        def get(self, key):
+            return '{"user_id": "u1"}'  # missing recent_clicked_items, impressions_seen, ...
+
+    with pytest.raises(KeyError):
+        get_online_features(
+            "u1", durable_features_by_user={}, redis_client=_SchemaMismatchedRedis(), circuit_breaker=breaker
+        )
+
+    assert breaker.is_open is False
+
+    result = get_online_features("u1", durable_features_by_user={}, redis_client=_FakeRedis(), circuit_breaker=breaker)
+    assert result.redis_unavailable is False
+
+
+def test_repeated_malformed_records_never_open_the_breaker_from_closed():
+    """A failure_threshold of 2 would trip a real breaker on two
+    consecutive connectivity failures. Three consecutive malformed
+    records in a row must not trip it at all, since none of them is a
+    connectivity failure -- proof the fix holds under repetition, not
+    only for a single occurrence.
+    """
+    breaker = RedisCircuitBreaker(failure_threshold=2, cooldown_seconds=60.0)
+
+    class _MalformedRedis:
+        def get(self, key):
+            return "not valid json {{{"
+
+    for _ in range(3):
+        with pytest.raises(json.JSONDecodeError):
+            get_online_features("u1", durable_features_by_user={}, redis_client=_MalformedRedis(), circuit_breaker=breaker)
+        assert breaker.is_open is False
+
+    result = get_online_features("u1", durable_features_by_user={}, redis_client=_FakeRedis(), circuit_breaker=breaker)
+    assert result.redis_unavailable is False

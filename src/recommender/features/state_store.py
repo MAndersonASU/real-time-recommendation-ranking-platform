@@ -170,14 +170,29 @@ def save_recent_features(
     client.set(_key(features.user_id), _state_payload(features, version), ex=ttl_seconds)
 
 
-def load_recent_features(client: redis.Redis, user_id: str) -> RecentUserFeatures | None:
-    """Returns None for a user with no record -- either they've never sent
-    an event, or their key has expired. Callers handle that None as a
-    cold-start case (`docs/experiments/cold-start.md`), not an error.
+def fetch_recent_features_raw(client: redis.Redis, user_id: str) -> str | None:
+    """Performs only the Redis `GET` -- the one part of loading a user's
+    recent features that can fail as a *connectivity* problem
+    (`redis.exceptions.RedisError`). Returns the raw stored string, or
+    `None` for a user with no record at all (never sent an event, or
+    their key expired).
+
+    Kept separate from `parse_recent_features` so a caller that reports
+    Redis health to a circuit breaker (`cold_start.get_online_features`)
+    can record success as soon as Redis has actually responded, before
+    attempting to parse what it returned -- a malformed stored record is
+    a data-integrity bug, not evidence Redis itself is unreachable, and
+    must not be classified as one.
     """
-    raw = client.get(_key(user_id))
-    if raw is None:
-        return None
+    return client.get(_key(user_id))
+
+
+def parse_recent_features(raw: str) -> RecentUserFeatures:
+    """Decodes one raw stored record. Raises `json.JSONDecodeError` on
+    invalid JSON or `KeyError` on a well-formed JSON value missing an
+    expected field -- both real bugs (corrupted state, a schema
+    mismatch), never swallowed here.
+    """
     data = json.loads(raw)
     return RecentUserFeatures(
         user_id=data["user_id"],
@@ -186,6 +201,17 @@ def load_recent_features(client: redis.Redis, user_id: str) -> RecentUserFeature
         clicks_seen=data["clicks_seen"],
         last_event_time=data["last_event_time"],
     )
+
+
+def load_recent_features(client: redis.Redis, user_id: str) -> RecentUserFeatures | None:
+    """Returns None for a user with no record -- either they've never sent
+    an event, or their key has expired. Callers handle that None as a
+    cold-start case (`docs/experiments/cold-start.md`), not an error.
+    """
+    raw = fetch_recent_features_raw(client, user_id)
+    if raw is None:
+        return None
+    return parse_recent_features(raw)
 
 
 PROCESSED_KEY_PREFIX = "processed_event:"
