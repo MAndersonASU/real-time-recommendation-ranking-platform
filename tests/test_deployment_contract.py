@@ -6,6 +6,7 @@ startup until Redis reports healthy -- a real, live-verified gap between
 the doc and the file, not a documentation wording issue.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -364,5 +365,102 @@ def test_invocation_from_an_unrelated_directory_still_operates_on_this_repo():
             assert result.returncode != 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
             assert "refusing to build" in result.stderr
             assert "_dirty_marker_for_test.py" in result.stderr
+        finally:
+            _remove_worktree(worktree_dir)
+
+
+_EVIL_COMPOSE_CONTENT = (
+    "services:\n"
+    "  decoy:\n"
+    "    image: evil-image-not-the-real-one\n"
+    "    build:\n"
+    "      context: .\n"
+    "      dockerfile: Dockerfile.evil\n"
+)
+
+
+def test_compose_file_env_var_cannot_redirect_the_build_configuration():
+    """Regression test for a real bug, found by external review: a bare
+    `docker compose build api`, with no explicit `-f`/`--project-directory`,
+    resolves its configuration from the *environment* as much as from
+    this script's own directory. `COMPOSE_FILE` -- including one set
+    from the gitignored `.env` file Compose reads automatically -- can
+    redirect the whole build to an unrelated configuration without ever
+    making this repository's own working tree dirty, so the clean-tree
+    refusal above never sees it.
+
+    Reproduced directly: with `COMPOSE_FILE` pointed at a compose file
+    that defines no `api` service at all, a bare `docker compose build
+    api` (no explicit `-f`) fails with "no such service: api" -- proof
+    it read the wrong file entirely, not this repository's own
+    docker-compose.yml. Fails on the pre-fix script (that error
+    reaches stderr) and passes once `-f`/`--project-directory` pin the
+    build to this script's own directory regardless of `COMPOSE_FILE`.
+
+    Doesn't need a reachable Docker daemon: `docker compose` resolves
+    which file it is building *from* -- and so reports "no such
+    service" -- before ever trying to run a build against one.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+    if shutil.which("docker") is None:
+        pytest.skip("no docker CLI on PATH")
+
+    with (
+        tempfile.TemporaryDirectory() as worktree_dir,
+        tempfile.TemporaryDirectory() as evil_dir,
+    ):
+        _prepared_worktree(worktree_dir)
+        try:
+            evil_compose = Path(evil_dir) / "evil-compose.yml"
+            evil_compose.write_text(_EVIL_COMPOSE_CONTENT, encoding="utf-8")
+
+            env = dict(os.environ, COMPOSE_FILE=str(evil_compose))
+            result = subprocess.run(
+                [bash, "build-image.sh"],
+                cwd=worktree_dir, capture_output=True, text=True, timeout=120, check=False, env=env,
+            )
+
+            assert "no such service: api" not in result.stderr, (
+                "COMPOSE_FILE redirected the build away from this repository's own "
+                f"docker-compose.yml: stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+        finally:
+            _remove_worktree(worktree_dir)
+
+
+def test_invocation_from_an_unrelated_directory_with_compose_file_set_still_uses_this_repos_compose_file():
+    """Both external-review gaps at once: an unrelated invocation
+    directory and a `COMPOSE_FILE` pointed elsewhere, together -- proof
+    neither alone, nor combined, can redirect the build away from this
+    repository's own committed docker-compose.yml.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+    if shutil.which("docker") is None:
+        pytest.skip("no docker CLI on PATH")
+
+    with (
+        tempfile.TemporaryDirectory() as worktree_dir,
+        tempfile.TemporaryDirectory() as evil_dir,
+        tempfile.TemporaryDirectory() as unrelated_cwd,
+    ):
+        _prepared_worktree(worktree_dir)
+        try:
+            evil_compose = Path(evil_dir) / "evil-compose.yml"
+            evil_compose.write_text(_EVIL_COMPOSE_CONTENT, encoding="utf-8")
+
+            env = dict(os.environ, COMPOSE_FILE=str(evil_compose))
+            result = subprocess.run(
+                [bash, str(Path(worktree_dir) / "build-image.sh")],
+                cwd=unrelated_cwd, capture_output=True, text=True, timeout=120, check=False, env=env,
+            )
+
+            assert "not a git repository" not in result.stderr
+            assert "no such service: api" not in result.stderr, (
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
         finally:
             _remove_worktree(worktree_dir)
