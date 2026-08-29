@@ -726,6 +726,18 @@ verified against [PR #8](https://github.com/MAndersonASU/real-time-recommendatio
 own CI run (33259679161, all four jobs green) before being marked
 verified closed here.
 
+**A third external review, of the fixes that landed in `PR #8`, found
+`REDIS-DEGRADED-PATH-61`'s and `DEPLOYMENT-CONTRACT-62`'s fixes each
+still incomplete a further time, and found `TIMESTAMP-CONTRACT-64`'s
+underlying fix behaviourally correct but its own explanatory docstring
+and test suite self-contradictory** -- summarized on the follow-up
+paragraph of each entry below, with its own reproduction (or, for
+`TIMESTAMP-CONTRACT-64`, its own textual inconsistency against an
+already-correct comment elsewhere in the same file), fix commit and
+regression test. New fix commits for all three are on this branch;
+they stay `open` until this branch has its own green CI run, not
+asserted from local runs alone.
+
 ## EVAL-PROVENANCE-58 — Evaluation reports could inherit a manifest env var as their commit
 **Severity** Critical · **Status** verified closed
 **Fix commit** `912c00a` · **Tests** `tests/test_reports.py`
@@ -788,8 +800,8 @@ never wired into a long-running production entrypoint -- confirmed true
 today (only `verify_*.py` scripts construct it).
 
 ## REDIS-DEGRADED-PATH-61 — A Redis failure fell all the way back to flat popularity
-**Severity** Medium · **Status** verified closed
-**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below), `5c32706` (probe-release on every exit path, below)
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `b992259`, `be8b5ce` (removes the matching Compose startup gate), `de457c3` (concurrency-safe breaker, below), `5c32706` (probe-release on every exit path, below), `efaea84` (outcome classification, below)
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
 **CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
@@ -851,9 +863,37 @@ failure, so it is not swallowed, only its effect on the breaker's
 bookkeeping is handled. `tests/test_cold_start.py::test_a_malformed_redis_record_still_lets_a_later_request_probe_again`
 covers exactly this case and fails on the pre-fix code.
 
+**Reopened a fourth time by external review of `5c32706`.** Releasing
+the probe slot by calling `record_failure()` from the
+`except Exception` branch does release it, but as a *failure* -- so a
+malformed stored record, which Redis successfully returned (the
+connectivity itself was fine; only the stored value was corrupt),
+still counted toward the breaker's consecutive-failure threshold
+exactly as if Redis had failed to respond at all. Reproduced directly:
+`failure_threshold=1` and a single malformed record opened the
+breaker, and a following healthy request was refused (not merely
+delayed until cooldown, since `cooldown_seconds=60.0` was set well
+above the test's own duration) despite the healthy client never having
+been given a chance to answer.
+
+**Fixed in `efaea84`.** The Redis `GET` and the JSON decoding of what
+it returns are now reported to the breaker separately:
+`state_store.fetch_recent_features_raw` performs only the `GET` (can
+raise `RedisError`, recorded as a real connectivity failure exactly as
+before) and `state_store.parse_recent_features` decodes the result
+afterward. `record_success()` is reported as soon as the `GET`
+returns -- before the value is parsed -- so a parse failure that
+follows (still a real bug, still propagates to the caller, never
+swallowed) cannot be misreported as a connectivity failure. Three new
+regression tests in `tests/test_cold_start.py` cover a single
+malformed record, a schema-mismatched record (`KeyError` rather than
+`JSONDecodeError`, proving the fix isn't tied to one exception type),
+and three consecutive malformed records against a `failure_threshold`
+of 2 -- all fail on the pre-fix code.
+
 ## DEPLOYMENT-CONTRACT-62 — Compose blocked API startup on a Redis dependency the process doesn't have
-**Severity** Medium · **Status** verified closed
-**Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below), `9cf0852` (self-anchoring, whole-tree refusal, below), `1cf8464` (test-only)
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `be8b5ce`, `81483fd` (dirty-tree refusal, below), `9cf0852` (self-anchoring, whole-tree refusal, below), `1cf8464` (test-only), `208dcdd` (explicit Compose file, below)
 **Tests** `tests/test_deployment_contract.py`
 **CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
@@ -931,6 +971,30 @@ this repository with a real Docker daemon: a genuinely dirty
 `README.md` refuses before Docker runs, and a clean tree completes a
 real image build end to end.
 
+**Reopened a third time by external review of `9cf0852`.** A bare
+`docker compose build api`, with no explicit `-f`/`--project-directory`,
+resolves its configuration from the *environment* as much as from this
+script's own directory. `COMPOSE_FILE` -- including one set from the
+gitignored `.env` file Compose reads automatically -- can redirect the
+whole build to an unrelated configuration without ever making this
+repository's own working tree dirty, so the whole-tree clean check
+above never sees it. Reproduced directly: with `COMPOSE_FILE` pointed
+at a compose file defining no `api` service at all, a bare `docker
+compose build api` failed with `"no such service: api"` -- proof it
+read the wrong file entirely, not this repository's own
+`docker-compose.yml`.
+
+**Fixed in `208dcdd`.** `docker compose` now runs with explicit
+`-f "$SCRIPT_DIR/docker-compose.yml"` and
+`--project-directory "$SCRIPT_DIR"`, so the committed compose file is
+the only configuration this script can ever build from regardless of
+`COMPOSE_FILE` or an auto-discovered override. Two new regression tests
+in `tests/test_deployment_contract.py` cover `COMPOSE_FILE` alone and
+`COMPOSE_FILE` combined with invocation from an unrelated directory --
+both fail on the pre-fix script (`"no such service: api"` reaches
+stderr) and pass once both flags are pinned. The whole-tree cleanliness
+check and the script's own directory-anchoring are unchanged.
+
 ## DATA-PATH-CONSISTENCY-63 — `RECOMMENDER_DATA_ROOT` didn't move most of the project's own paths
 **Severity** Medium · **Status** verified closed
 **Fix commits** `5dd91f9`, `b992259`, `e615ff2` · **Tests** `tests/test_data_path_consistency.py`
@@ -957,9 +1021,9 @@ the discovery approach alone would miss (a reverted constant just drops
 out of what gets discovered rather than failing loudly).
 
 ## TIMESTAMP-CONTRACT-64 — The RFC3339 validator accepted timestamps that aren't RFC3339
-**Severity** Medium · **Status** verified closed
-**Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below), `28d578d` (range-checked offset, canonical profile documented, below)
-**Tests** `tests/test_streaming_schema.py`
+**Severity** Medium · **Status** open (fix committed, CI verification pending)
+**Fix commits** `063bbf5`, `35c01b3` (structural RFC3339 grammar check, below), `28d578d` (range-checked offset, canonical profile documented, below), `f72a556` (terminology correction, below)
+**Tests** `tests/test_streaming_schema.py`, `tests/test_documentation.py`
 **CI** [PR #8](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/8) run 33259679161 (all four jobs green)
 
 The schema's timestamp validator accepted anything
@@ -1019,6 +1083,34 @@ uppercase `T`/`Z` only, mandatory seconds, a range-checked
 narrower, fully-specified subset of RFC3339, not full RFC3339. New
 tests cover out-of-range offset hours and minutes on both signs and a
 leap-second timestamp, confirming all are rejected.
+
+**Reopened a fourth time by external review of `28d578d`.** The fix
+above was behaviourally correct -- the canonical profile still
+correctly rejects a lowercase separator, a leap second and an
+out-of-range offset -- but `_is_rfc3339`'s own docstring still claimed
+"RFC3339 itself excludes ... a lowercase `t`/`z`", directly
+contradicting the accurate top-of-file comment right above it (which
+already correctly said RFC3339 permits a lowercase `t`/`z` as a
+case-insensitive alternate, and that this project's own narrower
+profile is what excludes them). The same conflation was repeated in
+`test_streaming_schema.py`'s docstring and its test name,
+`test_non_replay_source_rejects_iso8601_forms_outside_rfc3339`, which
+itself reads as a claim about RFC3339 rather than about this project's
+own canonical profile.
+
+**Fixed in `f72a556`.** No behaviour changed. `_is_rfc3339`'s docstring
+now correctly attributes each rejected form to its real source: a space
+instead of `"T"` and omitted seconds are genuinely excluded by
+RFC3339's own grammar; a lowercase `t`/`z` is a form RFC3339 itself
+permits that only this project's own narrower profile declines. The
+test was renamed to
+`test_non_replay_source_rejects_forms_outside_canonical_profile` and
+its docstring corrected the same way. A new documentation guard,
+`tests/test_documentation.py::test_no_rfc3339_lowercase_exclusion_misattribution`,
+bans the misattribution from reappearing in any prose, docstring or
+comment in the repository, verified (via a paired pattern-fires test,
+and by temporarily reverting the docstring fix) to actually catch the
+exact wording this pass found and corrected.
 
 ## BANDIT-REVIEW-65 — A real evaluation invariant used `assert`; the Bandit table was stale
 **Severity** Medium · **Status** verified closed
