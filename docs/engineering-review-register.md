@@ -1599,28 +1599,26 @@ The other eight findings from this round were not affected by the
 three reopened gaps and are marked verified closed above, against the
 same `PR #6` CI run.
 
-Combined with the 23 primary findings from the original review above,
-this project has now had 34 findings raised across two review rounds
-by the same maintainer both times -- 31 verified closed, 3 reopened
-and pending this branch's CI. This project is **still not** in a state
-where all review findings are closed: nothing about closing most of
-these findings establishes that a further pass would not find others,
-and three of this very round's own fixes were themselves gaps an
-*earlier* pass in the same round had reported as complete.
+**Superseded historical status -- see the correction immediately
+below.** Combined with the 23 primary findings from the original
+review above, this project has now had 34 findings raised across two
+review rounds by the same maintainer both times -- 31 verified closed,
+3 reopened and pending this branch's CI. This project is **still not**
+in a state where all review findings are closed: nothing about closing
+most of these findings establishes that a further pass would not find
+others, and three of this very round's own fixes were themselves gaps
+an *earlier* pass in the same round had reported as complete.
 
 **This section's own promised revision, delayed across two further
 rounds.** The paragraph above said this section would be revised once
-the three reopened findings had their own green CI -- that CI run
-(`PR #6`) was green, but the tally sentence itself was never actually
-revised at the time, and later carried forward unedited through two
-more review rounds that each reopened and re-closed the same three
-findings again (`PR #7`, then `PR #8`), leaving "31 verified closed, 3
-reopened and pending this branch's CI" cited as if still current long
-after it no longer was -- an external review of that stale sentence,
-against the register's already-correct individual entries, is itself
-what triggered this correction. The sentence above is left as first
-written rather than edited in place, matching this register's own
-discipline of recording a defect rather than quietly erasing it.
+the three reopened findings had their own green CI. `PR #7` completed
+successfully (run 33140396074), but the tally sentence was not updated
+on `main`. It was subsequently carried forward unchanged through
+`PR #8` and `PR #9`. `PR #10` corrected the tally after `PR #9`'s
+fixes and CI confirmation. The stale sentence above is left as first
+written
+rather than edited in place, matching this register's own discipline
+of recording a defect rather than quietly erasing it.
 
 The real, current count, reflecting every reopening and reclosure
 through `PR #9`: still 34 findings raised in total, none added or
