@@ -63,4 +63,20 @@ if [ -n "$DIRTY_FILES" ]; then
   exit 1
 fi
 
-GIT_COMMIT_SHA="$COMMIT" docker compose build api
+# Explicit -f/--project-directory, not a bare "docker compose build
+# api": Compose otherwise resolves its config from the *environment*
+# (COMPOSE_FILE, an auto-discovered docker-compose.override.yml) as
+# much as from this directory, and none of that is covered by the
+# clean-tree check above -- COMPOSE_FILE naming a file outside this
+# repository (including one set from the gitignored .env, which
+# Compose reads automatically) never appears in "git status" here.
+# Reproduced directly: with COMPOSE_FILE pointed at an unrelated
+# compose file, a bare "docker compose config" built its plan from
+# that file entirely, silently. Pinning both flags to this script's
+# own directory means the committed docker-compose.yml is the only
+# configuration this script can ever build from, regardless of what
+# COMPOSE_FILE or an override file elsewhere names.
+GIT_COMMIT_SHA="$COMMIT" docker compose \
+  -f "$SCRIPT_DIR/docker-compose.yml" \
+  --project-directory "$SCRIPT_DIR" \
+  build api

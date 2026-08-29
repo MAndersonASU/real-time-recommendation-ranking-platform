@@ -76,10 +76,13 @@ def _is_rfc3339(value: str) -> bool:
     grammar and not merely a string `datetime.fromisoformat` happens to
     accept. Three ways `fromisoformat` alone is not this profile:
 
-    - It also parses MIND's own space-separated, offset-less shape and
-      several ISO 8601 forms RFC3339 itself excludes (omitted seconds,
-      a lowercase "t"/"z") -- rejected here by the structural regex
-      above, which runs first.
+    - It also parses MIND's own space-separated, offset-less shape,
+      forms RFC3339's own grammar genuinely excludes (a space instead
+      of "T", omitted seconds), and forms RFC3339 itself permits as a
+      case-insensitive alternate but this project's narrower canonical
+      profile intentionally does not (a lowercase "t"/"z", per this
+      module's own top-of-file comment) -- all rejected here by the
+      structural regex above, which runs first.
     - It silently normalizes an out-of-range offset minute/hour
       ("+00:60" becomes "+01:00") instead of rejecting it -- the regex
       above range-checks the offset's own hour and minute instead of

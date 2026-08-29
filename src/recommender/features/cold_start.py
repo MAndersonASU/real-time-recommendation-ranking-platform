@@ -3,7 +3,11 @@ from dataclasses import dataclass
 import redis
 
 from recommender.features.online_features import DurableUserFeatures, RecentUserFeatures
-from recommender.features.state_store import RedisCircuitBreaker, load_recent_features
+from recommender.features.state_store import (
+    RedisCircuitBreaker,
+    fetch_recent_features_raw,
+    parse_recent_features,
+)
 
 DEFAULT_DURABLE_FEATURES = DurableUserFeatures(
     user_id="", dominant_category=None, lifetime_click_count=0
@@ -69,17 +73,25 @@ def get_online_features(
     already-known-down Redis doesn't make every request pay its own
     connect timeout), and `record_success`/`record_failure` report what
     happened so later calls can make that decision. Every attempt
-    reports exactly one of those two outcomes, on every exit path --
-    including an exception `load_recent_features` doesn't itself raise
-    as a `RedisError` (malformed stored JSON, an unexpected missing
-    field). `RedisCircuitBreaker` has no timeout-based recovery from a
-    claimed-but-never-resolved probe slot, so a probe attempt that threw
-    an exception this function didn't report would leave the breaker
-    stuck refusing every later request forever, real Redis health
-    notwithstanding. That kind of exception is still a real bug, not a
-    Redis connectivity failure, so it still propagates to the caller
-    after being reported -- only its *connectivity* meaning is
-    swallowed here, not its existence.
+    resolves the breaker's claim on every exit path -- `RedisCircuitBreaker`
+    has no timeout-based recovery from a claimed-but-never-resolved
+    HALF_OPEN probe slot, so a probe attempt that left it unresolved
+    would leave the breaker stuck refusing every later request forever,
+    real Redis health notwithstanding.
+
+    The Redis `GET` and the JSON decoding of what it returns are
+    reported separately, because they can fail for unrelated reasons
+    that must not be confused with each other: a `redis.exceptions.RedisError`
+    from the `GET` itself is a real connectivity failure and is recorded
+    as one (`record_failure`). A stored record Redis successfully
+    returned but that turns out to be malformed JSON or missing an
+    expected field is a data-integrity bug, not evidence Redis is
+    unreachable -- Redis just answered. `record_success` is therefore
+    reported as soon as the `GET` returns, *before* the value is parsed,
+    so a parse failure that follows can propagate to the caller (it is
+    still a real bug, never swallowed) without also being misreported
+    as a connectivity failure that would count toward tripping the
+    breaker.
 
     `use_recent_features=False` skips the Redis lookup entirely and
     always falls back to the same neutral default -- the recent-
@@ -95,24 +107,22 @@ def get_online_features(
     if use_recent_features:
         if circuit_breaker is None or circuit_breaker.allow_request():
             try:
-                recent = load_recent_features(redis_client, user_id)
+                raw = fetch_recent_features_raw(redis_client, user_id)
             except redis.exceptions.RedisError:
                 redis_unavailable = True
                 if circuit_breaker is not None:
                     circuit_breaker.record_failure()
-            except Exception:
-                # Not a Redis connectivity failure -- a real bug (e.g.
-                # malformed stored JSON), so it still propagates. But it
-                # claimed the breaker's one HALF_OPEN probe slot just
-                # the same, and nothing else will ever release that
-                # slot on this exit path, so the breaker is told this
-                # attempt failed before the exception leaves.
-                if circuit_breaker is not None:
-                    circuit_breaker.record_failure()
-                raise
             else:
+                # Redis itself responded -- a successful connectivity
+                # outcome regardless of what the stored value turns out
+                # to contain, and reported before parsing it so a parse
+                # failure below can't be misreported as a connectivity
+                # one. This also releases a claimed HALF_OPEN probe
+                # slot, which is required on every exit path.
                 if circuit_breaker is not None:
                     circuit_breaker.record_success()
+                if raw is not None:
+                    recent = parse_recent_features(raw)
         else:
             redis_unavailable = True
 
