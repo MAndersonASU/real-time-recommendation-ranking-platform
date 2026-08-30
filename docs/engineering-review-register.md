@@ -1649,10 +1649,11 @@ independent or third-party audit: the same maintainer, checking their
 own running system.
 
 ## SERVING-DURABLE-HISTORY-69 — Live retrieval ignored durable history when Redis had none
-**Severity** High · **Status** open (fix committed, CI verification pending)
-**Fix commits** `3054fca` (retrieval fallback, snapshot digest), `f5eb8ce` (dedicated evaluation), `702df9d` (report contract fix)
+**Severity** High · **Status** verified closed
+**Fix commits** `3054fca` (retrieval fallback, snapshot digest), `f5eb8ce` (dedicated evaluation), `702df9d` (report contract fix), `e6b4cd2` (rerun evaluations, republish docs), `b05dd54` (demonstration guide)
 **Tests** `tests/test_pipeline.py`, `tests/test_serving_fallback.py`, `tests/test_demo.py`, `tests/test_online_features.py`, `tests/test_snapshot_identity.py`, `tests/test_serving_contract.py`, `tests/test_evaluate_durable_history_fallback.py`
 **Reports** [`durable-history-fallback.json`](../reports/durable-history-fallback.json)
+**CI** [PR #12](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/12) run 33326011615 (all four jobs green); merged as `b83a4da`, confirmed again on `main` by run 33329510626
 
 The live retrieval query (`recommender.serving.pipeline.recommend`)
 was built from `lookup.recent.recent_clicked_items` -- Redis's own
@@ -1768,6 +1769,11 @@ as free of defects at any point in that process; personalization
 working means the candidate set and catalog coverage measurably
 changed for durable-only users, not merely that article order varies.
 
+**Done.** `PR #12`'s CI run (33326011615) went green on all four jobs;
+merged as `b83a4da` and confirmed once more by a post-merge run on
+`main` (33329510626). Marked verified closed above and in the aggregate
+status below.
+
 ## Current aggregate status
 
 The authoritative count, computed the same way
@@ -1775,10 +1781,10 @@ The authoritative count, computed the same way
 verifies it: parsing every primary finding's own `**Status**` field
 above, not merely counting headings.
 
-- **Verified closed:** 31
+- **Verified closed:** 32
 - **Partially closed by scope:** 1 (STREAM-COMMIT-04)
 - **Accepted limitations:** 2 (ARTIFACT-TRANSFORMERS-07, FEATURE-TIMEZONE-20)
-- **Open:** 1 (SERVING-DURABLE-HISTORY-69, pending this round's CI)
+- **Open:** 0
 - **Total primary findings:** 35
 
 This section is the one place a reader should look for the current
