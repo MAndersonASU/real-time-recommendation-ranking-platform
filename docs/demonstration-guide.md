@@ -82,17 +82,21 @@ disagreeing — this can't, since there's only one call.
 curl "http://localhost:8000/demo/U73700?num_candidates=3"
 ```
 
-Against the real rebuilt container, alongside real Kafka and Redis:
-returned a real page for real validation-split user `U73700` —
-"Partially personalized," total latency 11.24ms (well under the
-~31.44ms p50 already measured in `docs/experiments/serving-latency.md` --
-one request's own latency naturally varies below and above an
-aggregate p50), a real
-per-stage breakdown for this one request (reranking the largest single
-cost at 4.58ms here; the aggregate 100-user measurement in that same
-document found candidate retrieval, not reranking, to be the largest
-stage overall), three real catalog
-articles with their real titles, and a real explanation for each item
-("Recommended because it matches your interest in lifestyle.") — the
-same template-fallback behavior `docs/experiments/explanation-generation.md`
-already found to be the common case for this small local model.
+Against the real rebuilt container, with Redis running and no recent
+record for this user: returned a real page for real validation-split
+user `U73700` — **"Durable-history retrieval"** (SERVING-DURABLE-HISTORY-69;
+before that fix, this same user with no live Redis record would have
+shown "Global-popularity retrieval" instead, regardless of their real
+durable history), substatus "durable features used · recent (Redis)
+features not available," total latency 36.81ms (within the range of
+the ~21.78ms p50 already measured in `docs/experiments/serving-latency.md`
+-- one request's own latency naturally varies around an aggregate p50,
+and candidate retrieval at 15.89ms here is on the higher end of that
+stage's own distribution), a real per-stage breakdown for this one
+request, three real catalog articles with their real titles, and a real
+explanation grounded in content similarity for each item ("Recommended
+because its content closely resembles articles you've read before.")
+-- itself only possible because retrieval ran on this user's real
+durable history rather than the flat popularity pool a historyless
+request produces, which is exactly the retrieval-side personalization
+SERVING-DURABLE-HISTORY-69's fix restores.
