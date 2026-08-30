@@ -79,19 +79,26 @@ exception.**
 
 Real infrastructure cost measured; no quality benefit measurable in
 this replay sample. The ablation (`docs/experiments/ablations.md`) found identical
-hit rate (0.0) with and without recent features — but that floor was
-already independently explained: this replay population is measured at
-93.6% durable cold start and 0% live-Redis coverage
-(`docs/limitations.md`), leaving no headroom for recent features to
-show a difference either way. What is measurable is the
-latency cost of having them: removing the Redis round-trip cut mean
-feature-lookup time from 5.48ms to 0.008ms, consistent with the
-isolated Redis benchmark measured when the store was first built
-(0.29ms p50, `docs/operations/state-store.md`). **Answer: not demonstrated to
-help in this particular sample, for a reason (extreme cold start) that
-is itself a limitation of the sample, not evidence the feature is
-worthless. A population with genuine, continuous live traffic would be
-needed to answer this question properly.**
+hit rate (0.0) with and without recent features. Since
+SERVING-DURABLE-HISTORY-69's fix, the reason is specific to this
+particular measurement, not an architectural ceiling: with the real
+ambient Redis store flushed clean immediately before this run, both
+arms find no recent record for any user in the sample, so
+`use_recent_features=True` and `False` necessarily fall back to the
+same source (durable history where a user has it, global popularity
+where they don't) for every impression measured -- there is no
+recent-vs-durable difference for the toggle to reveal when neither arm
+ever finds a real Redis record. What is measurable is the
+latency cost of attempting the lookup regardless: removing the Redis
+round-trip cut mean feature-lookup time from 1.78ms to 0.012ms,
+consistent with the isolated Redis benchmark measured when the store
+was first built (0.29ms p50, `docs/operations/state-store.md`).
+**Answer: not demonstrated to help in this particular sample, for a
+reason (no real Redis content in either arm at measurement time) that is
+itself a limitation of the sample, not evidence the feature is
+worthless. A population with real accumulated Redis state, or a live
+deployment under genuine continuous traffic, would be needed to answer
+this question properly.**
 
 ## RQ5: What does the latency/quality tradeoff actually look like?
 
@@ -99,18 +106,20 @@ needed to answer this question properly.**
 |---|---|---|
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured |
 | Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.73ms p50 |
-| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~9.89ms p50 (~31% of total) |
-| Recent streaming features | Unchanged in this sample | 5.48ms→0.008ms |
+| Reranking | Relevance rises (+2.3%/+1.7%), diversity/freshness fall | ~10.63ms p50 (~49% of total) |
+| Recent streaming features | Unchanged in this sample (real ambient Redis was empty in both arms) | 1.78ms→0.012ms |
 | Cache/index settings | Recall 0.624 at nprobe=8 | ~12.6x faster than exact |
 
-Candidate retrieval is now the largest latency cost in the system
-(`docs/experiments/serving-latency.md`), driven by the cold-start
-popularity path rather than by a deliberate quality tradeoff. Reranking
-remains the second-largest cost and is also one of the two real quality
-wins (diversity/freshness) — that one is a genuine tension, and this
+Reranking is now the largest latency cost in the system
+(`docs/experiments/serving-latency.md`) and is also one of the two real
+quality wins (diversity/freshness) — that is a genuine tension, and this
 table is the first place it is shown in one place rather than argued
-about qualitatively. Full detail:
-`docs/experiments/ablations.md`.
+about qualitatively. Candidate retrieval, formerly the largest cost, fell
+sharply after SERVING-DURABLE-HISTORY-69's fix: far fewer requests now
+hit the expensive full-catalog cold-start popularity path, since a
+returning user with durable history but no live Redis record is now
+retrieved for on their own history instead. Full detail:
+`docs/experiments/ablations.md`, `docs/experiments/serving-latency.md`.
 
 ## The cumulative pipeline gain, stage by stage
 

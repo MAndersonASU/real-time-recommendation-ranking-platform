@@ -1,0 +1,132 @@
+{
+  "artifacts": {
+    "behaviour_splits": {
+      "train": "4f9b8da300cb",
+      "validation": "7dbd8cfb5465"
+    },
+    "catalog_sha256_prefix": "5728630e0628",
+    "content_dim": 64,
+    "content_transform_config": {
+      "max_history": 20,
+      "max_tfidf_features": 20000,
+      "svd_seed": 42
+    },
+    "dependency_lock_sha256_prefix": "ae4fa8551ce0",
+    "embedding_dim": 32,
+    "explanation_model_name": "google/flan-t5-small",
+    "explanation_model_revision": "0fc9ddf78a1e988dac52e2dac162b0ede4fd74ab",
+    "item_content_sha256_prefix": "dbfba306a94f",
+    "ranking_feature_schema": [
+      "retrieval_score",
+      "category_match",
+      "content_similarity",
+      "user_history_length",
+      "hour_of_day"
+    ],
+    "ranking_model_sha256_prefix": "df87cee0e680",
+    "reranking_config": {
+      "diversity_max_per_category": 3,
+      "freshness_min_fresh_in_slate": 2,
+      "freshness_threshold_days": 0.5,
+      "near_duplicate_threshold": 0.5
+    },
+    "retrieval_config": {
+      "min_candidates": 1000,
+      "multiplier": 5,
+      "top_k": 10
+    },
+    "retrieval_model_sha256_prefix": "0fdc2b141f14",
+    "serving_code_commit": "702df9d2695e7347b18b3a819bd33de794a07457"
+  },
+  "configuration": {
+    "eligibility": "impression's user has a non-empty, catalog-valid, point-in-time durable history (most users' history field is empty or off-catalog and are excluded, not counted as a zero)",
+    "k": 10,
+    "ordering": "chronological by (time, impression_id)",
+    "state": "isolated per-run store, never seeded or written to -- a genuinely empty Redis for the entire run, not use_recent_features=False and not the shared serving context's own Redis client"
+  },
+  "dataset": {
+    "catalog_sha256": "5728630e06285bb4ff8eb6db97a1f586aafb8ff06a4107d8e4f5d212384e6c9f",
+    "edition": "2019-11-09 to 2019-11-15",
+    "name": "MIND small",
+    "redistributed": false,
+    "replay_sha256": "f085c8f3c84b373463e6f8d723f5431c4c6ae1c455d44d76501e86180628efdd",
+    "source": "docs/dataset-source.md",
+    "split": "validation",
+    "train_sha256": "4f9b8da300cb89991ae0e39e92688fca7fd5cd73d458519ad8bed0bc6e7967c8",
+    "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
+  },
+  "denominators": {
+    "eligible_users": 6885,
+    "impressions_evaluated": 7790,
+    "impressions_in_sample": 8000,
+    "impressions_skipped": {
+      "no_usable_durable_history": 210
+    }
+  },
+  "limitations": [
+    "Computed from the licensed MIND dataset, which this repository does not redistribute, so these numbers cannot be reproduced from a public clone without supplying the dataset locally.",
+    "Public CI verifies wiring against synthetic artifacts only; it does not reproduce any number in this report.",
+    "Eligibility is drawn from MIND's own history field, which is itself already bounded and does not document how far back it extends -- 'usable durable history' means what this dataset recorded, not necessarily a user's complete real history.",
+    "Retrieval is the binding constraint: no ranking improvement can lift the end-to-end result above retrieval_contained_a_click_rate.",
+    "Does not reproduce production traffic, concurrency, or infrastructure latency.",
+    "Measures the durable-only fallback path in isolation, by construction (the isolated Redis is never seeded) -- it does not measure how often a live deployment's users actually reach this path versus a real recent-history one; end-to-end-evaluation.json reports recent_feature_coverage for that separate question."
+  ],
+  "metric_definitions": {
+    "catalog_coverage_at_k": "share of the catalog appearing across all served slates",
+    "distinct_recommended_items": "count of unique items appearing in any served top-K slate",
+    "distinct_top_k_sets": "count of distinct top-K item sets across all evaluated impressions",
+    "durable": "impressions retrieved using the user's durable history (the expected case here)",
+    "global_popularity": "impressions with neither usable history, retrieved by flat popularity -- excluded from this cohort's eligibility filter, so this should be zero here",
+    "hit_rate_at_k": "share of impressions whose clicked item is in the served top K",
+    "mean_pairwise_slate_jaccard": "mean Jaccard similarity (intersection over union) over pairs of served top-K slates, sampled rather than exhaustive beyond max_jaccard_pairs pairs -- higher means less distinguishable slates across different users",
+    "mean_ranking_ms": "mean wall-clock milliseconds for the ranking stage",
+    "mean_retrieval_ms": "mean wall-clock milliseconds for the retrieval stage",
+    "mean_total_ms": "mean wall-clock milliseconds for the full request",
+    "mrr": "mean reciprocal rank of the first clicked item",
+    "ndcg_at_k": "normalised discounted cumulative gain over the served top K",
+    "recall_at_k": "share of an impression's clicked items in the served top K",
+    "recent": "impressions retrieved using a recent Redis history -- should be zero here, since the isolated store is never seeded; a nonzero count means this evaluation is no longer measuring the durable-only condition it claims to",
+    "retrieval_contained_a_click_rate": "share of impressions where the clicked item was among the retrieved candidates -- a ceiling on every metric below it",
+    "retrieval_history_source_counts": "count of evaluated impressions by which history actually drove retrieval -- expected to be entirely 'durable' here, since the isolated store is never seeded; any other value would mean this evaluation stopped measuring the condition it claims to",
+    "top_k_concentration": "the single most frequent top-K set's share of all evaluated impressions -- 1.0 means every impression got the identical slate"
+  },
+  "provenance": {
+    "evaluation_module": "recommender.evaluation.evaluate_durable_history_fallback",
+    "generated_at": "2026-08-30T17:13:53.935911+00:00",
+    "source_commit": "702df9d2695e7347b18b3a819bd33de794a07457",
+    "working_tree_clean": true
+  },
+  "report_name": "durable-history-fallback",
+  "results": {
+    "catalog_coverage_at_k": 0.1517101517101517,
+    "distinct_recommended_items": 7780,
+    "distinct_top_k_sets": 7312,
+    "hit_rate_at_k": 0.008087291399229781,
+    "mean_pairwise_slate_jaccard": 0.06333159139621987,
+    "mean_ranking_ms": 1.8623578433693562,
+    "mean_retrieval_ms": 0.9533286905948811,
+    "mean_total_ms": 24.605521309238327,
+    "mrr": 0.004605365038612793,
+    "ndcg_at_k": 0.00399764568519539,
+    "recall_at_k": 0.005065611182427613,
+    "retrieval_contained_a_click_rate": 0.13697047496790757,
+    "retrieval_history_source_counts": {
+      "durable": 7790
+    },
+    "top_k_concentration": 0.0010269576379974327
+  },
+  "sampling": {
+    "distinct_users": 7066,
+    "eligible_impressions": 30270,
+    "method": "seeded uniform random without replacement",
+    "seed": 20260825,
+    "selected_fraction": 0.26428807400066073,
+    "selected_ids_sha256": "b32a2dcb94b89699bc994b2c7b65509fc892ab3842d7df66d7ea65a5d037cd02",
+    "selected_impressions": 8000,
+    "time_range": {
+      "end": "2019-11-14 23:58:51",
+      "start": "2019-11-14 00:02:50"
+    }
+  },
+  "schema_version": 2
+}

@@ -28,6 +28,19 @@ because they've never sent an event or their key expired; callers treat
 that `None` as the cold-start case handled by `docs/experiments/cold-start.md`, not
 an error.
 
+**A missing or empty key is not automatically a historyless request.**
+Before SERVING-DURABLE-HISTORY-69, an absent recent record meant live
+retrieval (the two-tower embedding, Faiss search, content-similarity
+profile) saw an empty history regardless of what the user's durable
+features held — a real gap between "no live event yet" and "no history
+at all," reproduced directly against real users
+(`docs/experiments/durable-history-fallback.md`). Retrieval now falls
+back to the user's bounded durable history
+(`DurableUserFeatures.history_item_ids`,
+`docs/operations/online-features.md`) whenever Redis has nothing usable,
+so an absent key genuinely means "durable history only," not "no
+history."
+
 ## Verified against a real container
 
 `verify_state_store.py` writes one real record to the actual Redis

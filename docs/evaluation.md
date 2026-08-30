@@ -45,10 +45,14 @@ Three states, and none of them is an untouched final split:
 | End to end | [`serving-path-end-to-end-evaluation.md`](experiments/serving-path-end-to-end-evaluation.md) | [`end-to-end-evaluation.json`](../reports/end-to-end-evaluation.json) |
 | Explanations | [`explanation-evaluation.md`](experiments/explanation-evaluation.md) | [`explanation-evaluation.json`](../reports/explanation-evaluation.json) |
 | Serving latency | [`serving-latency.md`](experiments/serving-latency.md) | [`serving-latency.json`](../reports/serving-latency.json) |
+| Tuning-decision verification | [`evaluation-integrity.md`](experiments/evaluation-integrity.md) | [`tuning-decisions.json`](../reports/tuning-decisions.json) |
+| Minimum-fresh policy experiment | [`min-fresh-experiment-protocol.md`](experiments/min-fresh-experiment-protocol.md) | [`min-fresh-experiment.json`](../reports/min-fresh-experiment.json) |
+| Durable-history retrieval fallback | [`durable-history-fallback.md`](experiments/durable-history-fallback.md) | [`durable-history-fallback.json`](../reports/durable-history-fallback.json) |
 
 **Evidence status.** Every evaluation table on this page is backed by a
-committed, provenance-valid machine-readable report. No report was
-backfilled with inferred or false provenance.
+committed, provenance-valid machine-readable report -- thirteen in
+total, one per row above. No report was backfilled with inferred or
+false provenance.
 
 ## Integrity
 

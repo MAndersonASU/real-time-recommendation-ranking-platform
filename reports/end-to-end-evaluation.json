@@ -23,7 +23,7 @@
       "user_history_length",
       "hour_of_day"
     ],
-    "ranking_model_sha256_prefix": "37690c7333d6",
+    "ranking_model_sha256_prefix": "df87cee0e680",
     "reranking_config": {
       "diversity_max_per_category": 3,
       "freshness_min_fresh_in_slate": 2,
@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd"
+    "serving_code_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1"
   },
   "configuration": {
     "k": 10,
@@ -65,7 +65,7 @@
     "Retrieval is the binding constraint: no ranking improvement can lift the end-to-end result above retrieval_contained_a_click_rate.",
     "Post-selection development evaluation, not an untouched final estimate.",
     "Does not reproduce production traffic, concurrency, or infrastructure latency.",
-    "The serving path builds its retrieval query from recent in-session clicks only, so a returning user with long durable history but no in-window activity is retrieved for as a cold start. docs/limitations.md records this."
+    "This evaluation's own isolated recent-feature store is reconciled from each impression's point-in-time history before every request (see 'state' above), so recent history is present for nearly every impression here and this report does not exercise the durable-only, empty-Redis retrieval path a live deployment sees for a returning user with no in-window activity. SERVING-DURABLE-HISTORY-69 (formerly an open limitation, now resolved) covers that path with its own dedicated evaluation: reports/durable-history-fallback.json."
   ],
   "metric_definitions": {
     "catalog_coverage": "share of the catalog appearing across all served slates",
@@ -80,8 +80,8 @@
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.evaluate_end_to_end",
-    "generated_at": "2026-08-26T19:07:58.545853+00:00",
-    "source_commit": "125e32a9101a300d8507a5065ddbc1a06f7433bd",
+    "generated_at": "2026-08-30T17:00:58.790035+00:00",
+    "source_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1",
     "working_tree_clean": true
   },
   "report_name": "end-to-end-evaluation",

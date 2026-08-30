@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b"
+    "serving_code_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1"
   },
   "configuration": {
     "environment": "local containerized stack",
@@ -73,49 +73,49 @@
   },
   "provenance": {
     "evaluation_module": "recommender.serving.verify_latency",
-    "generated_at": "2026-08-27T21:06:47.121273+00:00",
-    "source_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b",
+    "generated_at": "2026-08-30T17:01:46.530606+00:00",
+    "source_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1",
     "working_tree_clean": true
   },
   "report_name": "serving-latency",
   "results": {
     "by_stage": {
       "embedding_ms": {
-        "p50_ms": 0.401,
-        "p95_ms": 0.59,
-        "p99_ms": 0.73
+        "p50_ms": 0.337,
+        "p95_ms": 0.487,
+        "p99_ms": 0.57
       },
       "feature_build_ms": {
-        "p50_ms": 5.134,
-        "p95_ms": 5.786,
-        "p99_ms": 6.326
+        "p50_ms": 6.858,
+        "p95_ms": 7.642,
+        "p99_ms": 8.079
       },
       "feature_lookup_ms": {
-        "p50_ms": 1.237,
-        "p95_ms": 1.564,
-        "p99_ms": 22.045
+        "p50_ms": 1.124,
+        "p95_ms": 1.415,
+        "p99_ms": 5.754
       },
       "ranking_ms": {
-        "p50_ms": 1.732,
-        "p95_ms": 2.394,
-        "p99_ms": 2.505
+        "p50_ms": 1.699,
+        "p95_ms": 2.006,
+        "p99_ms": 2.037
       },
       "reranking_ms": {
-        "p50_ms": 9.887,
-        "p95_ms": 11.652,
-        "p99_ms": 12.587
+        "p50_ms": 10.634,
+        "p95_ms": 14.282,
+        "p99_ms": 15.545
       },
       "retrieval_ms": {
-        "p50_ms": 13.107,
-        "p95_ms": 15.032,
-        "p99_ms": 16.579
+        "p50_ms": 0.863,
+        "p95_ms": 3.605,
+        "p99_ms": 16.537
       }
     },
     "requests_measured": 100,
     "total": {
-      "p50_ms": 31.437,
-      "p95_ms": 34.885,
-      "p99_ms": 56.86
+      "p50_ms": 21.778,
+      "p95_ms": 27.214,
+      "p99_ms": 52.794
     }
   },
   "sampling": {

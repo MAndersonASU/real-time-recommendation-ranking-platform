@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-08-30 — Durable-history retrieval fallback
+
+Reproduced in a maintainer-led review, not an independent audit.
+
+- Live retrieval (the two-tower embedding, Faiss search,
+  content-similarity profile) fell back only to Redis's recent-click
+  list; a returning user with real durable history but a healthy, empty
+  Redis record received the same global-popularity slate as every other
+  such user (SERVING-DURABLE-HISTORY-69). Retrieval now falls back to
+  the user's bounded durable history when Redis has nothing usable,
+  never merging the two. The response's new `retrieval_history_source`
+  field reports which of recent/durable/global-popularity actually drove
+  a given request.
+- A dedicated evaluation
+  (`recommender.evaluation.evaluate_durable_history_fallback`,
+  `reports/durable-history-fallback.json`) measures this cohort in
+  isolation; end-to-end, explanation, and serving-latency evaluations
+  were rerun from a clean tree, with real, measured changes disclosed
+  where the fix affected them (explanation refusal rate and serving
+  latency both moved substantially).
+- Added the two missing evaluation-index entries (tuning-decision
+  verification, minimum-fresh policy experiment) and a guard requiring
+  every committed report to appear in `docs/evaluation.md`.
+- Corrected the README's containerized-demo command, which claimed to
+  start Redis without naming it as a service.
+
 ## 2026-08-27 — Documentation checks
 
 - Added documentation regression checks for duplicated words and
