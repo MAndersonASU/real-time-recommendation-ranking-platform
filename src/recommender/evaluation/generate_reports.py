@@ -40,6 +40,7 @@ EXPECTED_REPORTS = (
     "stage-comparison",
     "failure-analysis",
     "serving-latency",
+    "durable-history-fallback",
 )
 
 

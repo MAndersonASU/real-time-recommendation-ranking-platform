@@ -119,24 +119,47 @@ artifact that nothing in this system exercises. It is stated here
 because "content-aware retrieval" otherwise implies an ability this
 does not have (ARTIFACT-TRANSFORMERS-07 in `docs/engineering-review-register.md`).
 
-## Retrieval queries ignore durable history
+## Retrieval queries ignored durable history (resolved)
 
-`recommend()` builds its two-tower query vector from the user's recent
-in-session clicks held in Redis, and from nothing else. A returning user
-with a long durable click history but no activity in the current window
-therefore produces an empty query, and retrieval proceeds as if the user
-were a cold-start user — they receive the global popularity-shaped slate
-while their own history sits unused in the durable feature store.
-
-This was found by running the API against real users rather than by
-reading the code, and it is a genuine gap between what the offline
-evaluation measures and what the live path does: the end-to-end
-evaluation seeds its isolated store from each impression's own
-point-in-time `history` field, so it exercises a query the live service
-would not construct for the same user. The reported
-`recent_feature_coverage` of 97.6% reflects that seeding, not live
+**Status: resolved.** SERVING-DURABLE-HISTORY-69 in
+`docs/engineering-review-register.md` fixed this; the description below
+is preserved as the historical account of the gap, not the current
 behaviour.
 
-Fixing it means building the retrieval query from durable history when
-recent state is empty. That is a serving-path change with its own
-evaluation requirements and is not attempted here.
+`recommend()` built its two-tower query vector from the user's recent
+in-session clicks held in Redis, and from nothing else. A returning user
+with a long durable click history but no activity in the current window
+therefore produced an empty query, and retrieval proceeded as if the user
+were a cold-start user — they received the global popularity-shaped slate
+while their own history sat unused in the durable feature store.
+
+This was found by running the API against real users rather than by
+reading the code, and it was a genuine gap between what the offline
+evaluation measured and what the live path did: the end-to-end
+evaluation seeds its isolated store from each impression's own
+point-in-time `history` field, so it exercised a query the live service
+would not have constructed for the same user. The reported
+`recent_feature_coverage` of 97.6% reflected that seeding, not live
+behaviour.
+
+**Fix.** `recommender.serving.pipeline.select_retrieval_history` now
+builds the two-tower query, Faiss retrieval, and content-similarity
+profile from the user's bounded durable history
+(`DurableUserFeatures.history_item_ids`) whenever Redis has no usable
+recent click history, rather than leaving the query empty. Recent
+history still takes precedence when it exists; durable and recent are
+never merged. The response's `retrieval_history_source` field reports
+which of the three (`recent` / `durable` / `global_popularity`)
+actually drove a given request, so this distinction is now observable
+per-response rather than only inferable from reading the code.
+
+**Evidence.** A dedicated evaluation
+(`docs/experiments/durable-history-fallback.md`,
+`reports/durable-history-fallback.json`) measures a cohort of real
+users who have a usable point-in-time durable history against a
+genuinely empty, isolated Redis store — the exact condition this
+limitation described — and reports catalog coverage, slate diversity,
+and ranking-quality metrics before and after the fix. It does not use
+the 31 interactive requests that first reproduced this defect as a
+quality estimate; those are reproduction evidence, not a representative
+sample.

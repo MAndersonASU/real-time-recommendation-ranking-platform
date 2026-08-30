@@ -175,10 +175,14 @@ def publish_end_to_end_report(raw: dict, sampling: dict, output_dir=None):
             "Post-selection development evaluation, not an untouched final estimate.",
             "Does not reproduce production traffic, concurrency, or infrastructure latency.",
             (
-                "The serving path builds its retrieval query from recent in-session "
-                "clicks only, so a returning user with long durable history but no "
-                "in-window activity is retrieved for as a cold start. "
-                "docs/limitations.md records this."
+                "This evaluation's own isolated recent-feature store is reconciled "
+                "from each impression's point-in-time history before every request "
+                "(see 'state' above), so recent history is present for nearly every "
+                "impression here and this report does not exercise the durable-only, "
+                "empty-Redis retrieval path a live deployment sees for a returning "
+                "user with no in-window activity. SERVING-DURABLE-HISTORY-69 (formerly "
+                "an open limitation, now resolved) covers that path with its own "
+                "dedicated evaluation: reports/durable-history-fallback.json."
             ),
         ],
     }
@@ -822,4 +826,111 @@ def publish_serving_latency_report(raw, sampling: dict, output_dir=None):
     }
     return _publish(
         spec, "recommender.serving.verify_latency", sampling, output_dir=output_dir
+    )
+
+
+def publish_durable_history_fallback_report(raw: dict, sampling: dict, output_dir=None):
+    """SERVING-DURABLE-HISTORY-69's dedicated evaluation: a cohort of real
+    users with a usable point-in-time durable history, served against a
+    genuinely empty, isolated Redis store -- the exact live condition
+    that used to produce the same global-popularity slate for every such
+    user regardless of how different their real histories were. Not the
+    31 interactive requests that first reproduced the defect (reproduction
+    evidence, not a representative sample) and not `end-to-end-evaluation.json`
+    (that report's own isolated store is reconciled from point-in-time
+    history before nearly every impression, so it does not exercise this
+    path -- see its own limitations entry).
+    """
+    spec = {
+        "report_name": "durable-history-fallback",
+        "dataset": {**MIND_DATASET, "split": "validation"},
+        "configuration": {
+            "k": raw.get("k"),
+            "ordering": "chronological by (time, impression_id)",
+            "state": (
+                "isolated per-run store, never seeded or written to -- a "
+                "genuinely empty Redis for the entire run, not "
+                "use_recent_features=False and not the shared serving "
+                "context's own Redis client"
+            ),
+            "eligibility": (
+                "impression's user has a non-empty, catalog-valid, "
+                "point-in-time durable history (most users' history field "
+                "is empty or off-catalog and are excluded, not counted as "
+                "a zero)"
+            ),
+        },
+        "denominators": {
+            "impressions_in_sample": raw.get("impressions_in_sample"),
+            "impressions_evaluated": raw.get("impressions_evaluated"),
+            "impressions_skipped": raw.get("impressions_skipped"),
+            "eligible_users": raw.get("eligible_users"),
+        },
+        "metric_definitions": {
+            "retrieval_history_source_counts": (
+                "count of evaluated impressions by which history actually drove "
+                "retrieval -- expected to be entirely 'durable' here, since the "
+                "isolated store is never seeded; any other value would mean this "
+                "evaluation stopped measuring the condition it claims to"
+            ),
+            "distinct_top_k_sets": "count of distinct top-K item sets across all evaluated impressions",
+            "distinct_recommended_items": "count of unique items appearing in any served top-K slate",
+            "catalog_coverage_at_k": "share of the catalog appearing across all served slates",
+            "top_k_concentration": (
+                "the single most frequent top-K set's share of all evaluated "
+                "impressions -- 1.0 means every impression got the identical slate"
+            ),
+            "mean_pairwise_slate_jaccard": (
+                "mean Jaccard similarity (intersection over union) over pairs of "
+                "served top-K slates, sampled rather than exhaustive beyond "
+                "max_jaccard_pairs pairs -- higher means less distinguishable "
+                "slates across different users"
+            ),
+            "retrieval_contained_a_click_rate": (
+                "share of impressions where the clicked item was among the "
+                "retrieved candidates -- a ceiling on every metric below it"
+            ),
+            "hit_rate_at_k": "share of impressions whose clicked item is in the served top K",
+            "recall_at_k": "share of an impression's clicked items in the served top K",
+            "ndcg_at_k": "normalised discounted cumulative gain over the served top K",
+            "mrr": "mean reciprocal rank of the first clicked item",
+            "mean_retrieval_ms": "mean wall-clock milliseconds for the retrieval stage",
+            "mean_ranking_ms": "mean wall-clock milliseconds for the ranking stage",
+            "mean_total_ms": "mean wall-clock milliseconds for the full request",
+        },
+        "results": {
+            k: raw[k]
+            for k in (
+                "retrieval_history_source_counts", "distinct_top_k_sets",
+                "distinct_recommended_items", "catalog_coverage_at_k",
+                "top_k_concentration", "mean_pairwise_slate_jaccard",
+                "retrieval_contained_a_click_rate", "hit_rate_at_k", "recall_at_k",
+                "ndcg_at_k", "mrr", "mean_retrieval_ms", "mean_ranking_ms", "mean_total_ms",
+            )
+            if k in raw
+        },
+        "limitations": [
+            *_COMMON_LIMITATIONS,
+            (
+                "Eligibility is drawn from MIND's own history field, which is "
+                "itself already bounded and does not document how far back it "
+                "extends -- 'usable durable history' means what this dataset "
+                "recorded, not necessarily a user's complete real history."
+            ),
+            (
+                "Retrieval is the binding constraint: no ranking improvement can "
+                "lift the end-to-end result above retrieval_contained_a_click_rate."
+            ),
+            "Does not reproduce production traffic, concurrency, or infrastructure latency.",
+            (
+                "Measures the durable-only fallback path in isolation, by "
+                "construction (the isolated Redis is never seeded) -- it does "
+                "not measure how often a live deployment's users actually reach "
+                "this path versus a real recent-history one; end-to-end-evaluation.json "
+                "reports recent_feature_coverage for that separate question."
+            ),
+        ],
+    }
+    return _publish(
+        spec, "recommender.evaluation.evaluate_durable_history_fallback", sampling, output_dir=output_dir
     )
