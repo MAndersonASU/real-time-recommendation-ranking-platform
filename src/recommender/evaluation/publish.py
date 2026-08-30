@@ -873,6 +873,16 @@ def publish_durable_history_fallback_report(raw: dict, sampling: dict, output_di
                 "isolated store is never seeded; any other value would mean this "
                 "evaluation stopped measuring the condition it claims to"
             ),
+            "durable": "impressions retrieved using the user's durable history (the expected case here)",
+            "recent": (
+                "impressions retrieved using a recent Redis history -- should be zero here, "
+                "since the isolated store is never seeded; a nonzero count means this "
+                "evaluation is no longer measuring the durable-only condition it claims to"
+            ),
+            "global_popularity": (
+                "impressions with neither usable history, retrieved by flat popularity -- "
+                "excluded from this cohort's eligibility filter, so this should be zero here"
+            ),
             "distinct_top_k_sets": "count of distinct top-K item sets across all evaluated impressions",
             "distinct_recommended_items": "count of unique items appearing in any served top-K slate",
             "catalog_coverage_at_k": "share of the catalog appearing across all served slates",
