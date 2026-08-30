@@ -15,7 +15,7 @@ ranking model, diversity/freshness reranking, real-time streaming
 features, and containerized serving — evaluated end to end against a
 frozen research protocol.
 
-**Evidence status.** The twelve published reports in
+**Evidence status.** The thirteen published reports in
 [`reports/`](reports/) each carry committed, provenance-valid
 machine-readable backing -- one JSON per published report-backed result
 family, listed in [`docs/evaluation.md`](docs/evaluation.md). No report
@@ -23,7 +23,7 @@ was backfilled with inferred or false provenance. Other numeric tables
 throughout the documentation (data quality, calibration, load and
 profiling measurements, and others) are real, but describe their own
 original verification scope directly in the document they appear in --
-they are not part of this twelve-report contract. `docs/research-scenario.md` defines
+they are not part of this thirteen-report contract. `docs/research-scenario.md` defines
 the five research questions this project set out to answer;
 `docs/conclusions.md` answers all five from the evidence gathered
 across every component.
@@ -187,9 +187,15 @@ ruff check .
 
 **2. Containerized demonstration — synthetic artifacts, no licensed data.**
 
-Builds the API image and starts it against generated stand-in artifacts,
-the same way CI does. This verifies wiring, health checks and response
-shapes; it does not reproduce any evaluation number.
+Builds the API image and starts it against generated stand-in artifacts.
+This verifies wiring, health checks and response shapes; it does not
+reproduce any evaluation number, and it does not build the image the
+same way CI's own `api-container-test` job does -- that job passes
+`GIT_COMMIT_SHA` explicitly (`GIT_COMMIT_SHA=$(git rev-parse HEAD)
+docker compose up -d --build api`); the command below does not, so the
+resulting image carries no commit identity (`build-image.sh` is the
+wrapper that supplies one, for a real deployment rather than this
+demonstration).
 
 > **This overwrites real artifacts.** `recommender.data.synthetic` writes
 > its stand-ins to the same paths the offline build uses
@@ -198,10 +204,21 @@ shapes; it does not reproduce any evaluation number.
 > `two_tower_model.pt` and `ranking_model.skops`. Run it only in a clone
 > with no trained artifacts, or back that directory up first.
 
+The API has no `depends_on` relationship with Redis (`docs/architecture.md`,
+`docs/operations/serving-fallback.md`) -- it starts and serves real,
+durable-features-backed responses whether or not Redis is running, so
+`redis` needs its own explicit start for the complete demonstration:
+
 ```bash
 python -m recommender.data.synthetic          # seeded stand-in artifacts
-docker compose up -d --build api              # API + its Redis dependency; no Kafka needed
+docker compose up -d --build api redis        # API + Redis; no Kafka needed for this demonstration
 ```
+
+Omitting `redis` from that command is a valid choice too, not an error
+-- it demonstrates the service's disclosed degraded-Redis behavior
+directly: `/ready` reports Redis as `"degraded"` and `/recommend` still
+returns real, personalized responses on durable features alone
+(`docs/operations/serving-fallback.md`).
 
 **3. Licensed-data training and serving.**
 

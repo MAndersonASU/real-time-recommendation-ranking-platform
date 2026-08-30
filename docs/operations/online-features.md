@@ -14,7 +14,16 @@ Implementation: `src/recommender/features/online_features.py`.
   latest impression carries the longest available history for that user
   in a given split. Reuses `dominant_category` and `history_ids_from_raw`
   from `ranking/features.py` rather than recomputing the same logic a
-  second way.
+  second way. Alongside the two ranking-side summary fields
+  (`dominant_category`, `lifetime_click_count`), it also carries
+  `history_item_ids` (SERVING-DURABLE-HISTORY-69,
+  `docs/engineering-review-register.md`) — the last `MAX_HISTORY` valid
+  catalog article ids, in order, bounded the same way the recent-feature
+  store bounds a live history. This is a real retrieval-time signal, not
+  only a ranking one: `recommender.serving.pipeline.select_retrieval_history`
+  falls back to it for the two-tower embedding, Faiss retrieval, and
+  content-similarity profile whenever Redis has no usable recent click
+  history for that user.
 - **Recent** (`RecentUserFeatures`) — must reflect the very latest events.
   `recent_features_from_user_state` adapts the streaming consumer's
   `UserState` (`docs/operations/streaming-consumer.md`) into this stable shape, so

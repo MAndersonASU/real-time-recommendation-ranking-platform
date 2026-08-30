@@ -14,6 +14,35 @@ request only ever does a dictionary lookup or a forward pass through an
 already-trained model; nothing about serving a single user re-trains or
 re-fits anything.
 
+## Which history retrieval actually uses
+
+`select_retrieval_history` (SERVING-DURABLE-HISTORY-69,
+`docs/engineering-review-register.md`) chooses exactly one history for
+the two-tower embedding, Faiss retrieval, and content-similarity
+profile, in this order, never merging two of them:
+
+1. **Recent** — Redis's own recent-clicked-items list, when it contains
+   at least one id this catalog's item vocabulary recognises. A record
+   that exists but carries only impressions (no real clicks, or clicks
+   this vocab doesn't know) is not usable and falls through to durable,
+   exactly like no record at all.
+2. **Durable** — the user's bounded offline history
+   (`DurableUserFeatures.history_item_ids`), when Redis has nothing
+   usable. This is what a returning user with a real click history but
+   a healthy, merely empty Redis record now retrieves on, instead of
+   the identical global-popularity pool every such user used to
+   receive regardless of who they were.
+3. **Global popularity** — an explicit empty history, when neither
+   exists. `has_retrieval_signal` below detects the resulting
+   zero-norm embedding and routes to a real popularity ranking rather
+   than an arbitrary Faiss tie order.
+
+The response's `retrieval_history_source` field names which of the
+three a given request actually used -- distinct from the older
+`durable_features_used`/`recent_features_used` flags, which report
+only whether *some* feature lookup found a record, not what retrieval
+itself keyed on.
+
 ## The one place this project's retrieval quality actually gets used live
 
 Every offline evaluation since the baselines ranked the same frozen
@@ -42,7 +71,9 @@ from retrieval's real, already-documented ceiling, not a clean slate.
 
 The two-tower embedding and the content-similarity profile here only
 ever see a user's last 20 recent clicks, since that is the cap the online feature store's
-low-latency store chose (`docs/operations/state-store.md`). Offline training's own
+low-latency store chose (`docs/operations/state-store.md`) -- now also
+the cap `DurableUserFeatures.history_item_ids` uses, so a durable-history
+fallback sees the same bound a real recent history would have. Offline training's own
 content profile (`ranking/features.py`) pools a user's entire history
 string, uncapped. This is a real, disclosed consequence of the online feature store's own
 latency/storage tradeoff, not an oversight — `user_history_length` uses

@@ -6,7 +6,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from recommender.features.online_features import RecentUserFeatures
+from recommender.features.online_features import DurableUserFeatures, RecentUserFeatures
 from recommender.features.state_store import save_recent_features
 from recommender.ranking.baselines import build_content_vectors, compute_popularity
 from recommender.ranking.train import MODEL_FEATURE_COLUMNS
@@ -303,6 +303,188 @@ def test_recommend_still_uses_faiss_when_the_user_has_real_history():
         recommend(request, context)
 
     assert spy.call_count == 1
+
+
+# --- SERVING-DURABLE-HISTORY-69: durable history is a real retrieval
+# fallback, not just a ranking-feature signal, when Redis has no recent
+# record for a returning user ---
+
+
+def _context_with_durable_histories(histories: dict[str, tuple]) -> "ServingContext":
+    """A context whose durable cache carries exactly the given
+    user_id -> history_item_ids histories, with real dominant_category/
+    lifetime_click_count derived to match -- everything else (model,
+    index, ranking pipeline) is the same shared fixture context every
+    other test in this file uses, so only the durable history differs
+    between test cases.
+    """
+    from dataclasses import replace
+
+    context = _build_context()
+    features_by_user = {
+        user_id: DurableUserFeatures(
+            user_id=user_id,
+            dominant_category=context.category_by_id.get(history[0]) if history else None,
+            lifetime_click_count=len(history),
+            history_item_ids=history,
+        )
+        for user_id, history in histories.items()
+    }
+    return replace(
+        context,
+        durable_cache=replace(context.durable_cache, features_by_user=features_by_user),
+    )
+
+
+def test_two_durable_history_users_with_empty_redis_get_different_candidates():
+    """Regression test for SERVING-DURABLE-HISTORY-69: reproduced
+    directly against the real serving path (not a synthetic unit check)
+    with six real MIND users -- all had durable_features_used=True,
+    recent_features_used=False, and only 3 distinct top-10 sets (10
+    distinct items total) among them, because retrieval used only
+    `lookup.recent.recent_clicked_items`, always empty here, giving
+    every such user the same zero-norm-embedding global-popularity
+    slate regardless of how different their real durable histories were.
+
+    Fails on the pre-fix code (both users' candidate sets are
+    identical) and passes once an empty recent history falls back to
+    the user's own durable history for retrieval.
+    """
+    from unittest.mock import patch
+
+    context = _context_with_durable_histories(
+        {"u1": ("n1", "n2"), "u2": ("n4", "n5", "n6")}
+    )
+    captured: dict[str, list] = {}
+    for user_id in ("u1", "u2"):
+        request = RecommendationRequest(user_id=user_id, num_candidates=3)
+        capture: list = []
+        with patch.object(context.faiss_index, "search", wraps=context.faiss_index.search) as spy:
+            response = recommend(request, context, capture_candidates=capture)
+        assert spy.call_count == 1, f"{user_id}: Faiss must be queried for a durable-history user"
+        assert response.durable_features_used is True
+        assert response.recent_features_used is False
+        assert response.retrieval_history_source == "durable"
+        captured[user_id] = capture
+
+    assert captured["u1"] != captured["u2"], (
+        f"two users with different durable histories got the same candidates: {captured}"
+    )
+
+
+def test_non_empty_recent_history_takes_precedence_over_durable_history():
+    """SERVING-DURABLE-HISTORY-69's ordering rule: recent first, when it
+    has anything usable -- durable is a fallback for when Redis has
+    nothing, not a signal merged alongside a real recent record.
+    """
+    from dataclasses import replace
+
+    redis_client = _FakeRedis()
+    save_recent_features(
+        redis_client,
+        RecentUserFeatures(
+            user_id="u1", recent_clicked_items=["n4"],
+            impressions_seen=1, clicks_seen=1, last_event_time=None,
+        ),
+    )
+    context = replace(_context_with_durable_histories({"u1": ("n1", "n2")}), redis_client=redis_client)
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context)
+
+    assert response.retrieval_history_source == "recent"
+
+
+def test_an_empty_recent_record_falls_back_to_durable_history():
+    """A Redis record that exists (so recent_is_fallback is False, and
+    recent_features_used stays True) but carries no clicked items --
+    only impressions -- is not "usable" for retrieval: it must fall back
+    to durable history exactly like no record at all, not force an
+    empty-history global-popularity result just because a record was
+    technically found.
+    """
+    from dataclasses import replace
+
+    redis_client = _FakeRedis()
+    save_recent_features(
+        redis_client,
+        RecentUserFeatures(
+            user_id="u1", recent_clicked_items=[],
+            impressions_seen=3, clicks_seen=0, last_event_time=None,
+        ),
+    )
+    context = replace(_context_with_durable_histories({"u1": ("n1", "n2")}), redis_client=redis_client)
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context)
+
+    assert response.recent_features_used is True  # a real record was found
+    assert response.retrieval_history_source == "durable"  # but it had nothing usable
+
+
+def test_unknown_durable_article_ids_are_ignored_safely():
+    """A durable history containing an id this catalog's item_vocab
+    doesn't know (e.g. an item retired since the offline split was
+    built) must not crash retrieval -- the unknown id is filtered out,
+    same as an unknown recent-clicked id already was before this fix.
+    """
+    context = _context_with_durable_histories({"u1": ("not-a-real-item", "n1", "also-fake")})
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context)
+
+    assert response.retrieval_history_source == "durable"
+    assert len(response.recommendations) == 3
+
+
+def test_entirely_unknown_durable_article_ids_fall_back_to_global_popularity():
+    """The all-invalid case: no usable id survives filtering, so this
+    must behave exactly like a user with no durable history at all,
+    not crash or silently retrieve on an empty, meaningless vector.
+    """
+    context = _context_with_durable_histories({"u1": ("not-a-real-item", "also-fake")})
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context)
+
+    assert response.retrieval_history_source == "global_popularity"
+
+
+def test_a_user_with_no_durable_or_recent_history_gets_the_deterministic_popularity_slate():
+    """SERVING-DURABLE-HISTORY-69's floor case: with neither signal
+    available, retrieval must still produce the same, real,
+    deterministic global-popularity slate on repeated calls -- not an
+    arbitrary Faiss tie order, and not a different answer each time.
+    """
+    context = _build_context()
+    request = RecommendationRequest(user_id="a-user-nobody-has-ever-seen", num_candidates=3)
+
+    first = recommend(request, context)
+    second = recommend(request, context)
+
+    assert first.retrieval_history_source == "global_popularity"
+    assert second.retrieval_history_source == "global_popularity"
+    assert [item.news_id for item in first.recommendations] == [
+        item.news_id for item in second.recommendations
+    ]
+
+
+def test_use_recent_features_false_still_falls_back_to_durable_history():
+    """SERVING-DURABLE-HISTORY-69: use_recent_features=False must mean
+    "no live recent-click feed," not "erase every retrieval-history
+    signal." u1 has a real durable history in TRAIN_BEHAVIORS -- forcing
+    the online lookup to skip Redis entirely must still let retrieval
+    fall back to that durable history, not force a historyless
+    global-popularity result the ablation was never meant to simulate.
+    """
+    context = _build_context()
+    request = RecommendationRequest(user_id="u1", num_candidates=3)
+
+    response = recommend(request, context, use_recent_features=False)
+
+    assert response.durable_features_used is True
+    assert response.recent_features_used is False
+    assert response.retrieval_history_source == "durable"
 
 
 def test_utc_clock_is_invariant_to_the_process_timezone():

@@ -56,6 +56,9 @@ def build_fallback_response(request: RecommendationRequest, context: ServingCont
         recommendations=recommendations,
         durable_features_used=False,
         recent_features_used=False,
+        # No history of any kind drove this response -- the two-tower
+        # model and Faiss never even ran on this path.
+        retrieval_history_source="global_popularity",
         generated_at=datetime.now(UTC),  # pure output field, real UTC offset, no internal comparison
     )
 

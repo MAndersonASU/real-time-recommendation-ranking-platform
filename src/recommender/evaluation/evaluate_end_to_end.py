@@ -53,10 +53,12 @@ def _point_in_time_durable_features(
     information leak into an earlier one's evaluation.
     """
     history_ids = history_ids_from_raw(history_raw) if history_raw else []
+    valid_history_ids = [nid for nid in history_ids if nid in category_by_id.index]
     return DurableUserFeatures(
         user_id=user_id,
         dominant_category=dominant_category(history_ids, category_by_id),
         lifetime_click_count=len(history_ids),
+        history_item_ids=tuple(valid_history_ids[-MAX_HISTORY:]),
     )
 
 

@@ -1,10 +1,23 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from recommender.evaluation.contract import TOP_K
 
 MAX_NUM_CANDIDATES = 50
+
+# SERVING-DURABLE-HISTORY-69: which click history actually drove the
+# two-tower embedding, Faiss retrieval, and content-similarity profile
+# for this response -- distinct from durable_features_used/
+# recent_features_used below, which only report whether *some* feature
+# lookup found a record, not what retrieval actually keyed on. "recent"
+# is Redis's own recent-clicked-items list, used only when it contains
+# at least one usable click; "durable" is the user's bounded offline
+# history, used when recent has none; "global_popularity" is a user
+# with neither -- the same flat, unpersonalized candidate pool every
+# such user gets.
+RetrievalHistorySource = Literal["recent", "durable", "global_popularity"]
 
 
 # A conservative bound: comfortably above any real identifier, far
@@ -104,11 +117,21 @@ class RecommendationResponse(BaseModel):
     caller opts in (`recommend(..., include_matched_signals=True)`) --
     left `None` by default so an ordinary request pays no extra cost for
     data only the optional explanation layer ever needs.
+
+    `retrieval_history_source` (SERVING-DURABLE-HISTORY-69) names which
+    history actually drove retrieval -- see `RetrievalHistorySource`
+    above. A response can have `durable_features_used=True` purely from
+    the ranking-side dominant-category/history-count features while
+    retrieval itself still ran on `"durable"` history or fell all the
+    way to `"global_popularity"`; this field is what actually answers
+    "was the candidate set itself personalized," which the two feature
+    flags alone cannot.
     """
 
     user_id: str
     recommendations: list[RecommendedItem]
     durable_features_used: bool
     recent_features_used: bool
+    retrieval_history_source: RetrievalHistorySource
     generated_at: datetime
     matched_signals: dict[str, MatchedSignals] | None = None

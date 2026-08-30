@@ -24,31 +24,39 @@ Against a containerized Redis, on the artifact bundle recorded in
 [`build-receipt.json`](../../provenance/build-receipt.json). Users are
 a seeded uniform sample of the validation split's distinct users
 (`recommender.evaluation.sampling`), not the first 100 to appear.
+Re-measured after SERVING-DURABLE-HISTORY-69's fix.
 
 | Stage | p50 | p95 | p99 |
 |---|---|---|---|
-| Candidate retrieval | **13.11 ms** | **15.03 ms** | **16.58 ms** |
-| Reranking (diversity + freshness) | 9.89 ms | 11.65 ms | 12.59 ms |
-| Feature building (category/content-similarity) | 5.13 ms | 5.79 ms | 6.33 ms |
-| Feature lookup (the online feature store) | 1.24 ms | 1.56 ms | 22.05 ms |
-| Ranking (logistic regression) | 1.73 ms | 2.39 ms | 2.51 ms |
-| User embedding (two-tower forward pass) | 0.40 ms | 0.59 ms | 0.73 ms |
-| **Total** | 31.44 ms | 34.89 ms | 56.86 ms |
+| Reranking (diversity + freshness) | **10.63 ms** | **14.28 ms** | **15.55 ms** |
+| Feature building (category/content-similarity) | 6.86 ms | 7.64 ms | 8.08 ms |
+| Ranking (logistic regression) | 1.70 ms | 2.01 ms | 2.04 ms |
+| Feature lookup (the online feature store) | 1.12 ms | 1.42 ms | 5.75 ms |
+| Candidate retrieval | 0.86 ms | 3.61 ms | 16.54 ms |
+| User embedding (two-tower forward pass) | 0.34 ms | 0.49 ms | 0.57 ms |
+| **Total** | 21.78 ms | 27.21 ms | 52.79 ms |
 
 Stage shares below are each stage's p50 against the total p50. They are
 approximate and do not sum to 100%: the total is the median of per-request
 sums, not the sum of per-stage medians.
 
-## Retrieval dominates, and not because of Faiss
+## Retrieval's cost moved with the fix, not with anything measured here directly
 
-Candidate retrieval is the largest stage at roughly 42% of p50, ahead of
-reranking at about 31%. The Faiss search is not what costs: the
-`retrieval_ms` span covers either an index search *or* the cold-start
-popularity path, and that path reindexes the whole 51,282-item catalog
-over `popularity`, fills missing values and sorts it, on every request
-from a user with no usable click history. That is a full catalog sort
-against a single dense-array search, and many validation users have no
-usable history.
+Total p50 dropped from 31.44 ms to 21.78 ms since the previous
+measurement below, almost entirely from candidate retrieval: 13.11 ms
+p50 -> 0.86 ms p50, a real, explained change, not measurement noise.
+The previous measurement's own account of *why* retrieval cost that
+much still holds and explains the drop: the `retrieval_ms` span covers
+either a real index search *or* the cold-start popularity path, and
+that path reindexes the whole 51,282-item catalog over `popularity`,
+fills missing values and sorts it, on every request from a user with no
+usable history. SERVING-DURABLE-HISTORY-69's fix means far fewer of
+these 100 sampled users now hit that expensive path at all: a returning
+user with durable history but no live Redis record is now retrieved for
+on their own history (a real Faiss search, the cheap case) instead of
+falling all the way to the full-catalog popularity sort. Reranking, at
+10.63 ms p50, is now the largest stage -- not because reranking itself
+changed, but because retrieval got cheaper out from under it.
 
 Reranking remains expensive for the reason previously measured:
 `build_diverse_slate`'s near-duplicate check
@@ -58,11 +66,29 @@ stages, all single dense-array operations, do not have. Retrieving more
 candidates than needed (`RETRIEVAL_MULTIPLIER`,
 `docs/operations/inference-path.md`) feeds that cost directly.
 
-The p99 figures carry a caveat the p50s do not. Feature lookup's p99 of
-22.05 ms against a p50 of 1.24 ms is a tail against a containerized
-Redis over loopback, and the total p99 of 56.86 ms is dominated by a
-small number of such requests. Treat the p50 and p95 columns as the
+The p99 figures carry a caveat the p50s do not. Candidate retrieval's
+own p99 of 16.54 ms against a p50 of 0.86 ms is a tail from the users in
+this sample who still hit the full-catalog popularity path (neither
+durable nor recent history), and the total p99 of 52.79 ms partly
+reflects that same small subset. Treat the p50 and p95 columns as the
 stable signal here.
+
+## Superseded: the 2026-08-27 measurement (pre durable-history-fallback)
+
+Same sampling method as the current measurement, same pipeline except
+for SERVING-DURABLE-HISTORY-69's fix -- kept here for the same reason
+every table below it is: the change is the finding, not an
+inconvenience to hide.
+
+| Stage | p50 | p95 | p99 |
+|---|---|---|---|
+| Candidate retrieval | 13.11 ms | 15.03 ms | 16.58 ms |
+| Reranking (diversity + freshness) | 9.89 ms | 11.65 ms | 12.59 ms |
+| Feature building (category/content-similarity) | 5.13 ms | 5.79 ms | 6.33 ms |
+| Feature lookup (the online feature store) | 1.24 ms | 1.56 ms | 22.05 ms |
+| Ranking (logistic regression) | 1.73 ms | 2.39 ms | 2.51 ms |
+| User embedding (two-tower forward pass) | 0.40 ms | 0.59 ms | 0.73 ms |
+| **Total** | 31.44 ms | 34.89 ms | 56.86 ms |
 
 ## Why these numbers moved again
 

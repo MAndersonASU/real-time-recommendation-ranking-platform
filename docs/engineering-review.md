@@ -33,12 +33,12 @@ republished rather than reworded around unchanged numbers.
 
 ## Evidence status
 
-The twelve headline evaluation result families listed in
+The thirteen headline evaluation result families listed in
 `docs/evaluation.md` now each have a committed, provenance-valid
 machine-readable report. No report was backfilled with inferred or
 false provenance. Other historical and operational measurements
 throughout the documentation are real but are not part of this
-twelve-report contract; each states its own verification scope in the
+thirteen-report contract; each states its own verification scope in the
 document it appears in.
 
 Publishing the last of them changed a result. The serving-latency

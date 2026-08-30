@@ -36,7 +36,7 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b"
+    "serving_code_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1"
   },
   "configuration": {
     "mode": "deterministic templates; generative rewriting off by default"
@@ -53,7 +53,7 @@
     "validation_sha256": "7dbd8cfb5465b65b6d8dec6d5823aec82b23813bdca184ee8c5f1b8afe6ef83b"
   },
   "denominators": {
-    "attempted": 61,
+    "attempted": 143,
     "total_recommendations_evaluated": 180
   },
   "limitations": [
@@ -76,22 +76,22 @@
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.evaluate_explanations",
-    "generated_at": "2026-08-27T21:06:12.182484+00:00",
-    "source_commit": "94ddf64cfa547d5fb2609907b465fde950a0a61b",
+    "generated_at": "2026-08-30T17:01:21.714200+00:00",
+    "source_commit": "f5eb8cef0afd0b56189ec4c61b535a0d9bc642c1",
     "working_tree_clean": true
   },
   "report_name": "explanation-evaluation",
   "results": {
-    "attempted": 61,
-    "distinct_explanations": 2,
+    "attempted": 143,
+    "distinct_explanations": 11,
     "lexical_policy_pass_rate": 1.0,
-    "lexical_policy_passed": 61,
-    "mean_explanation_length_chars": 53.22950819672131,
+    "lexical_policy_passed": 143,
+    "mean_explanation_length_chars": 96.4895104895105,
     "model_contribution_rate": 0.0,
     "model_rewrite_used": 0,
-    "refusal_rate": 0.6611111111111111,
-    "refused": 119,
-    "template_fallback_used": 61,
+    "refusal_rate": 0.20555555555555555,
+    "refused": 37,
+    "template_fallback_used": 143,
     "total_recommendations_evaluated": 180
   },
   "sampling": {

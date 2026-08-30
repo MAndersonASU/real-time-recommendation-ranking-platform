@@ -1380,7 +1380,7 @@ through.
 
 ## Status summary
 
-All twelve published reports are generated from a clean source commit and
+All thirteen published reports are generated from a clean source commit and
 record it, together with a verified-clean working tree. The tuning
 comparisons ran against the leakage-free fit-half feature table
 (`tune_fold_leakage: false`), and the report identifies that bundle by
@@ -1402,7 +1402,7 @@ fix, and stay attached to that fix.
 
 Run 33004519430 at commit `37e6510` is the **report-republication run**:
 the run that verified the machine-readable reports published as of that
-commit -- a much smaller `reports/` directory than today's twelve. It is
+commit -- a much smaller `reports/` directory than the current one. It is
 cited for that historical verification and nothing else. (Run 32975126661
 verified the previous set, superseded when the strict content-artifact
 schema changed the artifact hashes those reports recorded.)
@@ -1454,12 +1454,13 @@ None was fixed by weakening a check.
 
 ### How to read the counts
 
-The headline tally counts the **34 primary findings** in this register
+The headline tally counts the **35 primary findings** in this register
 (`EVAL-*`, `STREAM-*`, `ARTIFACT-*`, `MANIFEST-*`, `FEATURE-*`,
 `SUPPLY-*`, `API-*`, `SCHEMA-*`, `REPRO-*`, `REDIS-*`, `DEPLOYMENT-*`,
 `DATA-PATH-*`, `TIMESTAMP-*`, `BANDIT-*`, `HTTP-METRICS-*`, `UNKNOWN-*`,
-`CI-*`) and nothing else -- 23 from the original review, 11 more from
-the follow-up verification round above.
+`CI-*`, `SERVING-*`) and nothing else -- 23 from the original review, 11
+more from the 2026-08-27 follow-up verification round, 1 more from the
+2026-08-30 follow-up round above.
 
 `DOC-*` and `TEST-*` findings are tracked in their own table above.
 `LIMIT-*` and `HIST-*` entries are **not findings at all** -- they are
@@ -1550,7 +1551,7 @@ numbers.
 
 STREAM-COMMIT-04 remains partially closed by an explicit scope decision.
 
-The twelve headline evaluation result families listed in `docs/evaluation.md` each have a committed, provenance-valid machine-readable report. No report was backfilled with inferred or false provenance. Other historical and operational measurements throughout the documentation are real but are not part of this twelve-report contract; each states its own verification scope in the document it appears in.
+The thirteen headline evaluation result families listed in `docs/evaluation.md` each have a committed, provenance-valid machine-readable report. No report was backfilled with inferred or false provenance. Other historical and operational measurements throughout the documentation are real but are not part of this thirteen-report contract; each states its own verification scope in the document it appears in.
 
 Of 23 primary findings: 20 verified closed, 1 partially closed by scope,
 2 accepted limitations. The minimum-fresh quota is retained at 2 as a
@@ -1635,4 +1636,157 @@ repeatedly throughout this register: this does not mean the project is
 now free of defects, only that every finding raised by a review so
 far, including gaps in earlier fixes for the same finding, has a
 reproduction, a fix, a regression test and a green CI run behind it.
+
+---
+
+## Follow-up finding (2026-08-30 verification round)
+
+A further maintainer-led review of the live serving path -- reproduced
+by running the API against real users, not by reading the code alone,
+the same discipline STREAM-DURABILITY-17 and the Follow-up findings
+above were both found by -- surfaced one further finding. Not an
+independent or third-party audit: the same maintainer, checking their
+own running system.
+
+## SERVING-DURABLE-HISTORY-69 — Live retrieval ignored durable history when Redis had none
+**Severity** High · **Status** open (fix committed, CI verification pending)
+**Fix commits** `3054fca` (retrieval fallback, snapshot digest), `f5eb8ce` (dedicated evaluation), `702df9d` (report contract fix)
+**Tests** `tests/test_pipeline.py`, `tests/test_serving_fallback.py`, `tests/test_demo.py`, `tests/test_online_features.py`, `tests/test_snapshot_identity.py`, `tests/test_serving_contract.py`, `tests/test_evaluate_durable_history_fallback.py`
+**Reports** [`durable-history-fallback.json`](../reports/durable-history-fallback.json)
+
+The live retrieval query (`recommender.serving.pipeline.recommend`)
+was built from `lookup.recent.recent_clicked_items` -- Redis's own
+recent-click list -- and nothing else. A returning user with a real
+durable click history but a genuinely healthy, merely empty Redis
+record (not an outage: simply no live event yet) produced an empty
+history, a zero-norm two-tower user vector, and the same
+global-popularity candidate pool as every other such user, regardless
+of how different their real histories were.
+
+**Reproduced directly**, interactively, against the real serving path:
+six real users (`U34055`, `U54694`, `U4652`, `U70804`, `U73415`,
+`U83801`) with a durable history of five or more clicks each, served
+through the real API against a genuinely empty, isolated Redis store,
+received only 3 distinct top-10 sets (10 distinct items total) among
+them, and reported `durable_features_used=True` /
+`recent_features_used=False` throughout. Different scores and
+explanations came from durable dominant-category/history-count ranking
+features; they did not mean retrieval itself was personalized. The
+existing end-to-end evaluation does not exercise this condition: its
+own isolated recent-feature store is reconciled from each impression's
+point-in-time history before nearly every request
+(`recent_feature_coverage` 97.6%), which is not the common empty-Redis
+live-start condition this finding is about.
+
+**Fixed.** `DurableUserFeatures` gains `history_item_ids` (bounded to
+`MAX_HISTORY`, filtered to valid catalog ids, in original order),
+populated in `compute_durable_features` and `evaluate_end_to_end`'s
+point-in-time variant. `recommender.serving.pipeline.select_retrieval_history`
+chooses exactly one history for the two-tower embedding, Faiss
+retrieval, and content-similarity profile: a non-empty *usable* recent
+history first, then the user's bounded durable history, then an
+explicit empty history (real, disclosed global-popularity retrieval).
+Recent and durable are never merged -- no tested reconciliation rule
+exists for their overlap, ordering, or duplicate-click semantics. A
+recent Redis record containing impressions but no usable clicked
+articles falls back to durable history exactly like no record at all.
+`use_recent_features=False` still falls back to durable history --
+it removes only the recent-Redis signal, not every retrieval-history
+signal, correcting a second, latent gap the same fix touched
+(`tests/test_serving_fallback.py`, `tests/test_pipeline.py`).
+
+`RecommendationResponse` gains `retrieval_history_source`
+(`"recent"` / `"durable"` / `"global_popularity"`), reported alongside
+the existing `durable_features_used`/`recent_features_used` flags
+rather than replacing them -- a response can have
+`durable_features_used=True` purely from ranking-side dominant-category
+scoring while retrieval itself ran on a different history entirely, so
+neither existing flag alone answers "was the candidate set itself
+personalized." The demo page renders the three sources as distinct
+labels -- "Durable-history retrieval," "Recent-history retrieval," or
+"Global-popularity retrieval" -- instead of collapsing them into
+"Partially personalized," which overstated how much of the slate
+itself was tailored to a durable-only or featureless user.
+`DurableFeatureCache.snapshot_id`'s digest now covers `history_item_ids`
+with the same length-prefixed encoding this project's content-artifact
+checksum already uses, so two snapshots differing only in whose
+articles are in that history are no longer reported as identical.
+
+**Re-verified against the real serving path, post-fix**: the same six
+users now produce 6 distinct top-10 sets and 44 distinct items.
+
+**Evaluated at scale, on a frozen protocol, from a clean committed
+tree.** A dedicated evaluation
+(`recommender.evaluation.evaluate_durable_history_fallback`,
+`docs/experiments/durable-history-fallback.md`) measures a cohort of
+7,790 eligible impressions (6,885 distinct users) with a usable
+point-in-time durable history, served against a genuinely empty,
+isolated `InMemoryRedis` the run never seeds or writes to -- not
+`use_recent_features=False`, and not the shared serving context's own
+Redis client. `retrieval_history_source_counts` reports 100% `"durable"`
+for this cohort, asserted by a regression test, not merely assumed.
+Before the fix this cohort would each have retrieved from the identical
+global-popularity pool; after the fix, the same 7,790 impressions
+produce 7,312 distinct top-10 sets and 15.2% catalog coverage -- a
+change in *what* was retrieved, not merely how it was ordered. The 31
+interactive requests that first reproduced this defect were not used as
+a quality estimate; they are reproduction evidence, not a representative
+sample.
+
+Affected serving-path measurements were rerun from the same clean
+committed tree: `end-to-end-evaluation.json` (unchanged, as expected --
+it does not exercise this path), `explanation-evaluation.json` (refusal
+rate dropped from 66.1% to 20.6% and distinct explanation strings rose
+from 2 to 11, attributable to the fix: the explanation gate's
+supporting evidence is far more often genuinely present now that
+durable-only users retrieve on their own history), `serving-latency.json`
+(total p50 dropped from 31.44ms to 21.78ms, almost entirely from
+candidate retrieval: 13.11ms -> 0.86ms, since far fewer sampled users
+now hit the expensive full-catalog popularity-sort path), the
+recent-streaming-features ablation and the replay evaluation (both
+rerun; both arms measured 0.0 hit rate against a freshly flushed real
+ambient Redis, disclosed in `docs/experiments/ablations.md` and
+`docs/experiments/replay-evaluation.md` respectively, alongside an
+updated account of why durable-only users in the replay sample now
+genuinely retrieve on history rather than falling to popularity).
+
+`docs/limitations.md`'s "Retrieval queries ignore durable history" entry
+is marked resolved, its original account preserved as history rather
+than deleted, with a link to this fix and evaluation.
+`docs/operations/inference-path.md`, `docs/demonstration-guide.md`,
+`docs/operations/online-features.md`, and `docs/operations/state-store.md`
+are updated with the recent -> durable -> global-popularity hierarchy
+and the new retrieval-source label.
+
+**Status arithmetic, stated plainly**: adding this finding brings the
+register to 35 primary findings. It stays `open` until this fix has its
+own green CI run on a dedicated pull request -- not asserted from local
+runs alone -- at which point it is marked verified closed and the
+aggregate status below is updated to 32 verified closed, 1 partially
+closed by scope, 2 accepted limitations. This project is not described
+as free of defects at any point in that process; personalization
+working means the candidate set and catalog coverage measurably
+changed for durable-only users, not merely that article order varies.
+
+## Current aggregate status
+
+The authoritative count, computed the same way
+`tests/test_documentation.py::test_review_register_status_tally_is_accurate`
+verifies it: parsing every primary finding's own `**Status**` field
+above, not merely counting headings.
+
+- **Verified closed:** 31
+- **Partially closed by scope:** 1 (STREAM-COMMIT-04)
+- **Accepted limitations:** 2 (ARTIFACT-TRANSFORMERS-07, FEATURE-TIMEZONE-20)
+- **Open:** 1 (SERVING-DURABLE-HISTORY-69, pending this round's CI)
+- **Total primary findings:** 35
+
+This section is the one place a reader should look for the current
+tally; every narrative paragraph elsewhere in this register describes
+what was true *at the time it was written*; and per this document's own
+established discipline, an updated number is appended in a new
+paragraph rather than silently edited into an old one. This section
+itself is the exception -- it is *always* rewritten in place to reflect
+the current, real state, precisely because it exists to be the one
+place that is never stale.
 

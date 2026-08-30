@@ -40,6 +40,7 @@ MODULE_TO_REPORT = {
     "recommender.evaluation.stage_comparison": "stage-comparison",
     "recommender.evaluation.failure_analysis": "failure-analysis",
     "recommender.serving.verify_latency": "serving-latency",
+    "recommender.evaluation.evaluate_durable_history_fallback": "durable-history-fallback",
 }
 
 

@@ -41,20 +41,20 @@ from the same 180-recommendation shape (60 users x 3 candidates).
 | Metric | Value |
 |---|---|
 | Total recommendations evaluated | 180 |
-| Refused (no supporting evidence) | 119 (66.1%) |
-| Attempted explanations | 61 |
-| Lexical-policy pass rate | 100% (61/61) |
+| Refused (no supporting evidence) | 37 (20.6%) |
+| Attempted explanations | 143 |
+| Lexical-policy pass rate | 100% (143/143) |
 | Model rewrite used | 0 (0.0% of attempted) |
-| Template fallback used | 61 (100.0% of attempted) |
-| Mean explanation length | 53.2 characters |
-| Distinct explanation strings | 2 |
+| Template fallback used | 143 (100.0% of attempted) |
+| Mean explanation length | 96.5 characters |
+| Distinct explanation strings | 11 |
 
 Generated from [`reports/explanation-evaluation.json`](../../reports/explanation-evaluation.json).
 
 ## Interpretation and limitations
 
 No violations were detected in this evaluated sample under the
-documented checks — all 61 attempted explanations passed both the
+documented checks — all 143 attempted explanations passed both the
 serving-path gate and the separate, differently-designed verification. That is a statement about this sample under these
 checks, not a claim that no rewrite could ever slip through: the
 blacklist above is a fixed, hand-curated list, not an exhaustive model
@@ -64,21 +64,36 @@ fabrication built entirely from already-permitted words.
 
 **The stricter gate changed measured model behaviour, not just its
 theoretical bound.** In the default configuration the generative
-rewriting path is off, so model-authored rewrites are 0 of 61
+rewriting path is off, so model-authored rewrites are 0 of 143
 attempted and the deterministic template supplies every shown
-explanation (61/61). Under the earlier, weaker gate the same local
+explanation (143/143). Under the earlier, weaker gate the same local
 model produced accepted rewrites; the closed-vocabulary gate stopped
 accepting wording that merely avoided an unfamiliar capitalized word.
 
-**Only 2 distinct explanation strings appeared across 61 attempted
-explanations, a disclosed limitation**: since the fallback template is
-built from category and content-similarity flags alone, users who
-share a dominant category receive an identical sentence. Explanations
-here are grounded and checked, but personalized only to the same
-coarse category level the ranking model itself uses for
-`category_match` — not to any finer-grained signal. A model
-contribution rate this low means most of that repetition isn't broken
-up by genuine model-authored variation either.
+**The refusal rate and explanation diversity moved substantially since
+the previous measurement (66.1% refused / 2 distinct strings ->
+20.6% refused / 11 distinct strings), and the reason is known, not a
+sampling artifact:** this rerun follows SERVING-DURABLE-HISTORY-69's
+fix to the serving path's retrieval history selection. The explanation
+gate's supporting evidence (`category_match`, `content_similarity`,
+`retrieval_score` in `MatchedSignals`) is far more often genuinely
+present now that a returning user with durable history but no live
+Redis record is retrieved for on their own history rather than the
+same unpersonalized global-popularity pool every such user used to
+share -- exactly the retrieval-personalization gap that fix closed. The
+same 60-user seeded sample was used both times; the swing is
+attributable to the retrieval-path fix, not a different draw.
+
+**11 distinct explanation strings appeared across 143 attempted
+explanations, still a disclosed limitation**: since the fallback
+template is built from category and content-similarity flags alone,
+users who share a dominant category and a similar content-similarity
+band still receive an identical sentence. Explanations here are
+grounded and checked, but personalized only to the same coarse
+category/similarity level the ranking model itself uses for
+`category_match`/`content_similarity` — not to any finer-grained
+signal. A model contribution rate this low means most of that
+repetition isn't broken up by genuine model-authored variation either.
 
 
 ## What this metric is, and what it is not

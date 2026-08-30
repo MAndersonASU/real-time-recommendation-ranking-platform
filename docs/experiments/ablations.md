@@ -81,28 +81,48 @@ quality side, is measured directly rather than estimated.
 **Results**, same seeded 500-impression real replay sample used in both
 arms (`recommender.tracking.recent_features_ablation`, which asserts
 both arms drew the identical sample before reporting anything), logged
-as `ablation_recent_features_replay_paired`:
+as `ablation_recent_features_replay_paired`. Re-measured after
+SERVING-DURABLE-HISTORY-69's fix, with the real ambient Redis store
+flushed clean immediately beforehand (disclosed below, not hidden --
+this run's own real Redis content, not a controlled isolated one, is
+what `evaluate_via_replay` measures against, its own long-disclosed
+limitation):
 
 | | With recent features | Without recent features |
 |---|---|---|
 | Hit rate@10 | 0.0 | 0.0 |
-| Mean feature-lookup latency | 5.48ms | 0.008ms |
+| Mean feature-lookup latency | 1.78ms | 0.012ms |
 
-**Zero quality cost, for a reason already on record, not a new
-finding**: this replay population was already measured at the
-cold-start floor (`docs/limitations.md`, `docs/experiments/replay-evaluation.md`) --
-93.6% of sampled users have no durable features and 0% have a live
-Redis record, so a user with neither signal has a zero-norm history in
-both arms alike. Current retrieval detects that and routes to the
-global-popularity candidate path instead of a Faiss search
-(`docs/operations/serving-fallback.md`) -- both arms hand that same
-cold user the identical catalog-wide popularity candidate pool
-regardless of the toggle, so there is no headroom left for
-`use_recent_features` to change anything about it. The latency side is
-real and unambiguous: a ~685x drop in mean feature-lookup time
-(5.48ms → 0.008ms), consistent in order of magnitude with the isolated
-Redis round-trip latency measured when the low-latency store was first
-built (`docs/operations/state-store.md`, 0.29ms p50/1.12ms p99).
+**Zero quality cost in this run, for a reason that changed with the
+fix.** Before SERVING-DURABLE-HISTORY-69, both arms fell all the way to
+the global-popularity candidate pool for a user with no live Redis
+record, regardless of whether they had durable history -- the toggle
+genuinely had no headroom to change anything, since retrieval never
+looked past `recent_clicked_items` at all.
+
+After the fix, retrieval falls back to a user's durable history when
+Redis has nothing usable, before falling to popularity
+(`recommender.serving.pipeline.select_retrieval_history`). That
+changes what "zero difference" means here: with the real ambient Redis
+store flushed clean for this measurement, `with_recent_features=True`
+finds no record for any user in this sample -- the identical starting
+point `use_recent_features=False` forces outright -- so both arms
+necessarily fall back to the same source (durable history where a user
+has it, global popularity where they don't) for every impression in
+this specific run. That is a fact about this run's Redis contents at
+measurement time, not a structural property of the retrieval path
+anymore: a live deployment with real accumulated Redis state would show
+`with_recent_features=True` diverge from `without` specifically for a
+user who has a real recent record, which this evaluation's methodology
+(matching whatever Redis holds *right now*, not a controlled isolated
+store) cannot demonstrate without one. The latency side remains real
+and unambiguous regardless: `with_recent_features=True` still pays a
+real network round trip to Redis even when it finds nothing, and
+`False` skips the attempt entirely -- ~150x here, consistent in order
+of magnitude with the isolated Redis round-trip latency measured when
+the low-latency store was first built (`docs/operations/state-store.md`,
+0.29ms p50/1.12ms p99). The exact ratio moves between runs with real
+ambient system load, not just with what's in Redis.
 
 ## Consolidated quality-latency tradeoff table
 
@@ -111,7 +131,7 @@ built (`docs/operations/state-store.md`, 0.29ms p50/1.12ms p99).
 | Retrieval features | Hit rate −3.5%, NDCG −3.4% | None measured (same code path) |
 | Ranker features | Hit rate ≈−2.0%, NDCG ≈−4.1% | ~1.73ms p50 (ranking stage) |
 | Reranking | Relevance rises (hit rate ≈+2.3%, NDCG ≈+1.7%), but mean distinct categories 5.42→4.70 and slates below the freshness quota 74.0%→82.0% | ~9.89ms p50 (~31% of total request time) |
-| Recent streaming features | Unchanged (0.0→0.0 hit rate, already at the cold-start floor) | 5.48ms→0.008ms mean feature lookup |
+| Recent streaming features | Unchanged in this run (0.0→0.0 hit rate; real ambient Redis was empty in both arms at measurement time, see above) | 1.78ms→0.012ms mean feature lookup |
 | Cache/index settings | Recall vs. exact drops to 0.624 at nprobe=8 (0.891 at nprobe=32) | ~12.6x faster than exact search at nprobe=8 (5.0μs vs. 63.1μs) |
 
 Every relevance number above comes from the same frozen K=10/validation

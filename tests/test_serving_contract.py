@@ -85,9 +85,26 @@ def test_response_round_trips_through_json():
         recommendations=[RecommendedItem(news_id="n1", score=0.42, rank=1, category="sports")],
         durable_features_used=True,
         recent_features_used=False,
+        retrieval_history_source="durable",
         generated_at=datetime(2019, 11, 15, 8, 0, 0),  # noqa: DTZ001 -- naive, matches MIND's own undocumented-timezone timestamps
     )
 
     restored = RecommendationResponse.model_validate_json(response.model_dump_json())
 
     assert restored == response
+
+
+def test_retrieval_history_source_rejects_an_unrecognised_value():
+    """SERVING-DURABLE-HISTORY-69: this field names which of exactly
+    three real code paths drove retrieval -- an arbitrary string here
+    would be silently accepted as if it named a fourth, nonexistent one.
+    """
+    with pytest.raises(ValidationError):
+        RecommendationResponse(
+            user_id="u1",
+            recommendations=[],
+            durable_features_used=False,
+            recent_features_used=False,
+            retrieval_history_source="both",  # not a real retrieval path
+            generated_at=datetime(2019, 11, 15, 8, 0, 0),  # noqa: DTZ001
+        )

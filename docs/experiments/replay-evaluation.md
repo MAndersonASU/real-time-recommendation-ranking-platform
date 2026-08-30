@@ -42,14 +42,25 @@ about this project converging on this one sample, not a new bug:
   routes to the global-popularity candidate path instead of a Faiss
   search (`docs/operations/serving-fallback.md`) — every such cold user receives the
   same catalog-wide popularity ranking as their candidate pool,
-  regardless of who they are.
-- Even the 32 users who *did* have durable features scored **0 hits**
-  as well -- the aggregate 0.0 hit rate over all 500 impressions makes
-  that arithmetically certain, not merely observed. A durable-only
-  signal is just a dominant category match, which narrows the
-  candidate pool by topic but still leaves many items to choose among
-  within it; landing on the one specific article a real user clicked
-  remains close to chance even with that partial personalization.
+  regardless of who they are. 468 of these 500 impressions fall into
+  this case (`retrieval_history_source: "global_popularity"`, checked
+  directly against this exact sample).
+- The other 32 impressions -- the users who *did* have durable
+  features -- scored **0 hits** as well, so the aggregate 0.0 hit rate
+  over all 500 impressions makes that arithmetically certain, not
+  merely observed. Since SERVING-DURABLE-HISTORY-69's fix, these 32
+  genuinely retrieve on the user's own durable history
+  (`retrieval_history_source: "durable"`, checked directly against this
+  exact sample -- real Faiss search on a real embedding, not a ranking-
+  side category match layered over the same popularity pool everyone
+  else gets, which is what this same 32-user subset got before the
+  fix). Landing on the one specific article a real user clicked remains
+  close to chance even with that real personalization, at this sample
+  size: 32 real attempts is not enough to expect even one hit at this
+  project's measured hit-rate order of magnitude (roughly 1% elsewhere
+  in this project) -- a genuine improvement to *what* is retrieved for
+  these users would not necessarily be visible as a nonzero hit count
+  in a sample this small, and this replay draw does not claim otherwise.
 
 ## Why this matters
 

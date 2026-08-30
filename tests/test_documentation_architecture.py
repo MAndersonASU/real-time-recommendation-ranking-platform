@@ -106,9 +106,14 @@ def test_ranking_model_is_documented_as_five_inputs_not_six() -> None:
 def test_current_latency_leader_matches_the_published_report() -> None:
     """serving-latency.md's claimed dominant stage must match the report.
 
-    The pipeline changed after the 2026-08-21 measurement (retrieval
-    depth raised, a cold-start popularity path added), and candidate
-    retrieval is now the largest stage, not reranking. This ties the
+    The pipeline changed twice since the 2026-08-21 measurement: retrieval
+    depth was raised and a cold-start popularity path was added
+    (2026-08-24), making candidate retrieval the largest stage; then
+    SERVING-DURABLE-HISTORY-69's fix (2026-08-30) meant far fewer
+    requests hit that expensive popularity path at all, and reranking
+    became the largest stage again -- for a different reason than the
+    2026-08-21 measurement's own reranking-dominant result, which
+    predates the retrieval-depth change entirely. This ties the
     document's own prose claim to the actual numbers in the committed
     report, so if a future rebuild changes which stage dominates, this
     fails instead of silently going stale the way the original table
@@ -117,16 +122,16 @@ def test_current_latency_leader_matches_the_published_report() -> None:
     report = _report("serving-latency.json")
     stages = report["results"]["by_stage"]
     largest = max(stages, key=lambda name: stages[name]["p50_ms"])
-    assert largest == "retrieval_ms", (
+    assert largest == "reranking_ms", (
         f"serving-latency.json now reports {largest!r} as the largest stage, "
-        "not retrieval_ms -- update serving-latency.md's 'Retrieval "
-        "dominates' section and its dependent figures in conclusions.md, "
-        "ablations.md and demonstration-guide.md to match"
+        "not reranking_ms -- update serving-latency.md's current-measurement "
+        "section and its dependent figures in conclusions.md, ablations.md "
+        "and demonstration-guide.md to match"
     )
 
     text = _doc("serving-latency.md")
-    assert "Candidate retrieval is the largest stage" in text, (
-        "serving-latency.md no longer names candidate retrieval as the "
-        "largest stage, but the report still says it is -- documentation "
-        "has drifted from the report"
+    assert "is now the largest stage" in text, (
+        "serving-latency.md no longer names reranking as the largest stage, "
+        "but the report still says it is -- documentation has drifted from "
+        "the report"
     )

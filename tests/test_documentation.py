@@ -192,6 +192,62 @@ def test_review_register_tally_matches_its_headings() -> None:
     )
 
 
+_REGISTER_STATUS_CATEGORIES = (
+    ("verified closed", "Verified closed"),
+    ("partially closed", "Partially closed by scope"),
+    ("accepted limitation", "Accepted limitations"),
+    ("open", "Open"),
+)
+
+
+def test_review_register_status_tally_is_accurate() -> None:
+    """REVIEW-STATUS-TALLY: the register's own narrative said all 34
+    findings were verified closed while its actual per-finding
+    `**Status**` fields held 31 verified closed, 1 partially closed, 2
+    accepted limitations. This parses every primary finding's own
+    `**Status**` field directly -- not a heading count, and not a
+    hand-maintained summary sentence that can drift from the entries it
+    claims to summarize -- and checks it against the register's own
+    "Current aggregate status" section, so the two can never silently
+    disagree again.
+    """
+    register = next(DOCS.rglob("engineering-review-register.md"))
+    text = register.read_text(encoding="utf-8")
+
+    findings = re.findall(
+        r"^## [A-Z]+(?:-[A-Z0-9]+)+-\d+[^\n]*\n\*\*Severity\*\* [^\n]*?\*\*Status\*\* ([^\n]+)$",
+        text,
+        flags=re.MULTILINE,
+    )
+    assert findings, "no primary findings with a parseable Status field were found"
+
+    actual: dict[str, int] = {label: 0 for _, label in _REGISTER_STATUS_CATEGORIES}
+    unrecognized = []
+    for status in findings:
+        for prefix, label in _REGISTER_STATUS_CATEGORIES:
+            if status.lower().startswith(prefix):
+                actual[label] += 1
+                break
+        else:
+            unrecognized.append(status)
+    assert not unrecognized, f"finding(s) with an unrecognized status category: {unrecognized}"
+
+    claimed = {}
+    for _, label in _REGISTER_STATUS_CATEGORIES:
+        match = re.search(rf"- \*\*{re.escape(label)}:\*\* (\d+)", text)
+        assert match, f"'Current aggregate status' does not state a count for {label!r}"
+        claimed[label] = int(match.group(1))
+
+    total_match = re.search(r"- \*\*Total primary findings:\*\* (\d+)", text)
+    assert total_match, "'Current aggregate status' does not state a total"
+
+    assert actual == claimed, (
+        f"parsed per-finding status counts {actual} do not match the 'Current "
+        f"aggregate status' section's claimed counts {claimed}"
+    )
+    assert sum(actual.values()) == int(total_match.group(1)) == len(findings)
+
+
 def test_no_document_calls_a_used_split_untouched_or_final() -> None:
     """'untouched' is allowed only when denying it."""
     claims = re.compile(
@@ -214,6 +270,7 @@ def test_no_document_calls_a_used_split_untouched_or_final() -> None:
 WORD_NUMBERS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13,
 }
 
 
@@ -249,6 +306,55 @@ def test_documented_report_count_matches_the_reports_directory() -> None:
                         f"{md_id(path)} says {match.group(0)!r}, but {actual} are committed"
                     )
     assert not wrong, "; ".join(sorted(set(wrong)))
+
+
+_DOCKER_COMPOSE_UP_LINE = re.compile(r"docker compose up\b[^#\n]*")
+
+
+def test_a_command_claiming_to_start_redis_actually_names_the_service() -> None:
+    """Regression test for a real bug: README.md's containerized-demo
+    command was commented "API + its Redis dependency" while the actual
+    `docker compose up -d --build api` command named only `api` --
+    Redis has no `depends_on` relationship with the API service
+    (DEPLOYMENT-CONTRACT-62 in the register), so that comment was simply
+    false. A command line's own trailing comment claiming Redis starts
+    must name `redis` as one of the services the command actually
+    passes, not merely say so in prose.
+    """
+    offenders = []
+    for path in MARKDOWN:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = _DOCKER_COMPOSE_UP_LINE.search(line)
+            if match is None:
+                continue
+            comment = line[match.end():]
+            if not re.search(r"(?i)\bredis\b", comment):
+                continue
+            command = match.group(0)
+            services = command.split("--build", 1)[-1].split()
+            if "redis" not in services:
+                offenders.append(f"{md_id(path)}: {line.strip()!r}")
+    assert not offenders, (
+        "a command's own comment claims Redis starts, but the command does not "
+        f"name the redis service: {offenders}"
+    )
+
+
+def test_every_committed_report_appears_in_the_evaluation_index() -> None:
+    """docs/evaluation.md is the map of every published report -- a
+    report present in reports/ but missing from that page's index is
+    real evidence nobody can find without already knowing the filename.
+    Regression test for exactly this gap: tuning-decisions.json and
+    min-fresh-experiment.json were both committed, validated reports
+    with no row on this page at all.
+    """
+    evaluation_md = next(p for p in MARKDOWN if md_id(p) == "docs/evaluation.md")
+    text = evaluation_md.read_text(encoding="utf-8")
+
+    missing = [
+        report.name for report in evaluation_reports() if report.name not in text
+    ]
+    assert not missing, f"docs/evaluation.md does not reference: {sorted(missing)}"
 
 
 # The item-tower content-vector fix improved the four relevance metrics

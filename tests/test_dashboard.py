@@ -11,6 +11,7 @@ def _response() -> RecommendationResponse:
         recommendations=[],
         durable_features_used=True,
         recent_features_used=False,
+        retrieval_history_source="durable",
         generated_at=datetime(2019, 11, 15, 8, 0, 0),  # noqa: DTZ001
     )
 

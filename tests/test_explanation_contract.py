@@ -22,6 +22,7 @@ def _response(matched_signals=None) -> RecommendationResponse:
         recommendations=[ITEM_A, ITEM_B],
         durable_features_used=True,
         recent_features_used=True,
+        retrieval_history_source="recent",
         generated_at=datetime(2019, 11, 15, 8, 0, 0),  # noqa: DTZ001 -- naive, matches every other timestamp in this project
         matched_signals=matched_signals,
     )

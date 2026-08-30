@@ -63,9 +63,21 @@ def test_safe_recommend_degrades_gracefully_on_a_real_redis_connection_failure()
     `use_recent_features=False` ablation run already produces: real
     retrieval and ranking, on durable features, with an empty recent-
     features input.
+
+    Both calls share one `_build_context()` (only `redis_client` swapped
+    via `dataclasses.replace`), not two independent ones: since
+    SERVING-DURABLE-HISTORY-69, an empty recent history falls back to
+    the user's real durable history for retrieval, which now actually
+    exercises the two-tower model -- `_build_context()` builds a fresh,
+    randomly-initialized (untrained) model on every call, so two
+    separate calls would legitimately produce two different embeddings
+    for the same durable history, an unrelated fixture difference this
+    test must not confuse with the real thing it checks.
     """
-    context = _build_context(redis_client=_dead_redis_client())
+    from dataclasses import replace
+
     healthy_context = _build_context()
+    context = replace(healthy_context, redis_client=_dead_redis_client())
     request = RecommendationRequest(user_id="u1", num_candidates=4)
 
     degraded = safe_recommend(request, context)
@@ -73,6 +85,7 @@ def test_safe_recommend_degrades_gracefully_on_a_real_redis_connection_failure()
 
     assert len(degraded.recommendations) == 4
     assert degraded.recent_features_used is False
+    assert degraded.retrieval_history_source == "durable"
     assert degraded.model_dump(exclude={"generated_at"}) == without_recent_features.model_dump(
         exclude={"generated_at"}
     )
