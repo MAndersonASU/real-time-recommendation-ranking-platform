@@ -200,20 +200,16 @@ _REGISTER_STATUS_CATEGORIES = (
 )
 
 
-def test_review_register_status_tally_is_accurate() -> None:
-    """REVIEW-STATUS-TALLY: the register's own narrative said all 34
-    findings were verified closed while its actual per-finding
-    `**Status**` fields held 31 verified closed, 1 partially closed, 2
-    accepted limitations. This parses every primary finding's own
-    `**Status**` field directly -- not a heading count, and not a
-    hand-maintained summary sentence that can drift from the entries it
-    claims to summarize -- and checks it against the register's own
-    "Current aggregate status" section, so the two can never silently
-    disagree again.
-    """
-    register = next(DOCS.rglob("engineering-review-register.md"))
-    text = register.read_text(encoding="utf-8")
+def _register_text() -> str:
+    return next(DOCS.rglob("engineering-review-register.md")).read_text(encoding="utf-8")
 
+
+def _parsed_register_status_counts(text: str) -> dict[str, int]:
+    """Ground truth: every primary finding's own `**Status**` field,
+    parsed directly -- not a heading count, and not any hand-maintained
+    summary sentence that can drift from the entries it claims to
+    summarize.
+    """
     findings = re.findall(
         r"^## [A-Z]+(?:-[A-Z0-9]+)+-\d+[^\n]*\n\*\*Severity\*\* [^\n]*?\*\*Status\*\* ([^\n]+)$",
         text,
@@ -221,16 +217,29 @@ def test_review_register_status_tally_is_accurate() -> None:
     )
     assert findings, "no primary findings with a parseable Status field were found"
 
-    actual: dict[str, int] = {label: 0 for _, label in _REGISTER_STATUS_CATEGORIES}
+    counts: dict[str, int] = {label: 0 for _, label in _REGISTER_STATUS_CATEGORIES}
     unrecognized = []
     for status in findings:
         for prefix, label in _REGISTER_STATUS_CATEGORIES:
             if status.lower().startswith(prefix):
-                actual[label] += 1
+                counts[label] += 1
                 break
         else:
             unrecognized.append(status)
     assert not unrecognized, f"finding(s) with an unrecognized status category: {unrecognized}"
+    return counts
+
+
+def test_review_register_status_tally_is_accurate() -> None:
+    """REVIEW-STATUS-TALLY: the register's own narrative said all 34
+    findings were verified closed while its actual per-finding
+    `**Status**` fields held 31 verified closed, 1 partially closed, 2
+    accepted limitations. Checks the parsed ground truth against the
+    register's own "Current aggregate status" section, so the two can
+    never silently disagree again.
+    """
+    text = _register_text()
+    actual = _parsed_register_status_counts(text)
 
     claimed = {}
     for _, label in _REGISTER_STATUS_CATEGORIES:
@@ -245,7 +254,46 @@ def test_review_register_status_tally_is_accurate() -> None:
         f"parsed per-finding status counts {actual} do not match the 'Current "
         f"aggregate status' section's claimed counts {claimed}"
     )
-    assert sum(actual.values()) == int(total_match.group(1)) == len(findings)
+    findings_count = sum(1 for _ in re.finditer(r"^## [A-Z]+(?:-[A-Z0-9]+)+-\d+", text, flags=re.MULTILINE))
+    assert sum(actual.values()) == int(total_match.group(1)) == findings_count
+
+
+_ENGINEERING_REVIEW_TALLY = re.compile(
+    r"Of \*\*(?P<total>\d+) primary findings\*\*: (?P<closed>\d+) verified closed, "
+    r"(?P<partial>\d+) partially closed[^,]*, (?P<accepted>\d+) accepted limitations?, "
+    r"(?P<open>\d+) open"
+)
+
+
+def test_engineering_review_tally_matches_the_register() -> None:
+    """docs/engineering-review.md restated the register's own tally in
+    prose ("Of 23 primary findings: 20 verified closed...") and it went
+    stale the moment the register grew past 23 findings -- neither this
+    project's heading-count guard nor its per-finding-status guard
+    lives in this file, so nothing caught the two documents silently
+    disagreeing. Parses both independently and requires them to match,
+    field by field.
+    """
+    review_text = next(DOCS.rglob("engineering-review.md")).read_text(encoding="utf-8")
+    match = _ENGINEERING_REVIEW_TALLY.search(review_text)
+    assert match, (
+        "docs/engineering-review.md does not state a tally in the expected "
+        "'Of **N primary findings**: X verified closed, Y partially closed "
+        "..., Z accepted limitations, W open' shape"
+    )
+    claimed = {
+        "Verified closed": int(match["closed"]),
+        "Partially closed by scope": int(match["partial"]),
+        "Accepted limitations": int(match["accepted"]),
+        "Open": int(match["open"]),
+    }
+
+    actual = _parsed_register_status_counts(_register_text())
+    assert claimed == actual, (
+        f"docs/engineering-review.md's tally {claimed} does not match the register's "
+        f"actual per-finding status counts {actual}"
+    )
+    assert int(match["total"]) == sum(actual.values())
 
 
 def test_no_document_calls_a_used_split_untouched_or_final() -> None:

@@ -36,10 +36,10 @@
       "top_k": 10
     },
     "retrieval_model_sha256_prefix": "0fdc2b141f14",
-    "serving_code_commit": "702df9d2695e7347b18b3a819bd33de794a07457"
+    "serving_code_commit": "d390ad4ff8c91dce2a2ec9a59d54b6393682e50e"
   },
   "configuration": {
-    "eligibility": "impression's user has a non-empty, catalog-valid, point-in-time durable history (most users' history field is empty or off-catalog and are excluded, not counted as a zero)",
+    "eligibility": "impression's user has a non-empty, catalog-valid, point-in-time durable history (a user with an empty or off-catalog history field is excluded, not counted as a zero) -- 210 of 8000 sampled impressions (2.6%) were excluded on this run, so most sampled impressions were eligible, not most excluded",
     "k": 10,
     "ordering": "chronological by (time, impression_id)",
     "state": "isolated per-run store, never seeded or written to -- a genuinely empty Redis for the entire run, not use_recent_features=False and not the shared serving context's own Redis client"
@@ -92,8 +92,8 @@
   },
   "provenance": {
     "evaluation_module": "recommender.evaluation.evaluate_durable_history_fallback",
-    "generated_at": "2026-08-30T17:13:53.935911+00:00",
-    "source_commit": "702df9d2695e7347b18b3a819bd33de794a07457",
+    "generated_at": "2026-08-30T19:40:37.287026+00:00",
+    "source_commit": "d390ad4ff8c91dce2a2ec9a59d54b6393682e50e",
     "working_tree_clean": true
   },
   "report_name": "durable-history-fallback",
@@ -103,9 +103,9 @@
     "distinct_top_k_sets": 7312,
     "hit_rate_at_k": 0.008087291399229781,
     "mean_pairwise_slate_jaccard": 0.06333159139621987,
-    "mean_ranking_ms": 1.8623578433693562,
-    "mean_retrieval_ms": 0.9533286905948811,
-    "mean_total_ms": 24.605521309238327,
+    "mean_ranking_ms": 1.3973836329715106,
+    "mean_retrieval_ms": 0.7798257510196321,
+    "mean_total_ms": 18.992534929477586,
     "mrr": 0.004605365038612793,
     "ndcg_at_k": 0.00399764568519539,
     "recall_at_k": 0.005065611182427613,

@@ -1726,13 +1726,19 @@ isolated `InMemoryRedis` the run never seeds or writes to -- not
 `use_recent_features=False`, and not the shared serving context's own
 Redis client. `retrieval_history_source_counts` reports 100% `"durable"`
 for this cohort, asserted by a regression test, not merely assumed.
-Before the fix this cohort would each have retrieved from the identical
-global-popularity pool; after the fix, the same 7,790 impressions
-produce 7,312 distinct top-10 sets and 15.2% catalog coverage -- a
-change in *what* was retrieved, not merely how it was ordered. The 31
-interactive requests that first reproduced this defect were not used as
-a quality estimate; they are reproduction evidence, not a representative
-sample.
+This report contains only post-fix results -- no pre-fix baseline arm
+was measured at this scale, so this is not a paired before/after
+comparison. Reading `select_retrieval_history` as it stood before this
+fix shows every one of these 7,790 impressions would have retrieved
+from the identical global-popularity pool regardless (no durable
+fallback existed); the interactive reproduction (6 real users, 3
+distinct slates, 10 distinct items, before any fix) is direct evidence
+of that same mechanism, not a quality estimate and not a representative
+sample at this scale. Post-fix, the 7,790 impressions produce 7,312
+distinct served top-10 slates and 15.2% catalog coverage --
+`docs/experiments/durable-history-fallback.md` records both what this
+measures (the final served slate, not the full retrieval candidate
+pool) and what a stronger, paired baseline comparison would still add.
 
 Affected serving-path measurements were rerun from the same clean
 committed tree: `end-to-end-evaluation.json` (unchanged, as expected --

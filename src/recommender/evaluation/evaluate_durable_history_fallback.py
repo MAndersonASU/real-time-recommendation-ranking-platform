@@ -128,14 +128,18 @@ def evaluate_durable_history_fallback(
 
     An impression is *eligible* only when its point-in-time durable
     history is non-empty after filtering to ids this catalog actually
-    has content for -- most users' `history` field is empty (a genuinely
-    new user) or, rarely, entirely off-catalog, and neither is the
-    condition this evaluation exists to measure. Every eligible
-    impression's request is served with the isolated Redis store left
-    untouched, so `retrieval_history_source` should be "durable" for
-    every one of them; this is asserted, not merely assumed, since an
-    unnoticed regression that silently reintroduced a recent-history
-    path here would otherwise go undetected.
+    has content for -- excluded when a user's `history` field is empty
+    (a genuinely new user) or, rarely, entirely off-catalog, since
+    neither is the condition this evaluation exists to measure. In the
+    published report this excludes only a small minority of sampled
+    impressions (2.6%, 210 of 8,000) -- most validation-split users do
+    have a usable point-in-time durable history; this evaluation's
+    cohort is close to the general population, not a rare subset of it.
+    Every eligible impression's request is served with the isolated
+    Redis store left untouched, so `retrieval_history_source` should be
+    "durable" for every one of them; this is asserted, not merely
+    assumed, since an unnoticed regression that silently reintroduced a
+    recent-history path here would otherwise go undetected.
     """
     validation = validation if validation is not None else load_split("validation")
     validation = validation.sort_values(["time", "impression_id"], kind="mergesort")
