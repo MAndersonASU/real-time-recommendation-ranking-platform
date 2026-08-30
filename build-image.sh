@@ -76,7 +76,19 @@ fi
 # own directory means the committed docker-compose.yml is the only
 # configuration this script can ever build from, regardless of what
 # COMPOSE_FILE or an override file elsewhere names.
+#
+# -p recommender: with no explicit project name, Compose derives one
+# from the checkout directory's own basename and appends "-api" to
+# form the image tag -- found to fail outright when that basename ends
+# in an underscore ("invalid tag \"...hz_-api\": invalid reference
+# format"), reproduced directly against a real checkout with such a
+# name. A real deployment's checkout directory is exactly as
+# unpredictable as that, so pinning a fixed, always-valid project name
+# removes the dependency on it entirely, the same reasoning that
+# already anchors -f/--project-directory above rather than trusting
+# ambient state.
 GIT_COMMIT_SHA="$COMMIT" docker compose \
   -f "$SCRIPT_DIR/docker-compose.yml" \
   --project-directory "$SCRIPT_DIR" \
+  -p recommender \
   build api

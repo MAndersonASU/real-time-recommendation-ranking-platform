@@ -228,6 +228,43 @@ def test_a_clean_tree_still_reaches_the_real_build_invocation():
             _remove_worktree(worktree_dir)
 
 
+def test_a_project_directory_ending_in_underscore_still_builds():
+    """Regression test for a real bug, found by a real CI failure: with
+    no explicit Compose project name, Compose derives one from the
+    checkout directory's own basename and appends "-api" to form the
+    image tag. A basename ending in "_" (exactly what
+    `tempfile.TemporaryDirectory()` produces on a real, observed CI
+    run) makes that tag "..._-api", which Docker rejects outright:
+    "invalid tag ... invalid reference format" -- reproduced directly
+    against a real checkout at such a path, before this fix. A real
+    deployment's checkout directory name is exactly as unpredictable as
+    this. Fails on the pre-fix script (real build failure, not a
+    refusal) and passes once an explicit, always-valid project name is
+    pinned regardless of the directory it happens to run from.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+    if not _docker_daemon_available():
+        pytest.skip("no docker daemon reachable")
+
+    base = tempfile.mkdtemp()
+    worktree_dir = base + "_"
+    assert not os.path.exists(worktree_dir)
+    _prepared_worktree(worktree_dir)
+    try:
+        result = subprocess.run(
+            [bash, "build-image.sh"],
+            cwd=worktree_dir, capture_output=True, text=True, timeout=300, check=False,
+        )
+
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "invalid reference format" not in result.stdout + result.stderr
+    finally:
+        _remove_worktree(worktree_dir)
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def test_a_dirty_file_anywhere_in_the_tree_refuses_the_build():
     """Regression test for a real bug, found by external review of the
     prior fix: that version scoped the dirty check to a hand-enumerated
