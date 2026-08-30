@@ -10,7 +10,7 @@ from recommender.features.state_store import (
 )
 
 DEFAULT_DURABLE_FEATURES = DurableUserFeatures(
-    user_id="", dominant_category=None, lifetime_click_count=0
+    user_id="", dominant_category=None, lifetime_click_count=0, history_item_ids=()
 )
 DEFAULT_RECENT_FEATURES = RecentUserFeatures(
     user_id="", recent_clicked_items=[], impressions_seen=0, clicks_seen=0, last_event_time=None

@@ -41,6 +41,7 @@ from recommender.serving.contract import (
     RecommendationRequest,
     RecommendationResponse,
     RecommendedItem,
+    RetrievalHistorySource,
 )
 from recommender.serving.errors import DependencyUnavailableError
 
@@ -208,6 +209,48 @@ def encode_recent_history(
     return cat, subcat, mask, content
 
 
+def select_retrieval_history(
+    recent_clicked_items: list,
+    durable_history_item_ids: tuple,
+    item_vocab: dict,
+) -> tuple[list, RetrievalHistorySource]:
+    """Chooses exactly one history for retrieval (SERVING-DURABLE-HISTORY-69)
+    -- never both -- in this order: a non-empty *usable* recent history,
+    then the user's bounded durable history, then neither (an explicit
+    empty history, which `has_retrieval_signal` below turns into a real,
+    disclosed global-popularity cold start rather than an arbitrary
+    zero-vector search).
+
+    "Usable" means containing at least one id this catalog's
+    `item_vocab` actually knows -- a recent Redis record that exists but
+    carries only impressions (no real clicks at all), or clicks this
+    vocab doesn't recognise, is not usable and falls through to durable
+    exactly like no record at all. An empty `recent_clicked_items` list
+    must never be treated differently from a record that technically
+    exists but has nothing retrieval can act on.
+
+    Durable ids are already filtered to known-valid catalog ids at
+    `compute_durable_features` build time; recent ids are filtered here
+    since they come from a live, unvalidated Redis record a producer
+    could have written for an item no longer (or never) in this
+    catalog. Both are filtered here regardless, so an unknown id is
+    ignored the same way from either source rather than depending on
+    exactly where it was already caught.
+
+    Recent and durable are never merged: overlap, ordering and
+    duplicate-click semantics between the two have no separately
+    tested reconciliation rule, so combining them here would be an
+    untested guess dressed up as a real feature, not a fix.
+    """
+    usable_recent = [nid for nid in recent_clicked_items if nid in item_vocab]
+    if usable_recent:
+        return usable_recent, "recent"
+    usable_durable = [nid for nid in durable_history_item_ids if nid in item_vocab]
+    if usable_durable:
+        return usable_durable, "durable"
+    return [], "global_popularity"
+
+
 def recommend(
     request: RecommendationRequest,
     context: ServingContext,
@@ -221,13 +264,31 @@ def recommend(
     -> reranking -> a Top-K response, exactly the inference path's own
     named stages (docs/operations/inference-path.md).
 
+    The history behind the two-tower embedding, Faiss retrieval and the
+    content-similarity profile is chosen once, by `select_retrieval_history`
+    (SERVING-DURABLE-HISTORY-69), and that one choice feeds all three:
+    a non-empty usable Redis recent-click history first, then the
+    user's bounded durable history when Redis has none, then an
+    explicit empty history (real global-popularity retrieval, not an
+    arbitrary zero-vector search) when neither exists. Before this
+    existed, this function used only `lookup.recent.recent_clicked_items`
+    -- a returning user with a real durable history but a genuinely
+    healthy, merely empty Redis record (not an outage) got the same
+    unpersonalized candidate pool as a brand new user, even though a
+    real, usable history was sitting in `lookup.durable.history_item_ids`
+    the whole time. `retrieval_history_source` on the response reports
+    which of the three this specific request actually used.
+
     One disclosed asymmetry between this live path and offline training:
     the two-tower embedding and the content-similarity profile here only
     ever see a user's last 20 recent clicks, since that is the cap
-    the low-latency store chose (docs/operations/state-store.md). Offline
-    training's own content profile (`ranking/features.py`) pools a user's
-    entire history string, uncapped. This is a real, disclosed
-    consequence of the online feature store's own latency/storage tradeoff, not a bug --
+    the low-latency store chose (docs/operations/state-store.md) --
+    now also the cap `DurableUserFeatures.history_item_ids` uses, so a
+    durable-history fallback sees the same bound a real recent history
+    would have. Offline training's own content profile
+    (`ranking/features.py`) pools a user's entire history string,
+    uncapped. This is a real, disclosed consequence of the online
+    feature store's own latency/storage tradeoff, not a bug --
     `user_history_length` below instead uses the durable
     `lifetime_click_count` specifically because that one field *does*
     carry the same uncapped meaning training used.
@@ -241,7 +302,12 @@ def recommend(
     `use_recent_features`, when False, forces the online lookup to skip
     Redis entirely (recommender.features.cold_start.get_online_features)
     -- the recent-streaming-features ablation (docs/experiments/ablations.md), not a
-    normal request path.
+    normal request path. This removes only the *recent* signal, not
+    every retrieval-history signal: `select_retrieval_history` still
+    falls through to the user's durable history exactly as it would for
+    a real, healthy-but-empty Redis record, so this ablation measures
+    "no live recent-click feed" against a durable-history baseline, not
+    against a fully historyless one.
 
     `capture_candidates`, when given a list, is extended with the real
     news_ids this call retrieved *before* ranking and reranking narrowed
@@ -286,7 +352,11 @@ def recommend(
     )
     if lookup.redis_unavailable and on_redis_degraded is not None:
         on_redis_degraded()
-    history_ids = lookup.recent.recent_clicked_items
+    history_ids, retrieval_history_source = select_retrieval_history(
+        lookup.recent.recent_clicked_items,
+        lookup.durable.history_item_ids,
+        context.item_vocab,
+    )
     _stage_end("feature_lookup_ms", t)
 
     t = _stage_start()
@@ -328,6 +398,14 @@ def recommend(
     # signal in exactly this situation, so cold-start retrieval uses it
     # instead of a search that has no signal to rank by.
     has_retrieval_signal = bool(np.linalg.norm(user_emb))
+    if not has_retrieval_signal:
+        # Defensive, not expected in practice: `select_retrieval_history`
+        # only ever returns a non-empty history when it contains at
+        # least one item this catalog's vocab knows, so `user_emb`
+        # should never actually be zero-norm here. Overridden anyway so
+        # the reported source always describes what retrieval really
+        # did, never what it merely attempted.
+        retrieval_history_source = "global_popularity"
     if has_retrieval_signal:
         try:
             retrieval_scores, item_rows = context.faiss_index.search(user_emb, n_retrieve)
@@ -460,6 +538,7 @@ def recommend(
         recommendations=recommendations,
         durable_features_used=not lookup.durable_is_fallback,
         recent_features_used=not lookup.recent_is_fallback,
+        retrieval_history_source=retrieval_history_source,
         # Genuinely tz-aware UTC, not naive: this field is pure output
         # (echoed to the client, never compared against an internal
         # naive-UTC-by-convention timestamp), so there's no mixing risk

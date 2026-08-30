@@ -28,6 +28,20 @@ STAGE_LABELS = {
 }
 DEFAULT_NUM_CANDIDATES = 5
 
+# SERVING-DURABLE-HISTORY-69: the real retrieval source, not the older
+# durable/recent-features-used flags below, is what actually answers
+# "was the candidate set itself personalized." A response can have
+# durable_features_used=True purely from ranking-side dominant-category
+# scoring while retrieval ran on a completely different (or no) history
+# -- these three labels are shown instead of collapsing that distinction
+# into a single "Partially personalized" phrase, which overstated how
+# much of the slate itself was actually tailored to this user.
+RETRIEVAL_SOURCE_LABELS = {
+    "recent": "Recent-history retrieval",
+    "durable": "Durable-history retrieval",
+    "global_popularity": "Global-popularity retrieval",
+}
+
 
 @lru_cache(maxsize=1)
 def _news_by_id() -> pd.DataFrame:
@@ -93,6 +107,7 @@ def build_demo_data(
         "user_id": user_id,
         "durable_features_used": response.durable_features_used,
         "recent_features_used": response.recent_features_used,
+        "retrieval_history_source": response.retrieval_history_source,
         "stage_timings_ms": {name: stage_timings.get(name, 0.0) for name in STAGE_ORDER},
         "total_ms": sum(stage_timings.values()),
         "items": items,
@@ -128,18 +143,10 @@ def render_demo_html(
             f'<tr><td></td><td colspan="3">{explanation_html}</td></tr>'
         )
 
-    # A user with neither durable nor recent features gets the global
-    # popularity slate -- the same slate every featureless user gets.
-    # Labelled explicitly rather than as a vague "cold start", because
-    # the page otherwise looks like it produced something tailored to
-    # this specific user when it did not.
-    personalization = (
-        "Fully personalized"
-        if d["durable_features_used"] and d["recent_features_used"]
-        else "Partially personalized"
-        if d["durable_features_used"] or d["recent_features_used"]
-        else "Global cold-start popularity recommendations "
-        "&mdash; no user features are currently available"
+    retrieval_label = RETRIEVAL_SOURCE_LABELS[d["retrieval_history_source"]]
+    feature_flags = (
+        f"durable features {'used' if d['durable_features_used'] else 'not available'} &middot; "
+        f"recent (Redis) features {'used' if d['recent_features_used'] else 'not available'}"
     )
 
     return f"""<!doctype html>
@@ -147,7 +154,8 @@ def render_demo_html(
 <style>
 body {{ font-family: -apple-system, sans-serif; background: #F3F5F6; color: #1B2430; margin: 0; padding: 2rem; }}
 h1 {{ font-family: Georgia, serif; font-weight: 400; font-size: 1.4rem; margin-bottom: 0.3rem; }}
-.status {{ color: #4C5966; margin-bottom: 1.5rem; font-size: 0.92rem; }}
+.status {{ color: #4C5966; margin-bottom: 0.3rem; font-size: 0.92rem; }}
+.substatus {{ color: #7C8792; margin-bottom: 1.5rem; font-size: 0.8rem; }}
 h2 {{ font-family: monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #7C8792; margin: 1.6rem 0 0.5rem; }}
 table {{ border-collapse: collapse; width: 100%; max-width: 640px; background: #fff; border-radius: 8px; overflow: hidden; }}
 td, th {{ padding: 0.55rem 0.9rem; border-bottom: 1px solid #E8ECEE; text-align: left; font-size: 0.88rem; }}
@@ -157,7 +165,8 @@ td, th {{ padding: 0.55rem 0.9rem; border-bottom: 1px solid #E8ECEE; text-align:
 </style></head>
 <body>
 <h1>Recommendation Demo</h1>
-<p class="status">User <code>{_escape(d["user_id"])}</code> &mdash; {personalization} &mdash; total latency {d["total_ms"]:.2f} ms</p>
+<p class="status">User <code>{_escape(d["user_id"])}</code> &mdash; {retrieval_label} &mdash; total latency {d["total_ms"]:.2f} ms</p>
+<p class="substatus">{feature_flags}</p>
 
 <h2>Per-stage latency</h2>
 <table>{stage_rows}</table>

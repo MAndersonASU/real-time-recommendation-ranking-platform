@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from recommender.ranking.features import dominant_category, history_ids_from_raw
+from recommender.retrieval.features import MAX_HISTORY
 from recommender.streaming.consumer import UserState
 
 
@@ -11,11 +12,26 @@ class DurableUserFeatures:
     """Computed offline, in a batch job, from a user's full history up to
     some cutoff. Refreshed occasionally rather than per-event -- serving a
     slightly stale copy of these is an acceptable, deliberate tradeoff.
+
+    `history_item_ids` (SERVING-DURABLE-HISTORY-69) is the last
+    `MAX_HISTORY` *valid catalog* article ids from this user's own
+    point-in-time history, in original order -- a bounded, retrieval-
+    ready history the live path can fall back on when Redis has no
+    recent record for a returning user. Before this field existed, the
+    live retrieval query used only `recent_clicked_items` from Redis:
+    a returning user with a genuinely healthy but empty Redis record
+    (not an outage -- simply no live event yet) produced an empty
+    `history_ids`, a zero-norm two-tower user vector, and the same
+    global-popularity candidate pool as every other such user, even
+    though their real durable history was sitting right here the whole
+    time. Defaults to an empty tuple so every existing construction
+    site that predates this field keeps working unchanged.
     """
 
     user_id: str
     dominant_category: str | None
     lifetime_click_count: int
+    history_item_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -65,10 +81,21 @@ def compute_durable_features(
     for user_id, row in latest.iterrows():
         raw_history = row["history"]
         history_ids = history_ids_from_raw(raw_history) if isinstance(raw_history, str) else []
+        # Bounded to the same MAX_HISTORY the live recent-feature store
+        # caps at, and filtered to ids this catalog actually has content
+        # for (an unknown id would encode to nothing in
+        # encode_recent_history anyway, so keeping it here would only
+        # inflate history_item_ids with dead weight) -- the last
+        # MAX_HISTORY valid ones, in original order, since a two-tower
+        # embedding built from a user's most recent clicks is the
+        # closest offline stand-in for what a live recent-click history
+        # would have looked like.
+        valid_history_ids = [nid for nid in history_ids if nid in category_by_id.index]
         result[user_id] = DurableUserFeatures(
             user_id=user_id,
             dominant_category=dominant_category(history_ids, category_by_id),
             lifetime_click_count=len(history_ids),
+            history_item_ids=tuple(valid_history_ids[-MAX_HISTORY:]),
         )
     return result
 

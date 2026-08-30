@@ -31,10 +31,12 @@ def test_durable_features_use_each_users_longest_available_history():
     features = compute_durable_features(behaviors, NEWS)
 
     assert features["u1"] == DurableUserFeatures(
-        user_id="u1", dominant_category="sports", lifetime_click_count=3
+        user_id="u1", dominant_category="sports", lifetime_click_count=3,
+        history_item_ids=("n1", "n2", "n3"),
     )
     assert features["u2"] == DurableUserFeatures(
-        user_id="u2", dominant_category="tech", lifetime_click_count=2
+        user_id="u2", dominant_category="tech", lifetime_click_count=2,
+        history_item_ids=("n3", "n4"),
     )
 
 

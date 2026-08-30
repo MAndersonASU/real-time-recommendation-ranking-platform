@@ -94,11 +94,19 @@ class DurableFeatureCache:
         in sorted user order, through SHA-256. Cost is linear in the
         number of users and is paid once per snapshot build, not per
         request.
+
+        `history_item_ids` (SERVING-DURABLE-HISTORY-69) is included as a
+        length-prefixed sequence, not simply joined: without a length
+        prefix per element, `("ab", "c")` and `("a", "bc")` would encode
+        to the same bytes, the same ambiguity this project's content-
+        artifact checksum already guards against
+        (ARTIFACT-VALIDATION-05).
         """
         digest = hashlib.sha256()
-        # Version tag: if the fields below ever change, ids computed
-        # under the old layout must not silently collide with new ones.
-        digest.update(b"durable-feature-snapshot-v1\n")
+        # Version tag bumped to v2: a snapshot computed before this field
+        # existed and one computed after it, from data that happens to
+        # produce the same first three fields, must not silently collide.
+        digest.update(b"durable-feature-snapshot-v2\n")
         digest.update(f"data_as_of={self.data_as_of}\n".encode())
         digest.update(f"users={len(self.features_by_user)}\n".encode())
 
@@ -115,8 +123,11 @@ class DurableFeatureCache:
                     f"user_id={features.user_id}\n"
                     f"dominant_category={features.dominant_category}\n"
                     f"lifetime_click_count={features.lifetime_click_count}\n"
+                    f"history_item_count={len(features.history_item_ids)}\n"
                 ).encode()
             )
+            for item_id in features.history_item_ids:
+                digest.update(f"history_item_len={len(item_id)}\n{item_id}\n".encode())
         return digest.hexdigest()[:12]
 
     def describe(self, now: datetime | None = None) -> dict:

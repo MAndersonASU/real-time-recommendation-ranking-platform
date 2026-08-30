@@ -36,6 +36,7 @@ def _response(recommendations=None, durable=True, recent=False) -> Recommendatio
         recommendations=recommendations or [],
         durable_features_used=durable,
         recent_features_used=recent,
+        retrieval_history_source="recent" if recent else "durable" if durable else "global_popularity",
         generated_at=datetime(2019, 11, 15, 8, 0, 0),  # noqa: DTZ001
     )
 
