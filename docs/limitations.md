@@ -158,8 +158,11 @@ per-response rather than only inferable from reading the code.
 `reports/durable-history-fallback.json`) measures a cohort of real
 users who have a usable point-in-time durable history against a
 genuinely empty, isolated Redis store — the exact condition this
-limitation described — and reports catalog coverage, slate diversity,
-and ranking-quality metrics before and after the fix. It does not use
-the 31 interactive requests that first reproduced this defect as a
-quality estimate; those are reproduction evidence, not a representative
-sample.
+limitation described — and reports post-fix catalog coverage, served-
+slate diversity, and ranking-quality metrics. This is not a paired
+before/after comparison: no matching pre-fix baseline was measured at
+this scale, only established directly by reproduction and by reading
+the pre-fix code, both recorded in that document alongside the post-fix
+numbers. It does not use the 31 interactive requests that first
+reproduced this defect as a quality estimate; those are reproduction
+evidence, not a representative sample.

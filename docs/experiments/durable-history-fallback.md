@@ -56,10 +56,14 @@ An impression is eligible only when its point-in-time durable history
 (reconstructed the same leakage-free way `evaluate_end_to_end` builds
 its own point-in-time durable features -- never a user's *latest* row in
 the whole split) is non-empty after filtering to ids this catalog
-actually has content for. Most users' `history` field is empty (a
-genuinely new user) or, rarely, entirely off-catalog, and neither is the
-condition this evaluation exists to measure -- they are excluded and
-counted as such, not silently scored against an empty history.
+actually has content for. A user whose `history` field is empty (a
+genuinely new user) or, rarely, entirely off-catalog is excluded and
+counted as such, not silently scored against an empty history -- but
+this excludes only a small minority of sampled impressions in practice
+(2.6%, 210 of the 8,000 sampled below), not most of them: most
+validation-split users do have a usable point-in-time durable history,
+so this evaluation's cohort is close to the general population, not a
+rare subset of it.
 
 ## Results
 
@@ -91,21 +95,39 @@ regression that silently reintroduced a recent-history path into this
 evaluation's isolated store would fail loudly here rather than quietly
 invalidating what this report measures.
 
-## Before/after, on the same real serving path
+## A post-fix evaluation, not a measured before/after comparison
 
-The interactive reproduction above (6 users, 3 distinct slates, 10
-distinct items) is reproduction evidence, not a representative sample --
-it is not used as a quality estimate. At this evaluation's real scale,
-the same before/after contrast holds: before the fix, 7,790 durable-only
-eligible impressions would each have received retrieval from the same
-global-popularity pool (zero-norm embedding, no history at all), which
-this project's own retrieval-evaluation and end-to-end reports already
-show tops out catalog coverage far below what real Faiss retrieval on a
-real, distinct history achieves per user. After the fix, the same 7,790
-impressions produce 7,312 distinct top-10 sets and 15.2% catalog
-coverage -- genuinely different candidate sets per user, not merely a
-different item order within an identical pool. **This is a change in
-what was retrieved, not merely how it was ordered.**
+This report contains only post-fix results: 7,790 durable-only eligible
+impressions produce 7,312 distinct served top-10 slates and 15.2%
+catalog coverage. It does not include a matching pre-fix run at this
+same scale and cohort -- no baseline arm was measured, so a real,
+paired before/after comparison at 7,790 impressions does not exist yet.
+The pre-fix behavior is established by code and by direct reproduction,
+not by a matching measurement here: reading `select_retrieval_history`
+before this fix shows every one of these 7,790 impressions would have
+built its retrieval query from an empty history regardless (no durable
+fallback existed), which produces a zero-norm embedding and the
+identical flat-popularity candidate pool for every such user -- exactly
+what the interactive reproduction above showed directly, for 6 real
+users, before any fix (3 distinct slates, 10 distinct items). That
+reproduction is real evidence of the pre-fix mechanism, not a
+representative sample and not a quality estimate at this evaluation's
+scale.
+
+`distinct_top_k_sets` and `catalog_coverage_at_k` measure the final
+served top-K slate (post-ranking, post-reranking), not the full
+retrieval candidate pool (the ~1,000 candidates Faiss or the popularity
+path hands to ranking) -- a genuine change in the served slate is
+still informative, since a flat popularity pool feeding the same
+ranking and reranking stages would deterministically produce the same
+slate for every historyless user, which the pre-fix code and
+reproduction both establish it did. But it is not itself a direct
+measurement of candidate-pool diversity, only of what was ultimately
+served. A rigorous paired before/after comparison -- a real pre-fix
+baseline arm on this identical cohort, recording both the full
+retrieval candidate pools and the final served slates for baseline
+versus durable-history treatment -- would be the stronger evidence and
+is not attempted here.
 
 ## Interpretation and limitations
 

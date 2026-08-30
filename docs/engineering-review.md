@@ -5,8 +5,15 @@ not an independent audit; no third party verified these findings.
 
 ## Where it stands
 
-Of **23 primary findings**: 20 verified closed, 1 partially closed by an
-explicit scope decision, 2 accepted limitations.
+Of **35 primary findings**: 32 verified closed, 1 partially closed by an
+explicit scope decision, 2 accepted limitations, 0 open. This grew from
+the 23 primary findings the original review raised, through two further
+verification rounds (`docs/engineering-review-register.md`'s "Follow-up
+findings" sections) that raised eleven more and then one more, and
+reopened several of the original 23 before closing them again -- this
+is the register's own current tally, not the original review's, and
+`docs/engineering-review-register.md`'s "Current aggregate status"
+section is the authoritative source it is generated from.
 
 | Item | Status |
 |---|---|

@@ -841,6 +841,21 @@ def publish_durable_history_fallback_report(raw: dict, sampling: dict, output_di
     history before nearly every impression, so it does not exercise this
     path -- see its own limitations entry).
     """
+    sampled = raw.get("impressions_in_sample")
+    excluded = sum((raw.get("impressions_skipped") or {}).values())
+    excluded_pct = (excluded / sampled * 100) if sampled else None
+    eligibility_note = (
+        "impression's user has a non-empty, catalog-valid, point-in-time "
+        "durable history (a user with an empty or off-catalog history field "
+        "is excluded, not counted as a zero)"
+        + (
+            f" -- {excluded} of {sampled} sampled impressions ({excluded_pct:.1f}%) "
+            "were excluded on this run, so most sampled impressions were "
+            "eligible, not most excluded"
+            if sampled
+            else ""
+        )
+    )
     spec = {
         "report_name": "durable-history-fallback",
         "dataset": {**MIND_DATASET, "split": "validation"},
@@ -853,12 +868,7 @@ def publish_durable_history_fallback_report(raw: dict, sampling: dict, output_di
                 "use_recent_features=False and not the shared serving "
                 "context's own Redis client"
             ),
-            "eligibility": (
-                "impression's user has a non-empty, catalog-valid, "
-                "point-in-time durable history (most users' history field "
-                "is empty or off-catalog and are excluded, not counted as "
-                "a zero)"
-            ),
+            "eligibility": eligibility_note,
         },
         "denominators": {
             "impressions_in_sample": raw.get("impressions_in_sample"),
