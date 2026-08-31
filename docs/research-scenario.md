@@ -1,88 +1,94 @@
-# Research Scenario
+# Research scenario
 
-**Project:** Real-Time Personalized Recommendation & Ranking Platform
-**Research domain:** Personalized news/content recommendation with implicit user feedback.
-**Dataset:** Microsoft News Dataset (MIND) — MIND-small for development; MIND-large only for justified, explicitly-scoped scale testing (the scale and performance work).
+| Item | Scope |
+|---|---|
+| Project | Real-Time Personalized Recommendation & Ranking Platform |
+| Domain | Personalized news recommendation from implicit feedback |
+| Main dataset | MIND-small |
+| Scale dataset | MIND-large, only for explicitly scoped performance work |
 
-## Core problem
+## Problem
 
-Given a user, their recent behavior, a set of candidate content items, and context,
-retrieve a bounded candidate set and rank the most useful items under explicit
-latency and system constraints.
+Given a user, their behavior, a catalog or candidate list, and request
+context, return a bounded Top-K recommendation list within stated
+latency and system limits.
 
-## Core output
+Every published result must also identify its model, features,
+configuration, sampling, metric definition, and provenance.
 
-A ranked Top-K recommendation list, plus traceable model, feature, latency, and
-evaluation evidence for every reported result.
+## Research questions
 
-## Research questions (frozen)
+These questions were frozen before the reported results:
 
-- **RQ1** — How much do learned embeddings and candidate retrieval improve
-  recommendation quality over simple baselines?
-- **RQ2** — How much does a dedicated ranking model improve quality over
-  retrieval scores alone?
-- **RQ3** — Can reranking improve diversity/freshness without unacceptable
-  loss of relevance?
-- **RQ4** — How do streaming user signals change online features and
-  recommendation freshness?
-- **RQ5** — What quality-versus-latency tradeoffs appear as candidate set
-  size, index type, batching, and caching change?
+1. **RQ1 — Retrieval:** How much do learned embeddings and candidate
+   retrieval improve quality over simple baselines?
+2. **RQ2 — Ranking:** How much does a ranking model improve quality over
+   retrieval scores alone?
+3. **RQ3 — Reranking:** Can diversity and freshness improve without an
+   unacceptable relevance loss?
+4. **RQ4 — Streaming:** How do recent events change online user
+   features and recommendation freshness?
+5. **RQ5 — Tradeoffs:** How do quality and latency change with retrieval
+   depth, index type, batching, and caching?
 
-RQ1 evaluates Recall of the retrieval stage's candidate set of size **N**;
-RQ2 evaluates Recall/NDCG of the final served **Top-K** list. N and K are
-tracked as separate parameters throughout and are never conflated, since
-they answer different questions.
+RQ1 measures whether the clicked item appears in the retrieved
+candidate set of size **N**. RQ2 measures the final served list of size
+**K**. N and K are separate throughout the project.
 
-## User-event vocabulary
+## Event terms
 
-- **Impression** — one candidate list actually shown to a user in a single
-  serving instance; contains both clicked and non-clicked items.
-- **Click** — positive implicit feedback: the user selected an item from an
-  impression.
-- **Skip** — an item shown in an impression but not clicked; an implicit
-  negative, not necessarily disinterest.
-- **Session/history** — the sequence of a user's past impressions and clicks
-  used as input context for personalization.
+| Term | Meaning |
+|---|---|
+| Impression | One candidate list shown to a user |
+| Click | An item selected from an impression |
+| Skip | A shown item that was not clicked; this is an implicit negative, not proof of disinterest |
+| History | Earlier impressions and clicks used for personalization |
 
-## Success metrics
+## Metrics in scope
 
-Defined precisely alongside the baselines, once the evaluation contract is frozen; named
-here only to fix scope: Recall@K, NDCG@K, MRR, hit rate, catalog coverage,
-and diversity/freshness measures where supported by the data.
+- Recall@K
+- NDCG@K
+- MRR
+- hit rate
+- catalog coverage
+- diversity and freshness measures supported by the data
 
-## Definition of "real-time" (scope boundary)
+Exact definitions and denominators belong to the
+[evaluation protocol](experiments/evaluation-protocol.md) and the JSON
+reports.
 
-"Real-time" in this project means **replayed-stream processing** —
-historical interactions replayed through Kafka in chronological order at
-controlled speed, processed incrementally by a live consumer. It does
-**not** mean live production traffic or real users. This distinction is
-binding on every later document and must not be blurred in code, comments,
-or the eventual research release.
+## Meaning of “real-time”
 
-## Prohibited claims
+“Real-time” means historical events replayed through Kafka in
+chronological order at a controlled rate and processed by a live
+consumer.
 
-Unless independently measured and verified at the time of writing:
+It does not mean production traffic or live users.
 
-- No claim of internet-scale traffic, real users, or business impact.
-- No claim of "production deployment" — only "production-grade"
-  *engineering practices* (tested, containerized, monitored) demonstrated
-  locally.
-- No claim of a ranking improvement without stating that both compared
- systems used the identical frozen evaluation contract (the baselines).
-- No treatment of replay-based evaluation as a real A/B test.
+## Claims this project does not make
 
-## Boundary: what this project does not do
+- internet-scale traffic;
+- real-user or business impact;
+- a production deployment;
+- a ranking gain based on different evaluation contracts;
+- replay as a substitute for a live A/B test.
 
-- No Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, a
- feature store, or an LLM, unless a measured requirement in a future work
-  justifies adding it.
-- The optional generative/RAG explanation layer explains an
-  already-selected recommendation; it never participates in retrieval,
-  ranking, or reranking decisions.
+The project does demonstrate local engineering practices such as tests,
+containers, monitoring, recovery checks, and versioned artifacts.
+
+## Technology boundary
+
+Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec, and a
+separate feature store are outside scope because no measurement showed
+they were required.
+
+The optional local generative component can rewrite a grounded
+explanation after recommendation selection. It cannot affect retrieval,
+ranking, or reranking.
 
 ---
 
-*Locked 2026-08-15. This document is the fixed reference point every later
-component's evaluation is measured against; revising it after model results
-exist would invalidate prior comparisons and must be treated as a new
-locked version, not a silent edit.*
+**Scope locked on 2026-08-15.** This plain-language revision changes
+presentation only. It does not change the questions, metrics, dataset,
+or claim boundaries. Any future scope change requires a new dated
+contract rather than a silent edit.

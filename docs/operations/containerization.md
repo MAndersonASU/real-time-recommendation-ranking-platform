@@ -1,48 +1,53 @@
-# Containerizing Services
+# Containerized services
 
-A real, running Docker Compose topology for the multi-service platform:
-Kafka, Redis, and — for the first time — an actual HTTP API process
-wrapping the recommendation pipeline. Implementation: `Dockerfile`,
-`docker-compose.yml`, `src/recommender/serving/app.py`.
+Docker Compose runs:
 
-## The first real API process this project has stood up
+- Kafka;
+- Redis; and
+- the FastAPI recommendation service.
 
-Every component since the serving path called `recommend()`/`safe_recommend()`
-directly, as a Python function — real, but never reachable over a
-network. `app.py` is a thin FastAPI wrapper: one `POST /recommend`
-endpoint validated by the exact same `RecommendationRequest`/
-`RecommendationResponse` contract (`docs/operations/serving-contract.md`), and a
-lifespan hook that calls `build_serving_context()` once at process
-start, the same context every test and verification script already
-uses — not a second, app-specific load path.
+Implementation: `Dockerfile`, `docker-compose.yml`, and
+`src/recommender/serving/app.py`.
+
+## API process
+
+`app.py` exposes `POST /recommend` using the same
+`RecommendationRequest` and `RecommendationResponse` models as the
+Python serving code.
+
+The FastAPI lifespan creates `ServingContext` once at startup through
+`build_serving_context()`. The HTTP application does not maintain a
+separate artifact-loading path.
 
 ## Data stays out of the image, on purpose
 
-The trained model, the Faiss index, the ranking pipeline, and the
-reserved splits are gitignored local research output — never committed,
-never meant to be reproduced by anyone without running the licensed
-dataset's own pipeline first (`docs/dataset-source.md`). Baking any of
-that into the Docker image would either violate that boundary or bloat
-the image with data that changes independently of the code. `data/` is
-mounted as a read-only volume in `docker-compose.yml` instead, treating
-model artifacts the way this project has always treated them: real,
-external, versioned separately from the code that consumes them.
+Models, ranking artifacts, processed content, and split data remain
+under the local `data/` directory. They are not copied into the image.
+Compose mounts `data/` read-only.
 
-## Configuration, minimally, ahead of its own dedicated component
+The Faiss index is rebuilt in memory from the validated content and
+model artifacts at startup; it is not loaded as a persisted index file.
 
-The API container needs to reach Redis by its Compose service name
-(`redis`), not `localhost` — the address every other caller in this
-project already defaults to. `app.py` reads `REDIS_URL` from the
-environment, falling back to the existing `localhost` default so every
-non-containerized caller (tests, verify scripts) is unaffected. This is
-deliberately minimal: real environment-based configuration, secret
-handling, and startup-dependency validation are handled in
-`docs/operations/configuration.md`.
+Keeping research artifacts outside the image avoids redistributing MIND
+and allows artifacts to change independently from application code.
+
+Inside Compose, `REDIS_URL` uses the service hostname `redis`. Outside
+containers, the default remains `redis://localhost:6379/0`.
+
+See [configuration](configuration.md) for ports, authentication, and
+startup behavior.
 
 ## Verified by actually building and running it
 
-The image was built and started via `docker compose up`, alongside the
-real Kafka and Redis containers this project has run since the streaming pipeline and online
-feature store were built, and a real HTTP request against the running container's
-`/recommend` endpoint returned a valid, contract-conforming response —
-not just a file written and assumed to work.
+The verification built the image, started the Compose stack, waited for
+health checks, and sent a real `POST /recommend` request. The response
+matched the serving contract.
+
+Start the stack with:
+
+```bash
+docker compose up -d --build kafka redis api
+```
+
+See [serving contract](serving-contract.md) and
+[health checks](health-checks.md).

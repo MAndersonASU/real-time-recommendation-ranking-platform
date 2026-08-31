@@ -39,7 +39,14 @@ def verify_restart_resumes_from_committed_offset(
     group_id = f"restart-check-{time.time()}"
 
     events = [
-        make_event(EventType.CLICK, "U1", f"N{i}", i, "t").to_json().encode() for i in range(10)
+        make_event(
+            EventType.CLICK,
+            "U1",
+            f"N{i}",
+            i,
+            "2019-11-14 08:00:00",
+        ).to_json().encode()
+        for i in range(10)
     ]
     _publish(events, bootstrap_servers, topic)
 
@@ -75,9 +82,21 @@ def verify_malformed_events_dont_crash_the_consumer(
     ensure_topic(topic, bootstrap_servers=bootstrap_servers)
     group_id = f"malformed-check-{time.time()}"
 
-    valid_before = make_event(EventType.CLICK, "U1", "N1", 1, "t").to_json().encode()
+    valid_before = make_event(
+        EventType.CLICK,
+        "U1",
+        "N1",
+        1,
+        "2019-11-14 08:00:00",
+    ).to_json().encode()
     malformed = b"{not valid json at all"
-    valid_after = make_event(EventType.CLICK, "U2", "N2", 2, "t").to_json().encode()
+    valid_after = make_event(
+        EventType.CLICK,
+        "U2",
+        "N2",
+        2,
+        "2019-11-14 08:00:01",
+    ).to_json().encode()
     _publish([valid_before, malformed, valid_after], bootstrap_servers, topic)
 
     stream_consumer = StreamConsumer()
@@ -106,7 +125,13 @@ def verify_duplicate_events_are_suppressed(
     ensure_topic(topic, bootstrap_servers=bootstrap_servers)
     group_id = f"duplicate-check-{time.time()}"
 
-    raw = make_event(EventType.CLICK, "U1", "N1", 1, "t").to_json().encode()
+    raw = make_event(
+        EventType.CLICK,
+        "U1",
+        "N1",
+        1,
+        "2019-11-14 08:00:00",
+    ).to_json().encode()
     _publish([raw, raw], bootstrap_servers, topic)
 
     stream_consumer = StreamConsumer()
@@ -132,7 +157,14 @@ def verify_consumer_lag_reporting(bootstrap_servers: str = DEFAULT_BOOTSTRAP_SER
     group_id = f"lag-check-{time.time()}"
 
     events = [
-        make_event(EventType.CLICK, "U1", f"N{i}", i, "t").to_json().encode() for i in range(6)
+        make_event(
+            EventType.CLICK,
+            "U1",
+            f"N{i}",
+            i,
+            "2019-11-14 08:00:00",
+        ).to_json().encode()
+        for i in range(6)
     ]
     _publish(events, bootstrap_servers, topic)
 

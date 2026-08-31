@@ -1,183 +1,173 @@
 # Real-Time Personalized Recommendation & Ranking Platform
 
-A complete recommendation and ranking research platform combining
-offline batch machine learning with real-time event streaming,
-containerized serving, operational monitoring, and an optional
-grounded explanation layer — built and evaluated on the Microsoft News
-Dataset (MIND).
+A research platform for building, serving, and evaluating personalized
+news recommendations. It combines offline model training, real-time
+events, a FastAPI service, monitoring, and an optional grounded
+explanation layer.
+
+The project uses the Microsoft News Dataset (MIND). The code is public;
+the licensed dataset and trained artifacts are not included.
 
 [![CI](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml)
 
-## What this is
+## Choose what you want to do
 
-A five-stage pipeline — embedding-based candidate retrieval, a learned
-ranking model, diversity/freshness reranking, real-time streaming
-features, and containerized serving — evaluated end to end against a
-frozen research protocol.
+| Goal | Start here |
+|---|---|
+| Understand the system | [Architecture](docs/architecture.md) |
+| Review measured results | [Evaluation](docs/evaluation.md) |
+| Run the public test suite | [Local setup](#run-the-public-test-suite) |
+| Start a containerized demonstration | [Container demonstration](#run-the-container-demonstration) |
+| Reproduce licensed-data work | [Reproducibility](docs/reproducibility.md) |
+| Operate the service | [Operations](docs/operations.md) |
+| Review known limits | [Limitations](docs/limitations.md) |
 
-**Evidence status.** The thirteen published reports in
-[`reports/`](reports/) each carry committed, provenance-valid
-machine-readable backing -- one JSON per published report-backed result
-family, listed in [`docs/evaluation.md`](docs/evaluation.md). No report
-was backfilled with inferred or false provenance. Other numeric tables
-throughout the documentation (data quality, calibration, load and
-profiling measurements, and others) are real, but describe their own
-original verification scope directly in the document they appear in --
-they are not part of this thirteen-report contract. `docs/research-scenario.md` defines
-the five research questions this project set out to answer;
-`docs/conclusions.md` answers all five from the evidence gathered
-across every component.
+## What the platform does
 
-## Measured results
+The offline path prepares data and trains the models:
 
-Two different protocols are reported below, and the difference between
-them is larger than the difference between any two rows inside either
-one. Reading either number without the other will mislead.
+```text
+MIND data
+  -> validation and Parquet tables
+  -> user and item features
+  -> two-tower retrieval model and Faiss index
+  -> learned ranking model
+  -> diversity and freshness reranking
+  -> evaluation reports and versioned artifacts
+```
 
-### End to end: what the assembled system actually does
+The online path serves recommendations:
 
-The real `/recommend` path — retrieval over the full 51,282-item
-catalog, then ranking, then reranking — replayed against 5,000
-chronologically ordered validation impressions with point-in-time
-state (`reports/end-to-end-evaluation.json`):
+```text
+historical and live events
+  -> Kafka
+  -> streaming consumer
+  -> recent features in Redis
+  -> retrieval
+  -> ranking
+  -> reranking
+  -> FastAPI response
+```
+
+The service can continue without Redis. In that condition it uses
+durable user features and reports the degraded dependency through
+`/ready`. See [failure-safe serving](docs/operations/serving-fallback.md)
+for the exact behavior.
+
+The explanation layer describes a recommendation after selection. It
+cannot influence retrieval, ranking, or reranking. Deterministic
+templates provide the factual statement. Optional local-model rewriting
+is disabled by default.
+
+<details>
+<summary>Where each component lives</summary>
+
+| Area | Package |
+|---|---|
+| Data ingestion and validation | `recommender.data` |
+| Offline and online features | `recommender.features` |
+| Candidate retrieval | `recommender.retrieval` |
+| Ranking | `recommender.ranking` |
+| Diversity and freshness | `recommender.reranking` |
+| Kafka replay and consumption | `recommender.streaming` |
+| API and fallback behavior | `recommender.serving` |
+| Metrics, logs, and dashboards | `recommender.monitoring` |
+| Evaluation and report publication | `recommender.evaluation` |
+| Grounded explanations | `recommender.explanation` |
+
+</details>
+
+## Results at a glance
+
+The project reports two different evaluation protocols. They answer
+different questions and should not be compared as if they were the same
+test.
+
+### End-to-end serving result
+
+This is the result for the assembled `/recommend` path: retrieval over
+the 51,282-item catalog, followed by ranking and reranking. The replay
+uses 5,000 chronological validation impressions and point-in-time user
+state.
 
 | Metric | Result |
 |---|---|
-| Retrieval contained the click (ceiling) | 0.1414 |
+| Retrieval contained the click | 0.1414 |
 | **Hit rate@10** | **0.0084** |
 | NDCG@10 | 0.0042 |
 | MRR | 0.0048 |
 
-A hit rate of 0.84% means the user's real next click lands in the
-ten-item slate roughly once in every 119 impressions. Retrieval is the
-binding constraint: no ranking improvement can lift the result above
-the 14.1% ceiling, because ranking cannot promote an item it never
-received. **This is the number to judge the system by.**
+The clicked item appears in the final ten recommendations in about
+0.84% of impressions, or roughly once in 119 impressions. Retrieval is
+the main constraint: the clicked item reaches ranking in only 14.14% of
+impressions.
 
-### Candidate-list protocol: what the ranking model contributes
+Source: [end-to-end report](reports/end-to-end-evaluation.json) and
+[plain-language interpretation](docs/experiments/serving-path-end-to-end-evaluation.md).
 
-The frozen research protocol scores MIND's own supplied impression
-candidate list — a few dozen items per impression, already containing
-the click — to isolate ranking quality from retrieval quality
-(`docs/experiments/evaluation-protocol.md`, 30,270 impressions, K=10):
+### Candidate-list ranking result
 
-| Stage | Hit rate@10 | NDCG@10 |
+This protocol scores MIND's supplied candidate lists. Each list already
+contains the clicked item, so this test isolates ranking quality and
+does not measure full-catalog retrieval.
+
+| Model output | Hit rate@10 | NDCG@10 |
 |---|---|---|
-| Best non-learned baseline (content similarity) | 0.6557 | 0.3526 |
-| + Learned retrieval score as sort key | 0.6689 | 0.3518 |
-| + Learned ranking model | **0.6828** | **0.3671** |
-| + Diversity/freshness reranking | 0.6675 | 0.3610 |
+| Content-similarity baseline | 0.6557 | 0.3526 |
+| Learned retrieval score | 0.6689 | 0.3518 |
+| Learned ranking model | **0.6828** | **0.3671** |
+| Ranking plus diversity/freshness | 0.6675 | 0.3610 |
 
-These figures are high because the task is easy by construction: pick
-from a short list that already contains the answer. They measure
-ranking, and nothing here should be read as end-to-end quality — the
-section above is that. The learned ranking model is the clearest gain
-within this protocol; reranking trades a small, measured amount of
-relevance (−2.2% hit rate) for a diversity and freshness improvement
-(mean distinct categories per slate +15.1%, slates below the freshness
-quota −9.8% relative, `docs/experiments/reranking-evaluation.md`).
+The ranking model improves the candidate-list result. Reranking then
+trades a small amount of relevance for broader category coverage and
+more fresh items.
 
-Retrieval was originally diagnosed as weak in isolation and traced to a
-specific, quantified cause: the item tower represented every article by
-category and subcategory alone, collapsing 51,282 items into 284
-distinct embedding vectors. That cause has since been fixed by giving
-each article a content vector from its own title and abstract —
-distinct embeddings rose to 50,704 and the four relevance metrics
-improved 7.6x-13.5x; catalog coverage improved 1.5x
-(`docs/experiments/retrieval-evaluation.md`). It is still not a strong
-retriever in absolute terms, and `docs/experiments/serving-path-end-to-end-evaluation.md`
-reports what that means for the assembled system without rounding it up.
+<details>
+<summary>Why the two result tables are so different</summary>
 
-A consolidated ablation study, a real per-user-segment failure
-analysis, and the full set of open questions this evidence does and
-doesn't support are in `docs/experiments/ablations.md`, `docs/experiments/failure-analysis.md`,
-and `docs/conclusions.md`.
+The candidate-list test starts with a short list that already contains
+the correct item. The end-to-end test starts with the full catalog and
+must retrieve the correct item before ranking can help. The first table
+therefore measures the complete system; the second isolates the
+ranker's contribution.
 
-## Architecture
+</details>
 
-Offline: governed dataset → validation → Parquet/DuckDB → feature
-pipeline → baselines → embedding retrieval model → Faiss candidate
-index → ranking model → evaluation. Online: historical replay → Kafka
-→ stream consumer → recent user features (Redis) → candidate retrieval
-→ ranking → reranking → a containerized FastAPI recommendation
-service, with `/metrics`, structured JSON logs, and a live dashboard.
-Full detail, including every real design decision and why alternatives
-(MLflow, TorchRec, a separate feature store) were evaluated and
-rejected: `docs/architecture.md`.
+<details>
+<summary>What changed in retrieval</summary>
 
-An optional grounded explanation layer sits on top of the finished
-recommendation pipeline, using a small local model
-(`google/flan-t5-small`) to explain — never influence — a
-recommendation already made. The layer's structural boundary (it can
-only ever describe a decision already made elsewhere, never feed back
-into ranking) is enforced by the request type itself
-(`docs/experiments/explanation-boundary.md`). The factual relationship is stated
-by one of a small set of approved templates filled from validated
-values — a generative model never states it. Generative rewriting
-exists but is opt-in and off by default, because the only automated
-check available for generated wording is lexical, and a lexical check
-cannot validate meaning (`docs/experiments/explanation-generation.md`,
-`docs/experiments/explanation-evaluation.md`).
+The original item representation used only category and subcategory.
+That reduced 51,282 articles to 284 distinct vectors. Adding title and
+abstract content increased the count to 50,704 distinct vectors. The
+four relevance metrics improved by 7.6x to 13.5x, while catalog coverage
+improved by 1.5x. Retrieval remains the largest quality constraint.
 
-## What CI actually runs, and what's verified locally instead
+See [retrieval evaluation](docs/experiments/retrieval-evaluation.md).
 
-CI ([`docs/operations/ci-automation.md`](docs/operations/ci-automation.md)) runs four jobs on
-pushes to `main` and on pull requests targeting `main`:
+</details>
 
-- **Linting, static security analysis, and the full test suite** behind
-  a coverage floor, installed from `pyproject.toml`'s flexible lower
-  bounds.
-- **The same suite from a hash-verified lock file**
-  (`pip install --require-hashes`), plus a blocking `pip-audit`
-  vulnerability scan of exactly those pinned versions.
-- **The real containerized API**, built and started in the runner
-  against synthetic artifacts, then checked for a passing health check,
-  a non-root user, and correct live responses — including that a
-  malformed request returns a clean 422 rather than a 500.
-- **Real Kafka and Redis containers**, with actual produce/consume and
-  read/write round-trips.
+## Run the public test suite
 
-The API container is testable in CI because
-`recommender.data.synthetic` generates a seeded stand-in for every
-artifact the service loads. That verifies *wiring* — the image builds,
-starts unprivileged, loads its models, and answers correctly — and
-nothing about recommendation quality.
+Requirements:
 
-What CI does *not* do: load the licensed MIND dataset. The trained
-model, Faiss index, and ranking pipeline all depend on it
-(`docs/data-card.md`), and this project has never redistributed it. So
-every result that depends on real data
-(`docs/demonstration-guide.md`, `docs/reproducibility.md`, and
-the evaluation reports) is produced locally by the maintainer and
-documented here. Failure paths — a stopped dependency, a missing model
-file, a restarted container — are tested the same way
-(`docs/operations/restart-and-failure-testing.md`).
+- Python 3.11
+- Git
 
-## Getting started
-
-Requires **Python 3.11** specifically (PyTorch, Faiss, and Transformers
-here lag behind the newest CPython release) — check with `python --version` first, or use a version manager / launcher (`py -3.11` on
-Windows) if your default `python` resolves to something newer.
-
-There are three separate entry points, with different prerequisites.
-
-**1. Public tests — no dataset required.**
+Create an environment:
 
 ```bash
 git clone https://github.com/MAndersonASU/real-time-recommendation-ranking-platform.git
 cd real-time-recommendation-ranking-platform
-py -3.11 -m venv .venv
+python -m venv .venv
 ```
 
-Activate the virtual environment for your shell -- run only the one
-line below that matches, not all three, since a shell comment (`#`)
-that ends up pasted alongside the others is silently skipped rather
-than run, leaving the environment unactivated and every command below
-resolving outside it:
+Activate it with the command for your shell:
 
-- **Windows (PowerShell)**: `.venv\Scripts\Activate.ps1`
-- **Windows (Git Bash)**: `source .venv/Scripts/activate`
-- **macOS / Linux**: `source .venv/bin/activate`
+- Windows PowerShell: `.venv\Scripts\Activate.ps1`
+- Windows Git Bash: `source .venv/Scripts/activate`
+- macOS or Linux: `source .venv/bin/activate`
+
+Install and verify:
 
 ```bash
 pip install -e ".[dev]"
@@ -185,95 +175,106 @@ pytest -q
 ruff check .
 ```
 
-**2. Containerized demonstration — synthetic artifacts, no licensed data.**
+No MIND download is required for these checks.
 
-Builds the API image and starts it against generated stand-in artifacts.
-This verifies wiring, health checks and response shapes; it does not
-reproduce any evaluation number, and it does not build the image the
-same way CI's own `api-container-test` job does -- that job passes
-`GIT_COMMIT_SHA` explicitly (`GIT_COMMIT_SHA=$(git rev-parse HEAD)
-docker compose up -d --build api`); the command below does not, so the
-resulting image carries no commit identity (`build-image.sh` is the
-wrapper that supplies one, for a real deployment rather than this
-demonstration).
+## Run the container demonstration
 
-> **This overwrites real artifacts.** `recommender.data.synthetic` writes
-> its stand-ins to the same paths the offline build uses
-> (`data/processed/mind_small/`), including `news.parquet`,
-> `train.parquet`, `validation.parquet`, `item_content.npz`,
-> `two_tower_model.pt` and `ranking_model.skops`. Run it only in a clone
-> with no trained artifacts, or back that directory up first.
+This demonstration uses seeded synthetic artifacts. It verifies the
+container, API contract, health checks, and Redis integration. It does
+not reproduce the published recommendation-quality numbers.
 
-The API has no `depends_on` relationship with Redis (`docs/architecture.md`,
-`docs/operations/serving-fallback.md`) -- it starts and serves real,
-durable-features-backed responses whether or not Redis is running, so
-`redis` needs its own explicit start for the complete demonstration:
+> **Use a clean clone with no trained artifacts.** The synthetic-data
+> command writes to `data/processed/mind_small/` and replaces files at
+> the same paths used by a licensed-data build.
 
 ```bash
-python -m recommender.data.synthetic          # seeded stand-in artifacts
-docker compose up -d --build api redis        # API + Redis; no Kafka needed for this demonstration
+python -m recommender.data.synthetic
+docker compose up -d --build api redis
 ```
 
-Omitting `redis` from that command is a valid choice too, not an error
--- it demonstrates the service's disclosed degraded-Redis behavior
-directly: `/ready` reports Redis as `"degraded"` and `/recommend` still
-returns real, personalized responses on durable features alone
-(`docs/operations/serving-fallback.md`).
+Try the service:
 
-**3. Licensed-data training and serving.**
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+curl -X POST http://localhost:8000/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"U1","num_candidates":5}'
+```
 
-Requires a local MIND download under `./data` (see
-[`docs/dataset-source.md`](docs/dataset-source.md)) and a full offline
-build. A clean clone does not contain the trained retrieval model,
-content vectors, catalog, ranking model or bundle manifest, so
-`docker compose up` cannot serve real recommendations until those are
-generated locally.
+Stop the containers:
 
-Installation and serving were verified from a clean clone using
-previously generated local artifacts. Licensed-data training and
-evaluation were not reproduced from download in that check — see
-[`docs/reproducibility.md`](docs/reproducibility.md). For an exact, fully-pinned dependency
-install instead of the flexible resolution `pyproject.toml`'s lower
-bounds allow (which resolves to the latest compatible versions, not to
-the lower bounds themselves),
-see `requirements-lock.txt`.
+```bash
+docker compose down
+```
 
-## Documentation index
+<details>
+<summary>Run the API without Redis</summary>
 
-Five entry points. Everything else is detail beneath them.
+```bash
+docker compose up -d --build api
+```
 
-| Start here | For |
+The API remains available. `/ready` reports Redis as degraded, and
+`/recommend` uses durable features. This is a supported fallback
+condition, not a full production configuration.
+
+</details>
+
+## Work with the licensed dataset
+
+Download MIND separately and place it under `./data`. Follow:
+
+1. [Dataset source and license](docs/dataset-source.md)
+2. [Data card](docs/data-card.md)
+3. [Reproducibility guide](docs/reproducibility.md)
+4. [Evaluation guide](docs/evaluation.md)
+
+A clean clone does not include the trained retrieval model, content
+vectors, Faiss index, ranking model, or serving manifest. Those
+artifacts must be generated locally before the service can provide
+real-data recommendations.
+
+For a fully pinned install, use `requirements-lock.txt`. The regular
+`pip install -e ".[dev]"` command uses the compatible version ranges
+in `pyproject.toml`.
+
+## Evidence and CI
+
+The 13 published report families in [`reports/`](reports/) include
+machine-readable metrics, definitions, denominators, sampling details,
+limitations, source commits, and artifact hashes. The complete index is
+in [`docs/evaluation.md`](docs/evaluation.md).
+
+CI runs four jobs:
+
+- linting, security analysis, tests, and coverage;
+- the same suite from the hash-verified dependency lock, followed by
+  `pip-audit`;
+- a real API container test using synthetic artifacts;
+- real Kafka and Redis integration checks.
+
+CI does not download MIND or reproduce licensed-data results. Those
+measurements are generated locally and published with provenance.
+
+## Documentation map
+
+| Document | Question it answers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | What the system is now: components, data flow, artifact boundaries, failure behaviour |
-| [`docs/evaluation.md`](docs/evaluation.md) | The two protocols, results, integrity and limitations |
-| [`docs/operations.md`](docs/operations.md) | Streaming, serving, observability, containers |
-| [`docs/engineering-review.md`](docs/engineering-review.md) | Review status, open findings, evidence gaps |
-| [`docs/conclusions.md`](docs/conclusions.md) | What the evidence answers, and what it does not |
+| [Architecture](docs/architecture.md) | How do the offline and online paths work? |
+| [Evaluation](docs/evaluation.md) | What was measured, and under which protocol? |
+| [Operations](docs/operations.md) | How is the service configured, observed, and recovered? |
+| [Conclusions](docs/conclusions.md) | What does the evidence support? |
+| [Limitations](docs/limitations.md) | What remains uncertain or out of scope? |
+| [Engineering review](docs/engineering-review.md) | What was reviewed, and what remains limited? |
+| [Research scenario](docs/research-scenario.md) | Which questions defined the work? |
+| [Demonstration guide](docs/demonstration-guide.md) | How can the running service be shown? |
 
-**Research contract** — [`docs/research-scenario.md`](docs/research-scenario.md)
-(frozen questions and scope), [`docs/limitations.md`](docs/limitations.md)
-(what no number here can show).
-
-**Data governance** — [`docs/data-card.md`](docs/data-card.md),
-[`docs/dataset-source.md`](docs/dataset-source.md).
-
-**Detail** — [`docs/experiments/`](docs/experiments/) holds the individual
-experiments and measurements; [`docs/operations/`](docs/operations/) holds
-the runtime detail; [`docs/archive/`](docs/archive/) holds superseded
-historical measurements, each labelled as such.
-
-**Machine-readable results** — [`reports/`](reports/), one JSON per
-published report-backed result family, each with metric definitions, denominators, sampling,
-provenance and limitations.
-
-**Also** — [`docs/architecture-decisions.md`](docs/architecture-decisions.md)
-(dated decision history),
-[`docs/reproducibility.md`](docs/reproducibility.md) (clean-environment
-verification scope), [`docs/demonstration-guide.md`](docs/demonstration-guide.md),
-[`CHANGELOG.md`](CHANGELOG.md).
+Detailed experiment notes are under [`docs/experiments/`](docs/experiments/).
+Runtime references are under [`docs/operations/`](docs/operations/).
+Superseded measurements are under [`docs/archive/`](docs/archive/).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). The MIND dataset itself is governed by
-Microsoft's own research license, not this project's — see
-[`docs/data-card.md`](docs/data-card.md).
+The code is available under the [MIT License](LICENSE). MIND remains
+subject to Microsoft's dataset license; see the [data card](docs/data-card.md).

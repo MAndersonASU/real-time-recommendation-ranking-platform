@@ -1,9 +1,7 @@
-# Time-Aware Splits
+# Time-based data splits
 
-Three partitions, ordered strictly by time — never by random shuffling —
-enforced by an explicit assertion (`assert_no_time_leakage`,
-`src/recommender/data/splits.py`) rather than left to be correct by
-construction alone.
+The project uses three chronological partitions. It does not shuffle
+rows randomly across dates.
 
 | Split | Source | Date range | Rows | Use |
 |---|---|---|---|---|
@@ -11,31 +9,30 @@ construction alone.
 | `validation` | MIND-small official train, last day | 2019-11-14 | 30,270 | Model selection / tuning (the baselines through reranking) |
 | `replay` | MIND-small official dev window | 2019-11-15 | 73,152 | Streaming replay and replay evaluation |
 
-`train` and `validation` are carved from the official train window by a
-single chronological cutoff — the last day becomes validation, the rest is
-train. `replay` is MIND's own official dev window, used as-is. Nothing trains,
-tunes or selects a model against it, but it is no longer untouched:
-streaming replay and replay evaluation have both run against it.
+The last day of the official training window becomes `validation`; the
+earlier days become `train`. The official development window becomes
+`replay` without modification.
 
-Row counts are internally consistent by construction: `train` (126,695) +
-`validation` (30,270) = 156,965, the exact row count of the ingested
-official train split; `replay` (73,152) exactly matches the original
-official dev split.
+The counts reconcile:
+
+- `126,695 + 30,270 = 156,965`, the official training-window total; and
+- `73,152` matches the official development-window total.
+
+No model is fitted or selected with `replay`. The split is not unused:
+streaming replay and replay evaluation have both run against it.
 
 ## Leakage check
 
-`assert_no_time_leakage(train, validation, replay)` verifies each split's
-maximum timestamp is strictly before the next split's minimum timestamp.
-Verified on the real data: this passes silently (no exception) for the
-partition above. A regression test (`tests/test_splits.py`) exercises the
-same assertion against synthetic data — including a deliberately
-overlapping pair of splits, to confirm the check actually fails when it
-should, not just when it happens to.
+`assert_no_time_leakage(train, validation, replay)` requires the latest
+timestamp in one partition to precede the earliest timestamp in the
+next. The real data passes this check.
+
+`tests/test_splits.py` also supplies overlapping synthetic partitions
+and confirms that the guard rejects them.
 
 ## Why not fold `replay` into validation
 
-Doing so would mean the streaming replay secretly re-processes data a model
-was already tuned against, and replay evaluation would no longer be
-measuring performance on data no model was fitted or selected against. That
-property, not freedom from evaluation runs, is what a held-out replay set is
-for.
+Combining `replay` with `validation` would make the streaming replay use
+data that already influenced model selection. Keeping it separate means
+the replay data did not fit or select a model, even though it has been
+used for replay evaluation.

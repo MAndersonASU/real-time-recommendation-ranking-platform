@@ -1,11 +1,19 @@
-# Data Quality Profile
+# Data quality profile
 
-Concise EDA over the ingested MIND-small train/dev splits, scoped to the
-measurements later work depends on rather than a general
-exploration. Methodology: `src/recommender/data/profile.py`, run against
-the ingestion pipeline's Parquet output (`src/recommender/data/ingest.py`).
-The report itself is a local, gitignored, reproducible artifact — the
-findings below are transcribed from an actual run, not estimated.
+This page summarizes the MIND-small training and development files after
+ingestion to Parquet. The values come from a real run of
+`src/recommender/data/profile.py`, not estimates. The generated local
+report is ignored by Git.
+
+## Main findings
+
+| Finding | Why it matters |
+|---|---|
+| Most catalog articles are never shown in either window | Retrieval and coverage must use the full catalog as their denominator |
+| Click-through rate is about 4% | Training labels are highly imbalanced |
+| Most users interact once or twice | Sparse history and cold start are common |
+| A few categories dominate the catalog | Diversity controls cannot assume balanced supply |
+| Some fields are naturally missing | Missing history and abstracts are not automatically data defects |
 
 ## Scale
 
@@ -17,55 +25,52 @@ findings below are transcribed from an actual run, not estimated.
 | distinct items impressed | 20,288 | 5,369 |
 | item-impression pairs | 5,843,444 | 2,740,998 |
 
-## Catalog coverage
+## Catalog exposure
 
-Most of the news catalog available in a given window is never actually
-shown: only 39.6% of train-window articles (20,288 of 51,282) receive at
-least one impression; dev is more extreme at 12.7% (5,369 of 42,416).
-Candidate retrieval and coverage metrics need to account for a
-catalog far larger than what any single window's impressions exercise.
+Only 39.6% of training-window articles (20,288 of 51,282) receive an
+impression. The development window exposes 12.7% (5,369 of 42,416).
+Coverage metrics therefore use a catalog much larger than the articles
+shown in one window.
 
 ## Click balance
 
-Overall click-through rate: 4.04% (train), 4.06% (dev) — roughly one click
-per 25 impressed items. Confirms the severe class imbalance a retrieval or
-ranking model trained on raw impression labels will face, and directly
-motivates the retrieval model's explicit negative-sampling design rather than training
-on every impressed item as-is.
+Overall click-through rate is 4.04% for training and 4.06% for
+development, or about one click per 25 shown items. The retrieval model
+therefore uses explicit negative sampling instead of treating every
+shown item equally during training.
 
 ## Impression size
 
-Candidates per impression: min 2, max 299, mean 37.2 (train) / 37.5 (dev),
-median 24 (train) / 23 (dev). The gap between mean and median is a
-right-skewed distribution — a small number of unusually large impressions
-pull the mean above the typical case.
+Candidate counts range from 2 to 299. The mean is 37.2 in training and
+37.5 in development; the median is 24 and 23. A small number of large
+impressions raise the mean above the typical row.
 
 ## User activity
 
-Interactions per user: median 2 (train) / 1 (dev), max 62 (train) / 18
-(dev). Most users in a given window interact only once or twice — direct
-evidence for how thin per-user history typically is, relevant to the online feature store's
-cold-start handling.
+The median user has 2 interactions in training and 1 in development.
+The maximum is 62 and 18. Most users therefore provide very little
+history for personalization.
 
 ## Category distribution
 
-17 categories, heavily concentrated: `news` and `sports` alone account for
-59.1% of train-window articles (58.5% in dev). The remaining 15 categories
-share the rest, several (`kids`, `middleeast`, and one of `northamerica`/
-`games` depending on the window) with single-digit counts. Reranking's
-diversity control needs to account for this imbalance rather than assume a
-roughly even category split.
+There are 17 categories. `news` and `sports` make up 59.1% of
+training-window articles and 58.5% of development-window articles.
+Several categories have single-digit article counts. Reranking must
+therefore handle uneven category supply.
 
 ## Structural integrity
 
-Zero duplicate `news_id` or `impression_id` in either split. Null rates:
-`news.abstract` ~5% in both splits (expected — some articles ship without
-an abstract); `behaviors.history` 2.06% (train) / 3.03% (dev) — cold-start
-users with no prior clicks in-window, not a data defect.
+Neither split contains duplicate `news_id` or `impression_id` values.
+About 5% of articles have no abstract. Missing behavior history is 2.06%
+in training and 3.03% in development; these rows represent users with
+no prior clicks in the window.
 
 ## Click-through rate by category
 
-Computed directly against the Parquet files with DuckDB (`src/recommender/data/analytics.py`) — a CTE unnests the impression log, joins back to `news` on `news_id`, and ranks categories by CTR with a window function. The category-level totals sum to the same overall CTR already reported above (train: 5,843,444 impressions, 4.04%; dev: 2,740,998, 4.06%), a cross-check between two independent tools computing the same underlying number.
+`src/recommender/data/analytics.py` computes these values with DuckDB by
+expanding impression items and joining them to the article catalog.
+Category totals reproduce the overall counts and click rates above:
+5,843,444 at 4.04% for training and 2,740,998 at 4.06% for development.
 
 | category | train CTR | train rank | dev CTR | dev rank |
 |---|---|---|---|---|
@@ -85,22 +90,16 @@ Computed directly against the Parquet files with DuckDB (`src/recommender/data/a
 | travel | 2.64% | 15 | 1.95% | 13 |
 | kids | 1.85% | 16 | 0.00% | 15 |
 
-Two things worth noting rather than smoothing over: category share of the
-catalog (news/sports dominate, above) and category CTR are not the same
-signal — `music` and `tv` have far fewer impressions than `sports` or
-`news` but convert at a noticeably higher rate in train. And `sports`
-swings from rank 4 (train) to rank 1 (dev), a reminder that a single
-6-day training window and a single dev day are both small enough for
-per-category rates to move — not a claim that any one day's ranking is a
-stable property of the category itself. A handful of categories present
-in `news.tsv` (`middleeast`, and `northamerica`/`games` depending on the
-window) don't appear in this table at all: consistent with the catalog
-coverage finding above, those articles were never impressed to any user in
-that window.
+Catalog share and click rate are different signals. `music` and `tv`
+have fewer impressions than `sports` or `news` but higher training
+click rates. `sports` moves from fourth in training to first in
+development, so a one-day category rank should not be treated as
+stable.
+
+Categories missing from the table had catalog articles but no
+impressions in that window.
 
 ## Time coverage
 
-Train spans 2019-11-09 through 2019-11-14; dev is exactly 2019-11-15 (a
-single day). The official split is already a clean, non-overlapping date
-boundary, useful context for the leakage-safe time-aware splits
-(`docs/experiments/splits.md`).
+Training spans November 9–14, 2019. Development is November 15, 2019.
+The windows do not overlap. See [time-based splits](splits.md).

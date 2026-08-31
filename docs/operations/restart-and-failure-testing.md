@@ -1,35 +1,59 @@
-# Testing Restart and Failure Paths
+# Test service restarts and dependency failures
 
-Five real scenarios, tested against the actual running containers, not
-simulated. Every result below came from actually stopping, restarting,
-or breaking something in the live `docker compose` topology.
+These checks exercise the running Docker Compose services. They cover
+failure behavior beyond the Kafka consumer checks in
+[recovery testing](recovery-testing.md).
 
-## A real coupling found and removed: the API never needed Kafka
+## Dependency boundaries
 
-`docker-compose.yml`'s `api` service had `depends_on: kafka: condition:
-service_healthy`, blocking API startup until Kafka reported healthy —
-even though the live API never consumes from or produces to Kafka at
-request time; only the offline replay/consumer scripts from the streaming pipeline do.
-Removed as a real, unnecessary coupling, found specifically by asking
-what a Kafka interruption should and shouldn't affect.
+The API does not depend on Kafka at request time. Kafka is used by the
+replay and consumer utilities, so an unavailable broker must not block
+API startup or recommendation requests.
 
-## Five results
+The API also does not wait for Redis before starting. It creates the
+Redis client at startup but connects only when a request or readiness
+check uses it. Redis is optional for recent features; the model
+artifacts are required.
 
-| Scenario | What was done | Result |
+## Verified scenarios
+
+| Scenario | Action | Observed result |
 |---|---|---|
-| Kafka interruption | Stopped `recommender-kafka`, rebuilt and started the API fresh | API started immediately, served a normal request correctly — no effect at all, confirming the dependency removal above was correct |
-| State-store (Redis) interruption | Stopped `recommender-redis` on the running API | `/ready` reported `degraded (durable-features-only personalization)`; `/recommend` still returned a real, personalized response, not the popularity fallback (REDIS-DEGRADED-PATH-61 -- re-verified against these same live containers after that fix) |
-| Graceful degradation | Same as above | `durable_features_used: true`, `recent_features_used: false`, `is_fallback: false` in the response -- the trained ranking model and this user's real durable features still ran; only the recent-clicks input from Redis was empty. The first two requests after Redis stopped each took several seconds (a real cost of Docker's stopped-container networking in this environment, not an indefinite hang); the third, after the shared circuit breaker's 3-failure threshold tripped, returned in 0.29s -- it skipped attempting the connection entirely |
-| Service restart | `docker restart recommender-api` | Came back healthy and serving correctly, with no manual intervention |
-| Missing artifact | Renamed the real trained model file on disk, then restarted the container | Startup failed loudly with the exact diagnostic message from `docs/operations/configuration.md` (`"a required model/index/ranking-pipeline file was not found..."`), not a silent or confusing crash |
+| Kafka unavailable | Stop Kafka and start the API | API starts and serves recommendations |
+| Redis unavailable | Stop Redis while the API is running | `/ready` reports degraded Redis; requests continue |
+| API restart | Restart the API container | Health check recovers and recommendations work |
+| Missing model artifact | Hide a required model file and restart the API | Startup exits with an actionable error |
+| Redis recovery | Restart Redis without restarting the API | A successful probe restores normal Redis status |
 
-## Recovery, verified both ways
+## Redis degradation
 
-Redis recovered on its own — restarting Redis alone was enough for the
-already-running API's next request to report `redis: "ok"` again (and
-the circuit breaker to close again on that success), no API restart
-needed. The missing-artifact case needed the file restored
-*and* a restart, which is the correct, expected behavior: a process
-that failed to start because of a missing dependency has to be
-restarted once that dependency is back, not expected to somehow
-recover mid-failure.
+When Redis is unavailable, the response can still use durable user
+history already loaded in memory. A verified request reported:
+
+- `durable_features_used: true`;
+- `recent_features_used: false`; and
+- `is_fallback: false`.
+
+This is reduced personalization, not necessarily a popularity fallback.
+The shared circuit breaker opens after repeated Redis failures, allowing
+later requests to skip a known-bad connection. After its cooldown, one
+probe checks whether Redis has recovered.
+
+Timing during the container test depended on Docker networking. The
+first failed connections took longer; a request after the breaker
+opened returned in 0.29 seconds. That value describes the local check,
+not a service target.
+
+## Required artifacts
+
+The API cannot serve without its model, content, index, and ranking
+artifacts. If one is missing, startup logs that a required file could
+not be found and asks the operator to check the data mount and offline
+pipeline.
+
+Restoring the file is not enough for a process that already exited. The
+API container must be started again after the artifact is available.
+
+See [configuration](configuration.md),
+[health checks](health-checks.md), and
+[serving fallback](serving-fallback.md).

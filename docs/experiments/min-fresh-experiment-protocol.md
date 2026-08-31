@@ -1,118 +1,108 @@
-# Minimum-fresh quota: prospectively specified tuning-fold policy experiment
+# Frozen protocol for the minimum-fresh quota
 
-**Status: frozen before the experiment was run.** This document is
-committed ahead of the run, and the selection rule below is not to be
-changed after seeing the output. If the rule selects a value other than
-the deployed one, the choice is to accept it or to record the deployed
-value as a deliberate override — not to adjust the rule.
+**Status: committed before the experiment ran.**
 
-That constraint is the entire point. The existing predicted-score table
-already shows which budget would select which quota, so a budget chosen
-after the fact would be indistinguishable from fitting the rule to a
-preferred answer.
+The selection rule below was fixed before results were viewed. If it
+selected a value other than the deployed quota, the project had to
+either adopt that value or record the deployed value as a policy
+override.
 
-## Why this experiment exists
+## Why the experiment was needed
 
-The deployed minimum-fresh quota is **2**. The earlier tuning comparison
-ranked candidate quotas by *predicted relevance* on a single sampled
-1,500-impression subset, and reported that none of the three budgets
-tested (0.90, 0.95, 0.99) selected 2 — the rule picked 5, 5 and 3.
+The deployed minimum-fresh quota is 2. An earlier 1,500-impression
+comparison used predicted relevance. At budgets of 0.90, 0.95, and
+0.99, its rule selected quotas 5, 5, and 3—not 2.
 
-That is weaker evidence than it sounds:
+That evidence had three limits:
 
-- It measured **what the model predicts**, not what users did.
-- The gap between quota 2 and quota 3 is roughly **0.15%** of predicted
-  relevance — well inside the range where a single subsample could
-  decide the answer.
-- Sampling uncertainty was never quantified
-  (`LIMIT-SAMPLING-UNCERTAINTY-44`).
+- it measured model scores rather than observed clicks;
+- quota 2 and quota 3 differed by about 0.15% predicted relevance; and
+- uncertainty from the sampled impressions was not quantified.
 
-## 1. Relevance-retention budget
+Choosing another budget after seeing that table could simply reproduce
+a preferred answer.
 
-**99% retention.** At most a 1% relative loss against quota 0.
+## Frozen design
 
-Two rejected alternatives, recorded so the choice is auditable:
-
-- **99.9% was rejected**, even though it is defensible on its own terms.
-  The existing table already shows 99.9% selects quota 2 — the currently
-  deployed value — so adopting it now would reasonably read as
-  outcome-driven.
-- **95% was rejected** as too permissive for a system whose measured
-  end-to-end hit rate@10 is 0.0084. A recommender with little relevance
-  to spare should not be authorised to spend 5% of it.
-
-## 2. Evaluation population
-
-**The complete tuning fold**, not several sampled seeds.
-
-This removes subsampling variance *within* the fold entirely rather than
-estimating it. Statistical uncertainty is still computed, because the
-fold is itself a sample of a user population — eliminating subsampling
-error does not make the result exact.
-
-The tuning fold is carved from `train` by `split_train_for_tuning`
-(seed `20260823`). `validation` is not touched.
-
-## 3. Outcome measures
-
-The decision is made on **held-out click behaviour**, not predicted
-score.
-
-| Role | Metric |
+| Item | Decision |
 |---|---|
-| **Primary** | NDCG@10 |
-| **Guardrail** | hit rate@10 |
-| Diagnostic only | mean predicted relevance |
-| Diagnostic only | freshness compliance (share of slates meeting quota) |
-| Diagnostic only | mean fresh items per slate |
-| Diagnostic only | post-reranking distinct categories |
+| Population | Complete tuning fold carved from `train` |
+| Fold seed | `20260823` |
+| Validation use | None |
+| Quotas | {0, 1, 2, 3, 5} |
+| Baseline | Quota 0 |
+| Primary measure | NDCG@10 |
+| Guardrail | Hit rate@10 |
+| Uncertainty | Paired bootstrap clustered by user |
+| Relevance floor | 99% retention |
+| Hit-rate floor | 95% retention |
+| Selection | Largest quota clearing both one-sided 95% lower bounds |
 
-Diagnostics are reported and do **not** enter the selection rule. They
-exist to explain a result, not to justify one.
+Every quota is evaluated on exactly the same impressions. Pairing
+measures within-impression differences. Clustering keeps all
+impressions from one user together because those observations are not
+independent.
 
-## 4. Statistical rule
+Using the complete fold removes the extra variation caused by selecting
+a smaller subset. Confidence bounds remain necessary because the fold
+itself represents a wider user population.
 
-Quotas **{0, 1, 2, 3, 5}**, evaluated on **exactly the same
-impressions**. Quota 0 is the baseline.
+## Why the 99% floor was chosen
 
-Uncertainty is estimated by **paired bootstrap clustered by user**, not
-independent impression-level resampling. Impressions from one user are
-not independent observations — the same person's habits drive all of
-them — so impression-level bootstrapping would understate the interval.
-Pairing matters for the same reason it does in the diagnostics: every
-quota sees identical impressions, so the difference is measured within
-impression rather than between samples.
+The rule allows at most 1% relative NDCG loss against quota 0.
 
-Select the **largest** quota satisfying **both**:
+- A 99.9% floor was rejected because the existing score table already
+  showed that it selected the deployed value 2.
+- A 95% floor was rejected as too permissive for a system with
+  end-to-end hit rate@10 of 0.0084.
 
-- one-sided 95% lower confidence bound on **NDCG@10 retention ≥ 99%**
-- one-sided 95% lower confidence bound on **hit-rate@10 retention ≥ 95%**
+These rejected alternatives were recorded before the run.
 
-**If no nonzero quota passes, the evidence does not support a freshness
-quota at all.** Keeping quota 2 in that case remains an explicit product
-override, and must be described as one.
+## Decision rule
 
-## 5. Reporting
+Select the largest nonzero quota whose:
 
-Reported as a **prospectively specified tuning-fold policy experiment**.
-It is not an untouched final evaluation, and no untouched final split
-exists in this project (`LIMIT-NO-FINAL-SPLIT-35`).
+- one-sided 95% lower bound on NDCG@10 retention is at least 99%; and
+- one-sided 95% lower bound gives hit-rate@10 retention ≥ 95%.
 
-The published report carries:
+If no nonzero quota qualifies, the experiment does not support a
+freshness quota. Retaining quota 2 would then be an explicit policy
+override.
 
-- full-fold denominators and user count
-- the quota-0 baseline
-- every quota's metrics
-- paired differences with confidence intervals
-- the selection rule, restated
-- the selected result
-- source commit and artifact hashes
+## Diagnostic values
 
-## What this experiment cannot settle
+The report also includes:
 
-It measures reranking against **logged** click behaviour on a fixed,
-already-decided candidate set. It cannot observe what a user would have
-clicked had they been shown a different slate, so it bounds how much
-relevance a freshness quota costs — not what a fresher slate is worth to
-a reader over time. That question needs a live experiment this project's
-scope does not attempt (`docs/limitations.md`).
+- mean predicted relevance;
+- share of slates meeting the quota;
+- mean fresh items per slate; and
+- distinct categories after reranking.
+
+These values explain the outcome but do not select the quota.
+
+## Required report contents
+
+The machine-readable report records:
+
+- full-fold impression and user counts;
+- quota-0 baseline values;
+- every quota's results;
+- paired confidence bounds;
+- the frozen rule and selected quota;
+- source commit; and
+- artifact hashes.
+
+This is a prospectively specified tuning-fold policy experiment. It is
+not a final generalization estimate, and no untouched final split
+remains.
+
+## What the experiment cannot answer
+
+Logged clicks show whether reranking would have retained articles that
+were clicked in the recorded candidate list. They cannot reveal what a
+person would have clicked after seeing a different live slate.
+
+The experiment can bound offline relevance cost. It cannot measure the
+long-term value of fresher recommendations. That would require a live
+experiment outside this project's scope. See
+[limitations](../limitations.md).

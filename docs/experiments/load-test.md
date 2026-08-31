@@ -1,29 +1,22 @@
-# Load Testing the Service
+# Historical load test
 
-**Historical, pre-optimization measurement.** The table below predates
-the single-math-thread fix described in
-`docs/experiments/optimization.md`, which measured the same load test again at
-concurrency 4 and found throughput up 26% (62.7 → 78.8 req/s) and p50
-latency down. It also predates the retrieval-depth and cold-start
-pipeline changes recorded in `docs/experiments/serving-latency.md`.
-Current request latency is in
-[`reports/serving-latency.json`](../../reports/serving-latency.json).
-Kept here as the load-testing methodology and the saturation finding
-that motivated the fix, not as a current measurement.
+> This is a pre-optimization result. It is retained because it exposed
+> CPU saturation. It is not the current latency profile.
 
-Generates real concurrent traffic against the real `safe_recommend`
-path and measures throughput, latency percentiles, error rate, and
-saturation — not against a mocked or simplified stand-in.
-Implementation: `src/recommender/monitoring/load_test.py`.
+The later single-math-thread configuration increased concurrency-4
+throughput from 62.7 to 78.8 requests per second, a 26% gain. Retrieval
+depth and cold-start behavior also changed afterward.
+
+Use [serving latency](serving-latency.md) for the current request profile.
+
+`src/recommender/monitoring/load_test.py` sends real concurrent calls to
+`safe_recommend` and records throughput, percentiles, and errors.
 
 ## A thread pool, not a process pool
 
-`run_load_test` uses `ThreadPoolExecutor`, not multiprocessing. Python
-threads share one process's real CPU budget, so a thread pool actually
-exercises the CPU contention `docs/experiments/profile-hotspots.md` found
-underneath a single request. A process pool would hand each concurrent
-request its own separate resource allocation illusion and hide exactly
-the contention this test needs to surface.
+`run_load_test` uses `ThreadPoolExecutor`. Threads share one process's
+CPU resources and expose contention between simultaneous requests.
+Separate worker processes would change the resource model being tested.
 
 ## Results: throughput never rises, latency scales almost linearly
 
@@ -37,22 +30,17 @@ the contention this test needs to surface.
 
 Zero errors at every level tested.
 
-## The saturation point was already reached at concurrency 1
+## Interpretation
 
-Throughput is flat — roughly 62–74 requests per second regardless of
-how many concurrent requests are in flight — while p50 latency scales
-almost perfectly linearly with concurrency (14 → 61 → 114 → 210 →
-391 ms, each operation tracking the concurrency multiplier closely). That is
-the textbook signature of a CPU-bound system that is already saturated:
-adding more concurrent work doesn't produce more completed work per
-second, it only makes every request wait longer for the same fixed
-amount of CPU.
+Throughput stays near 62–74 requests per second while median latency
+rises from 14 ms to 391 ms. More concurrent requests create waiting but
+do not increase completed work.
 
-This machine has **8 logical CPUs**. `docs/experiments/profile-hotspots.md` measured
-a single request's CPU time at **4.8× its own wall time** — meaning one
-request alone already uses close to five cores' worth of parallel
-compute (PyTorch, NumPy's BLAS backend, and Faiss all parallelizing
-internally). Two requests running at once already approach this
-machine's full 8-core budget; by four or more, it's fully saturated.
-This isn't a new, separate finding — it's the profiling result from the preceding work, now confirmed under real concurrent load exactly as it
-predicted.
+The machine has 8 logical CPUs. The earlier profile measured one
+request's CPU time at 4.8 times its wall time because PyTorch, NumPy
+BLAS, and Faiss all used internal parallelism. A small number of
+simultaneous requests could therefore consume the available cores.
+
+This result motivated limiting math-library threads. See
+[optimization](optimization.md) and the
+[historical hotspot profile](profile-hotspots.md).

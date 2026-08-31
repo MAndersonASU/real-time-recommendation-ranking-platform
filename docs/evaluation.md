@@ -1,71 +1,84 @@
 # Evaluation
 
-How this project measures recommendation quality, what the numbers mean,
-and where they stop being evidence. Individual experiments live under
-[`docs/experiments/`](experiments/); this page is the map.
+This page is the index for measured results. Each result has:
 
-## Two protocols, deliberately separate
+- a readable explanation under `docs/experiments/`; and
+- a machine-readable JSON report under `reports/`.
 
-Most numbers in this project come from one of two protocols. They answer
-different questions and are not comparable to each other.
+Read [limitations](limitations.md) before using any number outside this
+project.
 
-| Protocol | Candidates scored | Answers |
+## Start with the right protocol
+
+The project uses two evaluation protocols. They answer different
+questions.
+
+| Protocol | What it scores | What it tells us |
 |---|---|---|
-| **Candidate-list** | MIND's supplied candidate list for each impression | How well does the model order a list someone else already chose? |
-| **End-to-end serving path** | The full catalog, retrieved live | How well does the deployed pipeline do the whole job? |
+| Candidate list | MIND's short list for an impression | How well does the model order items that were already selected? |
+| End-to-end serving | Items retrieved from the full 51,282-item catalog | How well does the assembled recommendation path work? |
 
-Candidate-list numbers are much higher, because ordering a short
-pre-filtered list is a far easier task than finding items in a catalog of
-51,282. Reading one as the other overstates the system substantially.
+Candidate-list results are much higher because the clicked item is
+already in the list. End-to-end serving must find that item before
+ranking can help. Do not use a candidate-list result as a claim about
+the complete system.
 
-- [`evaluation-protocol.md`](experiments/evaluation-protocol.md) — frozen metrics, splits and definitions
-- [`serving-path-end-to-end-evaluation.md`](experiments/serving-path-end-to-end-evaluation.md) — the full-catalog measurement
-- [`splits.md`](experiments/splits.md) — train, validation and replay
+For definitions and sampling rules, see
+[evaluation protocol](experiments/evaluation-protocol.md). For the
+complete-system measurement, see
+[end-to-end evaluation](experiments/serving-path-end-to-end-evaluation.md).
 
-## Split status
+## Data splits
 
-Three states, and none of them is an untouched final split:
+| Split | Use |
+|---|---|
+| Train | Model fitting, including the internal fit and tuning partition |
+| Validation | Development evaluation after model selection |
+| Replay | Streaming and replay analysis |
 
-- **train** — model fitting, plus an internal fit/tuning partition
-- **validation** — post-selection development evaluation; used for
-  selection, so not a generalization estimate
-- **replay** — streaming and replay analysis; no longer untouched
+None of these is an untouched final test set. The validation and replay
+data have both informed development decisions. See
+[time-aware splits](experiments/splits.md).
 
-## Results
+## Published results
 
-| Stage | Document | Report |
+| Topic | Readable document | JSON report |
 |---|---|---|
-| Baselines | [`baselines.md`](experiments/baselines.md) | [`baseline-evaluation.json`](../reports/baseline-evaluation.json) |
-| Retrieval | [`retrieval-evaluation.md`](experiments/retrieval-evaluation.md) | [`retrieval-evaluation.json`](../reports/retrieval-evaluation.json) |
-| Ranking | [`ranking-evaluation.md`](experiments/ranking-evaluation.md) | [`ranking-evaluation.json`](../reports/ranking-evaluation.json) |
-| Reranking | [`reranking-evaluation.md`](experiments/reranking-evaluation.md) | [`reranking-evaluation.json`](../reports/reranking-evaluation.json) |
-| All stages | [`stage-comparison.md`](experiments/stage-comparison.md) | [`stage-comparison.json`](../reports/stage-comparison.json) |
-| Ablations | [`ablations.md`](experiments/ablations.md) | [`ablation.json`](../reports/ablation.json) |
-| Failure modes | [`failure-analysis.md`](experiments/failure-analysis.md) | [`failure-analysis.json`](../reports/failure-analysis.json) |
-| End to end | [`serving-path-end-to-end-evaluation.md`](experiments/serving-path-end-to-end-evaluation.md) | [`end-to-end-evaluation.json`](../reports/end-to-end-evaluation.json) |
-| Explanations | [`explanation-evaluation.md`](experiments/explanation-evaluation.md) | [`explanation-evaluation.json`](../reports/explanation-evaluation.json) |
-| Serving latency | [`serving-latency.md`](experiments/serving-latency.md) | [`serving-latency.json`](../reports/serving-latency.json) |
-| Tuning-decision verification | [`evaluation-integrity.md`](experiments/evaluation-integrity.md) | [`tuning-decisions.json`](../reports/tuning-decisions.json) |
-| Minimum-fresh policy experiment | [`min-fresh-experiment-protocol.md`](experiments/min-fresh-experiment-protocol.md) | [`min-fresh-experiment.json`](../reports/min-fresh-experiment.json) |
-| Durable-history retrieval fallback | [`durable-history-fallback.md`](experiments/durable-history-fallback.md) | [`durable-history-fallback.json`](../reports/durable-history-fallback.json) |
+| Baselines | [Baselines](experiments/baselines.md) | [`baseline-evaluation.json`](../reports/baseline-evaluation.json) |
+| Retrieval | [Retrieval evaluation](experiments/retrieval-evaluation.md) | [`retrieval-evaluation.json`](../reports/retrieval-evaluation.json) |
+| Ranking | [Ranking evaluation](experiments/ranking-evaluation.md) | [`ranking-evaluation.json`](../reports/ranking-evaluation.json) |
+| Reranking | [Reranking tradeoffs](experiments/reranking-evaluation.md) | [`reranking-evaluation.json`](../reports/reranking-evaluation.json) |
+| Model outputs | [Model comparison](experiments/stage-comparison.md) | [`stage-comparison.json`](../reports/stage-comparison.json) |
+| Ablations | [Ablations](experiments/ablations.md) | [`ablation.json`](../reports/ablation.json) |
+| Failure modes | [Failure analysis](experiments/failure-analysis.md) | [`failure-analysis.json`](../reports/failure-analysis.json) |
+| Full serving path | [End-to-end evaluation](experiments/serving-path-end-to-end-evaluation.md) | [`end-to-end-evaluation.json`](../reports/end-to-end-evaluation.json) |
+| Explanations | [Explanation evaluation](experiments/explanation-evaluation.md) | [`explanation-evaluation.json`](../reports/explanation-evaluation.json) |
+| Serving latency | [Serving latency](experiments/serving-latency.md) | [`serving-latency.json`](../reports/serving-latency.json) |
+| Tuning decisions | [Evaluation integrity](experiments/evaluation-integrity.md) | [`tuning-decisions.json`](../reports/tuning-decisions.json) |
+| Fresh-item policy | [Minimum-fresh experiment](experiments/min-fresh-experiment-protocol.md) | [`min-fresh-experiment.json`](../reports/min-fresh-experiment.json) |
+| Durable-history fallback | [Durable-history evaluation](experiments/durable-history-fallback.md) | [`durable-history-fallback.json`](../reports/durable-history-fallback.json) |
 
-**Evidence status.** Every evaluation table on this page is backed by a
-committed, provenance-valid machine-readable report -- thirteen in
-total, one per row above. No report was backfilled with inferred or
-false provenance.
+These 13 report families are committed and validate against the report
+schema. Each report includes metric definitions, denominators, sampling
+details, limitations, artifact identities, and source provenance.
 
-## Integrity
+## How integrity is checked
 
-- [`evaluation-integrity.md`](experiments/evaluation-integrity.md) — leakage found in tuning decisions, and the fold that fixed it
-- [`min-fresh-experiment-protocol.md`](experiments/min-fresh-experiment-protocol.md) — a protocol frozen before the run that tested it
-- [`experiment-tracking.md`](experiments/experiment-tracking.md) — the run log
-- [`../reports/`](../reports/) — machine-readable results with definitions, denominators, sampling and provenance
-- [`../provenance/build-receipt.json`](../provenance/build-receipt.json) — the commit, script hash, artifact hashes and seeds the reports were computed from
+- [Evaluation integrity](experiments/evaluation-integrity.md) explains
+  how tuning leakage was found and removed.
+- [Minimum-fresh experiment](experiments/min-fresh-experiment-protocol.md)
+  records a decision rule written before its result was known.
+- [Experiment tracking](experiments/experiment-tracking.md) describes
+  the JSONL run log.
+- [Build receipt](../provenance/build-receipt.json) records the source
+  commit, script hash, artifact hashes, and seeds used for publication.
 
-## Limitations
+## What the numbers cannot show
 
-Every relevance number here measures agreement with MIND's own already
-deployed system. No live A/B test was run, by frozen scope. Read
-[`limitations.md`](limitations.md) before quoting any figure, and
-[`conclusions.md`](conclusions.md) for what the evidence does and does not
-support.
+The relevance labels come from clicks collected by MIND's original
+news system. They reflect that system's exposure and position bias. No
+live A/B test was run, so these results do not establish user,
+retention, or business impact.
+
+Use [conclusions](conclusions.md) for supported claims and
+[limitations](limitations.md) for unresolved uncertainty.

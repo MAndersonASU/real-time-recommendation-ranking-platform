@@ -1,56 +1,37 @@
 # Architecture
 
-Current state of the implemented system. Every component described here
-exists in `src/recommender/` and is exercised by tests. Dated design
-history has moved to
-[`docs/architecture-decisions.md`](architecture-decisions.md).
+This page describes the system as it works now. For dated design
+decisions, see [architecture decisions](architecture-decisions.md).
 
-## System overview
+## The system has two paths
 
-Two paths share models and artifacts but run on different cadences: an
-offline path that learns durable models from historical data, and an
-online path that serves recommendations using those models plus recent
-user state. Each stage is owned by exactly one package under
-`src/recommender/`.
+The **offline path** learns from historical MIND data. It validates the
+data, builds features, trains retrieval and ranking models, creates the
+Faiss index, and publishes evaluation reports.
 
-| Path | Stage | Module | Responsibility |
-|---|---|---|---|
-| Offline | Ingestion and governance | `recommender.data` | Loads MIND, enforces schema, keeps licensed data local-only |
-| Offline | Feature pipeline | `recommender.features` | Vectorized feature construction shared with the online path |
-| Offline | Candidate retrieval | `recommender.retrieval` | Two-tower embedding model, Faiss `IndexFlatIP` candidate index |
-| Offline | Ranking | `recommender.ranking` | Popularity, content and collaborative baselines plus the learned ranking model |
-| Offline | Reranking policy | `recommender.reranking` | Diversity and freshness slate construction after ranking |
-| Both | Evaluation | `recommender.evaluation` | Metric definitions (Recall@K, NDCG@K, MRR, hit rate, coverage) plus report publication |
-| Online | Event streaming | `recommender.streaming` | Historical replay, Kafka producer and consumer, recent user state |
-| Online | Serving | `recommender.serving` | Typed recommendation API integrating retrieval, ranking and reranking |
-| Both | Observability | `recommender.monitoring` | Structured logging, operational and quality metrics |
-| Offline | Experiment tracking | `recommender.tracking` | JSONL log of evaluation runs ([`docs/experiments/experiment-tracking.md`](experiments/experiment-tracking.md)) |
-| Online | Explanation | `recommender.explanation` | Bounded explanation of an already-selected recommendation |
+The **online path** serves recommendations. It combines trained
+artifacts with durable user history and recent Redis state, then runs
+retrieval, ranking, and reranking before returning a response.
+
+Both paths use the same feature definitions and model artifacts.
+
+## Component map
+
+| Area | Package | Main responsibility |
+|---|---|---|
+| Data | `recommender.data` | Load MIND, validate records, and keep licensed data local |
+| Features | `recommender.features` | Build the same user and item features offline and online |
+| Retrieval | `recommender.retrieval` | Train the two-tower model and search the Faiss index |
+| Ranking | `recommender.ranking` | Build baselines and score retrieved candidates |
+| Reranking | `recommender.reranking` | Apply diversity and freshness policies |
+| Evaluation | `recommender.evaluation` | Calculate metrics and publish reports |
+| Streaming | `recommender.streaming` | Replay events and consume Kafka messages |
+| Serving | `recommender.serving` | Expose the typed recommendation API |
+| Monitoring | `recommender.monitoring` | Produce logs, service metrics, and quality signals |
+| Tracking | `recommender.tracking` | Record evaluation runs in JSONL |
+| Explanations | `recommender.explanation` | Describe an already-selected recommendation |
 
 ## Data flow
-
-```
-Offline
-governed MIND dataset (data/, local-only, licensed)
-   -> schema and business-rule validation
-   -> Parquet / DuckDB analytical tables
-   -> feature pipeline
-   -> baselines (popularity, content-similarity, collaborative)
-   -> two-tower retrieval model -> Faiss candidate index
-   -> learned ranking model
-   -> reranking policy
-   -> evaluation against the frozen contract (docs/research-scenario.md)
-   -> versioned artifact bundle + published reports
-
-Online
-historical interaction replay
-   -> Kafka
-   -> stream consumer
-   -> recent user state in Redis
-   -> candidate retrieval -> ranking -> reranking
-   -> recommendation API
-   -> user event feedback -> Kafka
-```
 
 ```mermaid
 flowchart TD
@@ -78,106 +59,107 @@ flowchart TD
     H -.->|"served models"| M
 ```
 
-## Artifact boundaries
+## What happens during a request
 
-The offline path produces the artifacts the online path loads read-only.
-Nothing in the serving path writes to them. Two distinct mechanisms
-cover them, with different scope, and conflating them overstates what
-either one actually checks:
+1. The API loads durable features for the user.
+2. It asks Redis for recent clicks when Redis is available.
+3. It selects one retrieval history: usable recent history, then
+   durable history, then global popularity.
+4. The two-tower model creates a user query and Faiss returns
+   candidates.
+5. The ranking model scores those candidates.
+6. Diversity and freshness rules build the final slate.
+7. The API returns the recommendations, timing data, feature-source
+   flags, and an optional explanation.
 
-**Coherence bundle** (`recommender.retrieval.bundle`,
-`serving_bundle.json`): three artifacts that must have been produced
-together, because interpreting one against a different version of
-another produces plausible-looking nonsense with no error --
+The explanation code receives a finished `RecommendationResponse`. It
+cannot change retrieval, ranking, or reranking.
 
-| Artifact | Produced by |
-|---|---|
-| Two-tower retrieval model | `recommender.retrieval` |
-| Item content vectors (`.npz`) | `recommender.retrieval` |
-| Item catalog | `recommender.data` |
+## How artifacts are checked
 
-`validate_bundle()` checks all three against the manifest's recorded
-SHA-256 hashes at startup and refuses a mismatched set.
+Serving reads offline artifacts; it never trains or edits them.
 
-**Serving-version manifest** (`recommender.monitoring.artifact_manifest`):
-a broader fingerprint -- covering the ranking model, behaviour splits and
-serving code commit alongside the three bundle members above -- exposed
-through `/metrics` as `recommend_model_info` for observability. It
-labels what is running; it does not gate startup or check that its
-members agree with each other the way the coherence bundle does.
+Two checks have different jobs:
 
-| Artifact | Covered by |
-|---|---|
-| Faiss `IndexFlatIP` index | Neither -- rebuilt in memory at every startup from the coherence-bundle-validated retrieval model and catalog, so it cannot itself drift out of agreement with them |
-| Ranking model | Serving-version manifest only; required to load at startup, but not cross-checked against the retrieval model or catalog |
+### Coherence bundle
+
+`recommender.retrieval.bundle` records hashes for:
+
+- the two-tower retrieval model;
+- the item content vectors;
+- the item catalog.
+
+`validate_bundle()` checks all three at startup. The API refuses to
+start if they do not belong together.
+
+The Faiss `IndexFlatIP` index is not stored in this bundle. It is rebuilt
+in memory at startup from the validated retrieval model and catalog.
+
+### Serving-version manifest
+
+`recommender.monitoring.artifact_manifest` creates a broader identity
+for the running service. It also covers the ranking model, behavior
+splits, configuration, and source commit. The identity is exposed in
+`/metrics` as `recommend_model_info`.
+
+This manifest supports observability. It does not perform the
+cross-artifact startup check handled by the coherence bundle. The
+ranking model must load successfully, but it is not cross-checked
+against the retrieval model or catalog.
 
 ## Runtime dependencies
 
-The API requires a valid artifact bundle at startup and optionally uses
-Redis for recent state. It does not require Kafka at request time: only
-the offline replay and consumer scripts talk to Kafka, so API startup
-is not gated on broker health.
-
-| Service | Required for | Behaviour when unavailable |
+| Dependency | Needed for | If it is unavailable |
 |---|---|---|
-| Artifact bundle | Startup | Startup fails; `/ready` never becomes ready |
-| Redis | Recent user state | Request succeeds; degrades to durable-features-only personalization, not the popularity fallback ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)) |
-| Kafka | Offline replay and consumption only | No effect on serving |
+| Valid artifact bundle | API startup | Startup fails |
+| Redis | Recent user behavior | Requests continue with durable features |
+| Kafka | Replay and streaming updates | The API continues serving |
 
-## Fallback behaviour for explicitly recognized dependency failures
+Kafka is not on the request path. The replay producer and streaming
+consumer use it, but API startup does not wait for broker health.
 
-- Missing or unreadable artifact bundle stops startup rather than serving
-  a silently degraded model.
-- A two-tower or Faiss dependency failure produces the explicit
-  popularity fallback (`build_fallback_response`) -- the whole catalog
-  ranked by training-set popularity, skipping retrieval, ranking and
-  reranking entirely, not the narrower zero-norm-history cold-start
-  path that still runs the full pipeline
-  ([`docs/operations/serving-fallback.md`](operations/serving-fallback.md)).
-  A Redis dependency failure is deliberately not this fallback: it only
-  empties the recent-clicks input to an already-running pipeline, so
-  durable features, the trained model, and ranking still produce a real
-  personalized response -- distinct both from this fallback and from a
-  user simply having no recent history (which looks the same on the
-  response but carries no infrastructure-failure signal).
-- Unexpected ranking, feature-construction or reranking errors are not
-  caught by this fallback and propagate as correlated 500 responses
-  instead of a silently "successful" popularity response.
-- The explanation layer only ever consumes a finished
-  `RecommendationResponse`; it cannot influence retrieval, ranking or
-  reranking ([`docs/experiments/explanation-boundary.md`](experiments/explanation-boundary.md)).
+Redis is optional at request time. A Redis failure clears only the
+recent-feature input. The trained models and durable features still
+produce a personalized response. See
+[serving fallback](operations/serving-fallback.md).
 
-## Known limitations
+## Failure behavior
 
-- All labels come from exposure-biased MIND logs; see
-  [`docs/limitations.md`](limitations.md).
-- No untouched final evaluation split remains; validation is
-  post-selection development evaluation
-  ([`docs/experiments/evaluation-protocol.md`](experiments/evaluation-protocol.md)).
-- Commit-failure behaviour against a live broker is not fully verified
-  ([`docs/operations/recovery-testing.md`](operations/recovery-testing.md)).
-- There is no production deployment. The container stack is a local
-  demonstration.
+The service handles only known dependency failures as fallback cases:
 
-## Cross-cutting controls
+- A missing or invalid artifact bundle stops startup.
+- A two-tower or Faiss dependency failure returns an explicit
+  training-popularity fallback through `build_fallback_response`.
+- A Redis failure uses durable-feature personalization and marks the
+  dependency as degraded.
+- A user with no usable history follows the normal global-popularity
+  cold-start path.
+- Unexpected ranking, feature, or reranking errors become correlated
+  HTTP 500 responses. They are not hidden behind a successful-looking
+  popularity response.
 
-- Feature consistency between training and serving, verified in the
-  online feature store
-- Deterministic configuration and artifact versioning
-- Structured logging and operational metrics
-- Latency, throughput, cache hit rate and failure monitoring
-- Offline quality evaluation and replay-based simulation, both measured
-  against the frozen contract in
-  [`docs/research-scenario.md`](research-scenario.md)
-- Containerized local execution and CI verification
+These conditions are intentionally different. The response and service
+metrics show which path was used.
 
-## Complexity boundary
+## Deliberate limits
 
-Spark, Flink, Kubernetes, cloud hosting, distributed TorchRec and a
-formal feature store remain out of scope unless a measured requirement
-justifies adding one; see
-[`docs/experiments/distributed-evaluation.md`](experiments/distributed-evaluation.md). A small,
-local, instruction-tuned model backs the optional explanation layer
-([`docs/experiments/explanation-boundary.md`](experiments/explanation-boundary.md)); it explains
-an already-selected recommendation and never participates in retrieval,
-ranking or reranking decisions.
+This is a local research platform, not a production deployment.
+
+- MIND labels reflect exposure bias.
+- No untouched final evaluation split remains.
+- Live-broker commit-failure behavior is not fully verified.
+- Kubernetes, Spark, Flink, distributed TorchRec, cloud hosting, and a
+  separate feature store are outside the measured need for this project.
+
+See [limitations](limitations.md),
+[evaluation protocol](experiments/evaluation-protocol.md), and
+[recovery testing](operations/recovery-testing.md) for details.
+
+## Design principle
+
+The architecture stays small until evidence justifies more
+infrastructure. The current code already verifies feature consistency,
+artifact identity, structured logging, quality metrics, recovery paths,
+container startup, and the main recommendation flow. Adding a
+distributed system without a measured need would increase operational
+risk without improving the reported result.

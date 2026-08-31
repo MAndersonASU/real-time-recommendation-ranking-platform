@@ -1,30 +1,20 @@
-# Latency By Stage
+# Serving latency by operation
 
-Measures where a real request's time actually goes, stage by stage, not
-just the one end-to-end number the inference path already produced
-(`docs/operations/inference-path.md`). Implementation:
-`recommend()`'s optional `stage_timings` parameter in
-`src/recommender/serving/pipeline.py`; measurement script
-`src/recommender/serving/verify_latency.py`. Machine-readable result:
-[`serving-latency.json`](../../reports/serving-latency.json).
+Source:
+[`reports/serving-latency.json`](../../reports/serving-latency.json).
 
-## One code path, opt-in instrumentation
+This report times the real `recommend()` path with an optional
+`stage_timings` dictionary. When timing is not requested, the normal
+path keeps only the small `perf_counter()` call cost.
 
-`recommend()` takes an optional `stage_timings` dict. When one is passed,
-every stage records its own elapsed time into it; when it's left `None`
-(the default, and what every earlier component's tests and verification
-already call), a request pays only the cost of a few no-op
-`perf_counter()` checks. This measures the actual runtime code path
-directly, rather than a second, separately maintained timing harness
-that could quietly drift out of sync with what really executes.
+Measurement command:
+`src/recommender/serving/verify_latency.py`.
 
-## Current measurement, 100 real validation users, six stages
+## Current result
 
-Against a containerized Redis, on the artifact bundle recorded in
-[`build-receipt.json`](../../provenance/build-receipt.json). Users are
-a seeded uniform sample of the validation split's distinct users
-(`recommender.evaluation.sampling`), not the first 100 to appear.
-Re-measured after SERVING-DURABLE-HISTORY-69's fix.
+The run uses 100 validation users selected uniformly with a fixed seed.
+Redis runs in a container. Artifacts match the
+[build receipt](../../provenance/build-receipt.json).
 
 | Stage | p50 | p95 | p99 |
 |---|---|---|---|
@@ -36,49 +26,31 @@ Re-measured after SERVING-DURABLE-HISTORY-69's fix.
 | User embedding (two-tower forward pass) | 0.34 ms | 0.49 ms | 0.57 ms |
 | **Total** | 21.78 ms | 27.21 ms | 52.79 ms |
 
-Stage shares below are each stage's p50 against the total p50. They are
-approximate and do not sum to 100%: the total is the median of per-request
-sums, not the sum of per-stage medians.
+Reranking, at 10.63 ms median, is now the largest stage. Its duplicate
+check compares candidates with already selected items, creating a
+roughly quadratic cost as candidate count grows.
 
-## Retrieval's cost moved with the fix, not with anything measured here directly
+Candidate retrieval has a long tail: 0.86 ms median and 16.54 ms p99.
+Users with neither recent nor durable history use a full-catalog
+popularity sort, which is slower than Faiss search.
 
-Total p50 dropped from 31.44 ms to 21.78 ms since the previous
-measurement below, almost entirely from candidate retrieval: 13.11 ms
-p50 -> 0.86 ms p50, a real, explained change, not measurement noise.
-The previous measurement's own account of *why* retrieval cost that
-much still holds and explains the drop: the `retrieval_ms` span covers
-either a real index search *or* the cold-start popularity path, and
-that path reindexes the whole 51,282-item catalog over `popularity`,
-fills missing values and sorts it, on every request from a user with no
-usable history. SERVING-DURABLE-HISTORY-69's fix means far fewer of
-these 100 sampled users now hit that expensive path at all: a returning
-user with durable history but no live Redis record is now retrieved for
-on their own history (a real Faiss search, the cheap case) instead of
-falling all the way to the full-catalog popularity sort. Reranking, at
-10.63 ms p50, is now the largest stage -- not because reranking itself
-changed, but because retrieval got cheaper out from under it.
+The total median is not the sum of operation medians. Each percentile is
+calculated independently across requests.
 
-Reranking remains expensive for the reason previously measured:
-`build_diverse_slate`'s near-duplicate check
-(`docs/experiments/reranking-diversity.md`) compares each candidate
-against every already-selected item, an `O(n²)`-shaped cost the other
-stages, all single dense-array operations, do not have. Retrieving more
-candidates than needed (`RETRIEVAL_MULTIPLIER`,
-`docs/operations/inference-path.md`) feeds that cost directly.
+## Change after durable-history fallback
 
-The p99 figures carry a caveat the p50s do not. Candidate retrieval's
-own p99 of 16.54 ms against a p50 of 0.86 ms is a tail from the users in
-this sample who still hit the full-catalog popularity path (neither
-durable nor recent history), and the total p99 of 52.79 ms partly
-reflects that same small subset. Treat the p50 and p95 columns as the
-stable signal here.
+Median total latency fell from 31.44 ms to 21.78 ms after
+`SERVING-DURABLE-HISTORY-69`. Candidate retrieval fell from 13.11 ms to
+0.86 ms because returning users with durable history now use Faiss
+instead of the expensive popularity path.
 
-## Superseded: the 2026-08-27 measurement (pre durable-history-fallback)
+Reranking did not become slower because of that correction. It became
+the largest operation because retrieval became much faster.
 
-Same sampling method as the current measurement, same pipeline except
-for SERVING-DURABLE-HISTORY-69's fix -- kept here for the same reason
-every table below it is: the change is the finding, not an
-inconvenience to hide.
+<details>
+<summary>August 27 measurement before durable-history fallback</summary>
+
+The sampling method matches the current run.
 
 | Stage | p50 | p95 | p99 |
 |---|---|---|---|
@@ -90,28 +62,19 @@ inconvenience to hide.
 | User embedding (two-tower forward pass) | 0.40 ms | 0.59 ms | 0.73 ms |
 | **Total** | 31.44 ms | 34.89 ms | 56.86 ms |
 
-## Why these numbers moved again
+</details>
 
-The pipeline did not change between this measurement and the one it
-replaces below dated 2026-08-26 -- only the sampling method did.
-`verify_latency_by_stage` previously took `drop_duplicates().head(100)`,
-the first 100 distinct users the validation split happened to list, not
-a representative draw. It now draws a seeded uniform sample of 100
-distinct users (`recommender.evaluation.sampling.sample_user_ids`),
-and every stage moved: total p50 from 21.31 ms to 31.44 ms, retrieval
-from 8.78 ms to 13.11 ms, reranking from 6.36 ms to 9.89 ms. The
-ordering -- retrieval largest, then reranking -- held across both
-samples; the absolute numbers did not, because the specific users a
-request runs for (their history length, how many candidates they
-retrieve, how much a diverse slate has to filter) genuinely varies, and
-the first 100 users in file order were not representative of that
-variation.
+## Why sampling changed
 
-## Superseded: the 2026-08-26 measurement (first-100-users sampling)
+An older implementation used the first 100 distinct users in file
+order. It now uses a seeded uniform sample.
 
-Same pipeline as the current measurement, different sampling method --
-kept here for the same reason the table below it is: the reversal
-between them is the finding, not an inconvenience to hide.
+With the same pipeline, that change moved total median from 21.31 ms to
+31.44 ms. User history and fallback path affect the amount of work, so
+the first users were not representative.
+
+<details>
+<summary>August 26 first-100-users measurement</summary>
 
 | Stage | p50 | p95 | p99 |
 |---|---|---|---|
@@ -123,11 +86,16 @@ between them is the finding, not an inconvenience to hide.
 | User embedding (two-tower forward pass) | 0.31 ms | 0.53 ms | 0.59 ms |
 | **Total** | 21.31 ms | 25.35 ms | 60.97 ms |
 
-## Superseded: the 2026-08-21 measurement
+</details>
 
-An earlier run of this same instrumentation reported a different result,
-and it is kept here rather than removed because the reversal is the
-point.
+## Older pipeline measurement
+
+The August 21 pipeline retrieved 50 candidates and had no explicit
+cold-start popularity path. Its numbers are historical and should not be
+averaged with the current pipeline.
+
+<details>
+<summary>August 21 measurement</summary>
 
 | Stage | p50 | p95 | p99 |
 |---|---|---|---|
@@ -139,25 +107,17 @@ point.
 | Reranking (diversity + freshness) | 8.88 ms | 11.06 ms | 12.24 ms |
 | **Total** | 12.79 ms | 14.96 ms | 17.09 ms |
 
-That measurement concluded reranking was roughly 70% of request time and
-that candidate retrieval, at 0.22 ms, was among the cheapest stages.
-Both statements were true of the pipeline as it stood on 2026-08-21.
-Neither is true now, and the pipeline is what changed:
+</details>
 
-- Retrieval depth was raised from 50 to 1,000 candidates on 2026-08-24
-  (`docs/experiments/evaluation-integrity.md`), so every downstream
-  stage scores twenty times as many candidates.
-- The cold-start popularity path was added on 2026-08-24, after the
-  zero-vector serving defect was diagnosed. It did not exist when the
-  earlier table was measured, and it is the dominant retrieval cost now.
+Retrieval depth increased from 50 to 1,000 on August 24. The larger pool
+also increases downstream ranking and reranking work.
 
-The earlier numbers were not wrong when taken. They describe a pipeline
-that no longer exists, which is why the current table replaces them
-rather than being averaged with them.
+## Limits
 
-## Limitations
+The run uses one developer machine and a local container stack. Absolute
+latency depends on CPU, container limits, Redis location, and current
+machine load. It is not a production service-level claim.
 
-Measured on one developer machine against the containerized
-demonstration stack, not production hardware. Absolute values depend on
-local CPU, container limits and Redis locality, and are not portable.
-The report records this alongside the numbers.
+See [inference path](../operations/inference-path.md),
+[diversity reranking](reranking-diversity.md), and
+[evaluation integrity](evaluation-integrity.md).

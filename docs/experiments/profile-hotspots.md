@@ -1,40 +1,31 @@
-# Profiling Hotspots
+# Historical performance profile
 
-**Historical, pre-optimization measurement.** Dated before the fix
-described in `docs/experiments/optimization.md`, and before the Faiss
-index changed from a persisted, on-disk artifact to one rebuilt in
-memory at every startup (`docs/architecture.md`). The disk-footprint
-table below therefore lists an artifact `ServingContext` no longer
-loads from disk at all, and the 515 MB memory figure is the *before*
-number the optimization work measured itself against -- the current,
-fixed figure (448.1 MB) is in `docs/experiments/optimization.md`, and
-current request latency is in
-[`reports/serving-latency.json`](../../reports/serving-latency.json).
-Kept here as the profiling methodology and the finding that motivated
-the fix, not as a current measurement of `ServingContext` as it exists
-now.
+> This profile predates the documented optimizations and the current
+> in-memory Faiss build. It explains why those changes were made; it is
+> not a current resource profile.
 
-Measures where the serving path actually spends memory, disk, and CPU
-— not just wall-clock time per stage, which the per-stage latency
-breakdown (`docs/experiments/serving-latency.md`) already covered.
-Implementation: `src/recommender/monitoring/profile_hotspots.py`.
+Current values:
 
-## Three measurements
+- context-build memory delta: 448.1 MB in
+  [optimization](optimization.md); and
+- request latency:
+  [`reports/serving-latency.json`](../../reports/serving-latency.json).
 
-- **Disk footprint** — the on-disk size of every artifact
-  `ServingContext` loaded at the time of this measurement: the
-  two-tower model, the ranking model, and the then-persisted exact
-  Faiss index (no longer a disk-loaded artifact today; see the notice
-  above).
-- **Memory** — real process RSS (`psutil`), measured before and after
-  `build_serving_context()`, not estimated from artifact sizes.
-- **CPU vs. wall time** — `time.process_time()` alongside
- `time.perf_counter()` over real requests. Their divergence reveals
-something `docs/experiments/serving-latency.md`'s wall-clock-only
-numbers couldn't: whether a stage is computing, or using more than one
-CPU core at once underneath a single request.
+Implementation:
+`src/recommender/monitoring/profile_hotspots.py`.
 
-## A real surprise: 515 MB of memory from artifacts under 7 MB combined
+## Measurements
+
+| Resource | Method |
+|---|---|
+| Disk | File size of each artifact loaded by `ServingContext` at that time |
+| Memory | Process RSS before and after `build_serving_context()` |
+| CPU | `time.process_time()` compared with `time.perf_counter()` over real requests |
+
+The disk list included a persisted exact Faiss index. The current
+service rebuilds that index in memory and no longer loads this file.
+
+## Artifact size versus memory
 
 | Artifact | On-disk size |
 |---|---|
@@ -42,30 +33,31 @@ CPU core at once underneath a single request.
 | Ranking model | ~0 MB |
 | Faiss exact index | 6.26 MB |
 
-`build_serving_context()`'s real RSS grew by **515 MB**, orders of
-magnitude more than the artifacts it loads. Isolated line by line
-against the real training split: `compute_popularity` and
-`compute_first_seen` — two functions built independently, for the
-baselines and for reranking, each for its own standalone use — **each call
-`explode_impressions(train)` on their own**, fully re-exploding the
-same ~4.6-million-row impression log a second and third time. The first
-explosion (measured separately) cost ~237 MB; the second, inside
-`compute_popularity`, cost another ~210 MB on top for data that already
-existed once. This is measured, wasted duplication, not a guess —
-and it's exactly the kind of evidence the optimization work
-(`docs/experiments/optimization.md`) is scoped to act on, not this
-document, which is scoped only to surface it.
+Despite less than 7 MB of listed artifacts, context construction added
+515 MB of RSS.
 
-## A second finding, relevant to load testing (`docs/experiments/load-test.md`)
+The cause was repeated expansion of the roughly 4.6-million-row
+impression log:
 
-Over 30 real requests, total CPU time (2.45s) came out to **4.8×**
-total wall time (0.51s) — impossible for genuinely sequential,
-single-threaded work. It means the numeric libraries underneath a
-single request (PyTorch, NumPy's BLAS backend, Faiss) are already using
-several CPU cores in parallel to hit their
-sub-millisecond-to-low-millisecond stage times. That has a direct,
-disclosed implication for load testing next: if one request already
-consumes multiple cores' worth of compute, genuinely concurrent requests
-will contend hard for the same limited CPU, and throughput won't
-necessarily scale the way a single request's fast wall-clock time alone
-would suggest.
+- the first expansion used about 237 MB; and
+- `compute_popularity` performed another expansion using about 210 MB.
+
+`compute_first_seen` also expanded the same source independently.
+Sharing one expanded table became the first optimization.
+
+## CPU parallelism
+
+Across 30 real requests:
+
+| Measure | Value |
+|---|---:|
+| Total CPU time | 2.45 s |
+| Total wall time | 0.51 s |
+| CPU-to-wall ratio | 4.8× |
+
+One request already used several cores through PyTorch, NumPy BLAS, and
+Faiss. That predicted contention under concurrent traffic and motivated
+the one-thread math configuration.
+
+See [load test](load-test.md) and
+[measured improvements](optimization.md).

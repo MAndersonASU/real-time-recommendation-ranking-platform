@@ -1,39 +1,27 @@
-# Health and Readiness Checks
+# Health and readiness
 
-Two separate endpoints answering two genuinely different questions: is
-this process alive, and can it actually serve a request right now.
-Implementation: `src/recommender/serving/app.py`.
+The API exposes two endpoints for different operational questions.
+Both are implemented in `src/recommender/serving/app.py`.
 
-## Liveness (`GET /health`)
+## `GET /health`
 
-Always reports `{"status": "ok"}` once the process is running, with no
-check of any dependency. This is deliberate: a liveness probe exists to
-answer "has this process hung or crashed, should it be restarted" — not
-"is it fully functional." A process still finishing its startup, or one
-whose model failed to load, is still alive and shouldn't be killed and
-restarted in a loop over a condition a restart can't fix.
+This is the process liveness check:
 
-## Readiness (`GET /ready`)
+```json
+{"status": "ok"}
+```
 
-Answers a different question: can this instance actually serve traffic
-right now. Two dependencies are checked, and treated very differently:
+It does not query Redis or reload model artifacts. Docker uses this
+endpoint to decide whether the running API process can answer HTTP
+requests.
 
-- **Model, index, and ranking pipeline** — whether `ServingContext`
-  actually finished loading. This is fatal if missing: there is no
-  per-request fallback for "the whole context never built" the way
-  there is for a single failed Redis call. A caller hitting `/ready`
-  before startup finishes gets a real `503`, not a response built
-  against a context that doesn't exist.
-- **Redis** — checked with a real `ping()`, but reported as a
-  *dependency status*, not a readiness gate. An unreachable Redis only
-  empties one input to an already-running pipeline — the recent-clicks
-  record — while durable features, the trained model, and the ranking
-  pipeline keep serving real, personalized responses
-  (`docs/operations/serving-fallback.md`), without the service becoming
-  unable to serve a valid response at all. Failing readiness
-  outright over a degraded-but-working Redis would pull a perfectly
-  serviceable instance out of a load balancer's rotation for the wrong
-  reason.
+## `GET /ready`
+
+This endpoint reports whether the serving context is available. If the
+model, content, index, and ranking pipeline have not loaded, it returns
+HTTP `503`.
+
+A ready response has this shape:
 
 ```json
 {
@@ -41,28 +29,54 @@ right now. Two dependencies are checked, and treated very differently:
   "dependencies": {
     "model_index_ranking": "ok",
     "redis": "ok"
+  },
+  "durable_features": {
+    "snapshot_id": "...",
+    "built_at": "...",
+    "data_as_of": "...",
+    "data_age_seconds": 0,
+    "users": 0,
+    "is_stale": true,
+    "refresh_policy": "..."
   }
 }
 ```
 
-A degraded Redis reports the same `ready: true`, with
-`"redis": "degraded (durable-features-only personalization)"` instead —
-verified with a real, unmocked connection failure the same way
-`docs/operations/serving-fallback.md` verified the degraded path itself.
+The durable-feature values above show the response structure; actual
+counts and times come from the loaded snapshot. The data are a frozen
+historical set, so readiness reports their age instead of presenting a
+service restart as a data refresh.
 
-## This holds at container startup too, not just mid-request
+## Redis is a degraded dependency
 
-`docker-compose.yml`'s `api` service has no `depends_on` entry for Redis
-(DEPLOYMENT-CONTRACT-62): `build_serving_context` never connects to
-Redis during startup, only constructs a client object, lazily connected
-on its first real command, so there was never a real dependency here to
-gate on. Verified against the live containers with Redis never started
-at all, not merely stopped: `docker compose up -d api` alone (`redis`
-never created) still reached a healthy `/health`, `/ready` still
-reported `ready: true` with the same degraded Redis status shown
-above, and `/recommend` returned a real, personalized response. An
-earlier version of this compose file did block API
-startup on Redis's health check — a real gap between what
-`docs/architecture.md` claimed ("Redis is optional, startup does not
-gate on it") and what the file actually did, found by this
-verification.
+Readiness sends a real `PING` to Redis. If it fails, the API remains
+ready and reports:
+
+```json
+{
+  "ready": true,
+  "dependencies": {
+    "model_index_ranking": "ok",
+    "redis": "degraded (durable-features-only personalization)"
+  }
+}
+```
+
+Recent-click features are unavailable in this condition, but durable
+history and the trained pipeline can still produce a personalized
+response. Removing the instance from service would discard that useful
+capacity.
+
+## Container startup
+
+The API service has no Compose `depends_on` entry for Redis or Kafka.
+Required artifacts are loaded during application startup. Redis is
+contacted later by readiness and recommendation requests.
+
+This behavior has been verified with Redis absent: `/health` responded,
+`/ready` reported degraded Redis, and `/recommend` still returned a
+response using durable features.
+
+See [configuration](configuration.md),
+[serving fallback](serving-fallback.md), and
+[restart and dependency testing](restart-and-failure-testing.md).

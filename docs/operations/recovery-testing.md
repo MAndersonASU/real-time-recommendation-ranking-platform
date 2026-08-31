@@ -1,91 +1,83 @@
-# Recovery Testing
+# Verify stream recovery
 
-Everything built earlier in this component was proven on the happy path — the
-broker up, messages well-formed, nothing crashing. This check deliberately
-breaks each of those assumptions, for real, against the live broker
-brought up in `docs/operations/kafka-local.md`, not simulated in memory.
-Implementation: `src/recommender/streaming/recovery.py`,
-`src/recommender/streaming/verify_recovery.py`.
+`src/recommender/streaming/verify_recovery.py` checks the consumer
+against a running Kafka broker. Each check creates its own topic to
+avoid interference from earlier runs.
 
-Each of the four checks below runs against its own freshly created topic,
-so none can interfere with another, and all use the real
-`StreamConsumer`/`run_consumer` from `docs/operations/streaming-consumer.md` exactly
-as they'd run in production — nothing about the consumer's own code
-changes for a test.
+Run it after starting Kafka:
 
-## Restart behavior
+```bash
+python -m recommender.streaming.verify_recovery
+```
 
-A consumer processes half a 10-message batch, then is closed mid-stream —
-standing in for a real crash. A second, brand-new consumer instance
-(fresh in-memory state, same group id) picks up where the first left off.
-This only works because offsets commit after processing, not on poll — a
-design decision made in the consumer itself, now proven under an actual
-restart rather than reasoned about:
+The command writes `recovery_verification_report.json` to the local
+MIND data directory.
 
-| | |
-|---|---|
-| First run processed | 5 |
-| Second run processed | 5 |
-| Total across restart | 10 / 10 |
-| Lost or reprocessed | none |
+## Restart from a committed offset
 
-## Malformed-event handling
+The verifier publishes 10 messages. One consumer reads five and closes.
+A new consumer with the same group ID reads the remaining five.
 
-A genuinely broken message (not valid JSON at all) sits between two valid
-ones on a real topic:
+The published run recorded:
 
-| | |
-|---|---|
+| Result | Value |
+|---|---:|
+| First consumer | 5 |
+| Second consumer | 5 |
+| Total | 10 of 10 |
+
+This checks Kafka offset recovery. The second consumer has fresh
+in-memory user state; Redis-backed state recovery is covered by the
+state-store and live-sync checks.
+
+## Reject a malformed message
+
+The verifier publishes a valid event, invalid JSON, and another valid
+event. The consumer must count the bad message and continue:
+
+| Result | Value |
+|---|---:|
 | Messages polled | 3 |
-| Malformed rejected | 1 |
+| Malformed messages | 1 |
 | Valid events processed | 2 |
-| Survived and processed the message after the bad one | yes |
 
-## Duplicate events
+## Skip a duplicate
 
-The exact same event (same `event_id`) published to the topic twice — a
-genuine redelivery, not a repeated in-process call:
+The same serialized event is published twice. The finite in-memory
+consumer should process it once and count one duplicate:
 
-| | |
-|---|---|
+| Result | Value |
+|---|---:|
 | Messages polled | 2 |
 | Duplicates skipped | 1 |
-| Distinct events processed | 1 |
+| New events processed | 1 |
 
-## Consumer lag reporting
+This check covers duplicate delivery within one process. Redis-backed
+deduplication across a restart is covered separately and is limited by
+the processed-claim retention window.
 
-A new metric introduced at this check: the gap between a topic's latest
-offset and what a consumer group has actually committed
-(`report_consumer_lag`), using a throwaway `Consumer` bound to the target
-group id purely to query watermark and committed offsets — it never
-subscribes or polls, so checking lag never disturbs the group's real
-position. Measured before consuming, after partially catching up, and
-after fully catching up:
+## Report consumer lag
 
-| | |
-|---|---|
-| Lag before consuming | 6 |
-| Lag after partial consumption | 3 |
-| Lag after full consumption | 0 |
+`report_consumer_lag()` compares the latest topic offset with the
+consumer group's committed offset. Its temporary client does not
+subscribe or poll, so reading lag does not move the group's position.
 
-The number moves correctly at each stage and reaches exactly zero once
-nothing is left outstanding — a real, working operational signal, not
-just a value that happens to print.
+The published run recorded:
 
-## What was verified, and what was not
+| Point in run | Lag |
+|---|---:|
+| Before consumption | 6 |
+| After three messages | 3 |
+| After full consumption | 0 |
 
-The streaming pipeline runs against a local Kafka broker with a schema, a
-chronologically-paced replay producer, and a validating, deduplicating,
-transforming consumer. The following behaviours were verified directly:
+## Scope
 
-- The consumer keeps working when the broker rebalances mid-join.
-- A malformed message is rejected without stopping the consumer.
-- A redelivered message is deduplicated rather than double-counted.
-- A crashed consumer resumes from its last committed offset on restart.
+The broker-backed verifier covers restart position, malformed input,
+duplicate input, and lag reporting. Commit failures are tested with
+injected client failures because the project does not deliberately
+break a live Kafka commit in this check.
 
-**Not verified:** commit-failure behaviour against a real broker.
-STREAM-COMMIT-04 remains partially closed by an explicit scope decision —
-the failure path is covered by injected faults in tests, not by inducing a
-genuine commit failure in Kafka. See
-[`docs/engineering-review-and-hardening.md`](../engineering-review-and-hardening.md).
-Every result above came from an actual running broker, not a mock.
+The recorded values are evidence from one local run, not service-level
+targets. See [streaming consumer](streaming-consumer.md),
+[state store](state-store.md), and
+[restart and dependency testing](restart-and-failure-testing.md).

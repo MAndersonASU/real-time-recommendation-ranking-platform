@@ -1,60 +1,62 @@
-# Hardening Configuration
+# Configuration
 
-One typed settings object for every environment-dependent value the
-serving app reads, a real slot for a secret this project doesn't have
-yet, an explicit port, and a startup that fails loudly on a missing
-model artifact instead of crashing unexplained on the first request.
-Implementation: `src/recommender/serving/config.py`.
+The serving application reads environment-dependent values through one
+typed `Settings` object in
+`src/recommender/serving/config.py`.
 
-## Environment-based configuration
+## Application settings
 
-`Settings` (a `pydantic_settings.BaseSettings`) reads `REDIS_URL` and
-`API_PORT` from the environment, or from a local, gitignored `.env`
-file, with the exact defaults this project has always used —
-`redis://localhost:6379/0`, port `8000`. Every field has a safe default,
-so nothing about running this project locally, exactly as it always
-has, requires setting anything. Only a containerized or otherwise
-non-default deployment needs to actually configure something.
+| Variable | Default | Use |
+|---|---|---|
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
+| `REDIS_PASSWORD` | unset | Optional Redis password |
+| `API_PORT` | `8000` | Uvicorn and container port |
 
-## Secret exclusion, for a secret this project doesn't have yet
+Values can come from environment variables or a local `.env` file.
+`.env` is ignored by Git. The defaults support local use without extra
+configuration.
 
-There is no real credential anywhere in this project today — Redis and
-Kafka both run without authentication locally. `redis_password` exists
-as a typed `SecretStr | None` field anyway: `SecretStr` means the value
-never appears in a `repr()`, a `str()`, or an accidental log line —
-`str(settings)` prints `**********`, not the real password, even for
-someone who never intended to log it. `redis_url_with_auth()` weaves it
-into the connection string at the one point it's actually needed. This
-is the pattern in place *before* a real secret exists, not retrofitted
-after one leaks.
+Docker Compose also reads `API_BIND_HOST`. It defaults to
+`127.0.0.1` so the API is local-only. Set it deliberately to expose the
+port on another interface.
 
-`redis_password` is carried all the way through `redis_url_with_auth()`
-into a corresponding `requirepass` on the Redis service in
-`docker-compose.yml`, so setting a real `REDIS_PASSWORD` actually takes
-effect end to end -- verified directly (real `NOAUTH` on an
-unauthenticated attempt, real success both via `redis-cli -a` and via
-this project's own `redis_url_with_auth()`, and the same key still
-present after a real container restart) -- see `docker-compose.yml`'s
-own comments for detail.
+## Redis password
 
-## Explicit ports
+`redis_password` uses Pydantic `SecretStr`. Printing the settings object
+shows masked text instead of the password.
 
-`API_PORT` flows from the environment through `docker-compose.yml`
-through the Dockerfile's JSON-form `CMD`
-(`CMD ["sh", "-c", "exec uvicorn ... --port ${API_PORT:-8000}"]`, which
-itself invokes `sh -c` to get the variable substitution a plain
-exec-form `CMD` cannot do, then `exec`s into `uvicorn`) to the running
-process — one real, traceable path, not a port number hardcoded in two
-or three different places that could silently drift apart.
+`redis_url_with_auth()`:
 
-## Validated startup dependencies
+- percent-encodes the password;
+- inserts it into the connection URL only when needed; and
+- leaves the default password-free URL unchanged.
 
-`build_serving_context()` can raise a real `OSError` if a model, index,
-or ranking-pipeline file is missing — e.g. the data volume wasn't
-mounted, or the offline pipeline was never run. That's fatal: unlike a
-single Redis call, which `safe_recommend` already falls back around,
-there's no fallback for "the whole serving context couldn't even be
-built." The app's lifespan now catches exactly that case, logs a
-specific, actionable message naming the likely cause, and re-raises —
-failing immediately and loudly at startup instead of the first request
-hitting an unexplained crash.
+Docker Compose passes the same `REDIS_PASSWORD` to Redis
+`--requirepass` and to the API. A live check confirmed that an
+unauthenticated command receives `NOAUTH`, authenticated clients work,
+and saved data remains after a Redis restart.
+
+## Port flow
+
+`API_PORT` follows one path:
+
+```text
+environment → docker-compose.yml → container environment → uvicorn
+```
+
+The Docker command runs a shell only for variable expansion, then uses
+`exec` so Uvicorn becomes the container's main process.
+
+## Startup failures
+
+`build_serving_context()` requires the model and ranking artifacts.
+Missing files usually mean the data volume is absent or the offline
+pipeline has not run.
+
+The application catches that startup `OSError`, logs an actionable
+message, and exits immediately. Redis is different: the API can start
+without it and handle connection loss through the documented degraded
+path.
+
+See [serving fallback](serving-fallback.md) and
+[containerization](containerization.md).

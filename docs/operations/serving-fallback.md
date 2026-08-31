@@ -1,129 +1,101 @@
-# Failure-Safe Fallbacks
+# Serving fallback behavior
 
-Returns a safe, popularity-ranked response when a real dependency the
-main inference path needs — the model, the index — turns out to be
-unavailable, instead of the request failing outright. Implementation:
-`src/recommender/serving/fallback.py`. Redis is deliberately not in
-that list any more — see "A Redis failure is not this" below.
+The service distinguishes normal cold start, Redis degradation, and a
+required model or index failure. They do not all receive the same
+response.
 
-## A different question than the online feature store's cold start
+| Condition | Behavior |
+|---|---|
+| User has no history | Retrieve by global popularity, then use normal ranking and reranking |
+| Redis is unavailable | Continue with durable features and durable history when available |
+| Two-tower model or Faiss fails during a request | Return a simple popularity-ranked fallback response |
+| Ranking or application code fails unexpectedly | Return an error; do not hide it as a fallback |
 
-The online feature store's cold-start handling (`docs/experiments/cold-start.md`) answers "we don't
-know anything about this particular user" — a data problem the real
-path already handles gracefully, without falling back to anything
-simpler. This check answers a different question: "the real path itself
-cannot run right now," because a dependency it needs is down or broken.
-`safe_recommend` wraps `recommend` and only falls back when that second,
-infrastructural kind of failure actually happens.
+## Required-dependency fallback
 
-## Deliberately narrow exception handling
+`safe_recommend()` catches only
+`DependencyUnavailableError`. The two-tower forward pass and Faiss
+search translate their library errors into this type.
 
-`safe_recommend` catches exactly one exception type:
-`DependencyUnavailableError` (`recommender.serving.errors`). That type
-is raised only at the two real per-request dependency boundaries where
-a failure genuinely prevents inference or retrieval -- the two-tower
-forward pass and the Faiss search -- where the underlying library's own
-exception is caught and translated, carrying the reason with it.
+The narrow exception prevents a ranking, feature, or reranking bug from
+appearing as a successful popularity response. Unexpected
+`RuntimeError` or `OSError` values are not caught broadly.
 
-An earlier version caught `(redis.exceptions.RedisError, RuntimeError,
-OSError)` directly. That was too broad to be safe: `RuntimeError` and
-`OSError` are raised by plenty of code that is not a failing
-dependency, so a genuine logic bug anywhere in feature construction,
-ranking or reranking could surface as a "successful" popularity
-response that looked fine from the outside.
+`build_fallback_response()`:
 
-Translating at the boundary keeps the catch narrow without losing
-coverage: an unusable model and an unreadable index still degrade
-gracefully, while a programming error propagates to the API's own error
-handling and is visible.
+- ranks the catalog with the training popularity baseline;
+- requires no model, index, ranker, or Redis;
+- returns both feature-used flags as `False`; and
+- sets retrieval source to `global_popularity`.
 
-## A Redis failure is not this
+Fallback `score` is popularity normalized to `[0, 1]`. It is not the
+calibrated click probability returned by the normal ranking path.
 
-A Redis failure used to be caught here too and treated exactly like an
-unusable model or index -- the same full retreat to flat, unpersonalized
-popularity (REDIS-DEGRADED-PATH-61). That conflated two genuinely
-different failures: the model and the index are required for retrieval
-and ranking to run at all, but Redis only ever supplies one input to an
-already-running pipeline -- a user's last 20 recent clicks
-(`docs/operations/state-store.md`). Everything else `recommend()` needs
-(durable features, the trained model, the Faiss index) is already in
-process memory, completely unaffected by Redis being down.
+Implementation:
+`src/recommender/serving/fallback.py`.
 
-`recommender.features.cold_start.get_online_features` now catches a
-Redis failure itself and reports it as an absent recent-features record
--- the same shape as an ordinary user who simply has no live events yet,
-distinguished from that ordinary case only by a `redis_unavailable` flag
-callers that care can check. `recommend()` never raises
-`DependencyUnavailableError` for this any more, so `safe_recommend`
-never falls back over it either: the request still completes as a real,
-personalized response on durable features, just without the recent-
-clicks input. `on_redis_degraded` (a parameter on both `recommend` and
-`safe_recommend`) is the observability signal for this case --
-invoked when it happens, even though the response is not a fallback.
+## Redis degradation
 
-A `RedisCircuitBreaker`, shared on `ServingContext`, sits in front of
-every attempt: once Redis has failed enough consecutive times it stops
-attempting the connection at all for a cooldown window, so a genuinely
-down Redis doesn't make every concurrent request separately pay the
-connect timeout (`docs/operations/state-store.md`).
+Redis provides only recent clicks. The model, exact index, ranking
+pipeline, and durable features are already in process memory.
 
-## The fallback itself: the popularity baseline, one more time
+`get_online_features()` catches Redis connectivity errors and returns an
+absent recent record with `redis_unavailable=True`. Recommendation then
+uses durable history if available and continues through the normal
+personalized path.
 
-`build_fallback_response` ranks the whole catalog by plain training-set
-popularity — the exact same `rank_by_popularity` function built for the popularity
-baseline, the very first thing this project ever evaluated. No model, index,
-ranking pipeline, or Redis lookup is needed to produce it. `score` here
-is popularity normalized into `[0, 1]`, not a calibrated click
-probability the way it is on the real path — a real, disclosed
-difference in what the number means, honestly named rather than
-pretended away. Both `durable_features_used` and `recent_features_used`
-are always `False` on this path, since no feature lookup happens here
-at all.
+`on_redis_degraded` emits the operational signal even though the
+response is not a full fallback.
 
-## Verified against a real, unmocked failure
+A shared `RedisCircuitBreaker` stops repeated connection attempts after
+enough consecutive transport failures. After its cooldown, exactly one
+request probes Redis.
 
-`verify_fallback.py` builds the real serving context — the real
-catalog, the real trained model, the real ranking pipeline — then
-points its Redis client at a port nothing is listening on: a genuine
-connection failure, not a simulated one. Run against a real user with a
-genuine durable-feature record (not an arbitrary id, specifically so the
-result can't be mistaken for the flat-fallback case), `safe_recommend`
-returned a full 10-item, contract-valid response with
-`is_fallback: false` and `durable_features_used: true` — real
-personalization on durable features, only `recent_features_used` false,
-exactly the degraded-not-fallback behavior above.
+## Cold start
 
-## Cold-start retrieval: popularity, not a zero-vector search
+An empty history produces a zero-norm user vector. Inner-product search
+would score every article at zero and return an arbitrary tied order.
 
-Distinct from the dependency fallback above, and handled inside
-`recommend()` rather than by `safe_recommend`: a user with no usable
-click history is not a failure, it is a normal request this system has
-to answer well.
+The pipeline detects that condition before Faiss and selects candidates
+by catalog-wide training popularity. Articles absent from training
+receive popularity zero, so the response can still contain the requested
+number of candidates.
 
-`TwoTowerModel.user_vector` averages the item vectors of whatever is in
-the user's history, so an empty (fully masked) history produces an
-exactly zero-norm user vector. Querying an inner-product Faiss index
-with a zero vector scores every catalog item at exactly 0.0, so the
-index returns an arbitrary tie order — the identical slate for every
-history-less user — and the ranking model then receives a constant
-`retrieval_score` and assigns every candidate the same probability.
-This was directly observable on the live service: a `/recommend` call
-for an unknown user returned three items with byte-identical scores,
-all from one category.
+This is a normal historyless request, not a dependency failure. Ranking
+and reranking still run.
 
-Retrieval now checks whether the user vector carries any signal at all
-and, when it does not, draws candidates from training-set popularity
-instead, scaled into `[0, 1]` so `retrieval_score` keeps a meaning
-comparable to an inner-product score. Popularity is reindexed over the
-whole catalog rather than only the items that appear in the training
-split, since an item with no training clicks has a real popularity of
-zero rather than a missing value — without that, a catalog larger than
-the training split's item set would yield fewer candidates than
-requested.
+## History source
 
-This is a genuine improvement in cold-start behaviour, not a fix for
-the retrieval-quality limitation described in
-`docs/experiments/serving-path-end-to-end-evaluation.md`: it replaces an arbitrary
-slate with a defensible one. Regression tests in `tests/test_pipeline.py`
-assert that a history-less user never reaches the index and that a user
-with real history still does.
+For a healthy request, retrieval chooses:
+
+1. usable recent clicks;
+2. bounded durable history; or
+3. global popularity.
+
+A returning user with durable history does not fall to global popularity
+merely because Redis is empty.
+
+## Verification
+
+`verify_fallback.py` creates the real serving context, then points Redis
+to a closed port. A real user with durable features receives:
+
+| Field | Result |
+|---|---|
+| `is_fallback` | `false` |
+| `durable_features_used` | `true` |
+| `recent_features_used` | `false` |
+| Returned items | 10 |
+
+This confirms Redis loss takes the degraded normal path.
+
+Regression tests also verify:
+
+- a historyless user does not query Faiss;
+- a user with usable history does query Faiss;
+- known model and index failures use the simple fallback; and
+- unexpected code failures propagate.
+
+See [cold-start behavior](../experiments/cold-start.md),
+[state store](state-store.md), and
+[inference path](inference-path.md).

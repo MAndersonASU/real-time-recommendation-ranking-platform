@@ -1,219 +1,157 @@
 # Changelog
 
-## 2026-08-30 — Durable-history retrieval fallback
+This file records user-visible, research, and architectural changes.
+Measurements belong to the date shown and may have been replaced by a
+later entry. Use the [evaluation index](docs/evaluation.md) for current
+results.
 
-Reproduced in a maintainer-led review, not an independent audit.
+## August 30, 2026 — Durable-history retrieval
 
-- Live retrieval (the two-tower embedding, Faiss search,
-  content-similarity profile) fell back only to Redis's recent-click
-  list; a returning user with real durable history but a healthy, empty
-  Redis record received the same global-popularity slate as every other
-  such user (SERVING-DURABLE-HISTORY-69). Retrieval now falls back to
-  the user's bounded durable history when Redis has nothing usable,
-  never merging the two. The response's new `retrieval_history_source`
-  field reports which of recent/durable/global-popularity actually drove
-  a given request.
-- A dedicated evaluation
-  (`recommender.evaluation.evaluate_durable_history_fallback`,
-  `reports/durable-history-fallback.json`) measures this cohort in
-  isolation; end-to-end, explanation, and serving-latency evaluations
-  were rerun from a clean tree, with real, measured changes disclosed
-  where the fix affected them (explanation refusal rate and serving
-  latency both moved substantially).
-- Added the two missing evaluation-index entries (tuning-decision
-  verification, minimum-fresh policy experiment) and a guard requiring
-  every committed report to appear in `docs/evaluation.md`.
-- Corrected the README's containerized-demo command, which claimed to
-  start Redis without naming it as a service.
+### Changed
 
-## 2026-08-27 — Documentation checks
+- Retrieval now uses a user's bounded durable history when Redis has no
+  usable recent clicks. It does not merge recent and durable histories.
+- `RecommendationResponse.retrieval_history_source` reports whether
+  recent history, durable history, or global popularity produced the
+  candidates.
+- The demonstration page shows retrieval source separately from
+  ranking-feature status.
 
-- Added documentation regression checks for duplicated words and
-  component terminology introduced by bulk editorial changes. Eighteen
-  sentences a terminology rewrite had broken are kept as fixtures: each
-  must be rejected and its replacement accepted. Legitimate repetition
-  is cleared by coordination rather than by an allow-list.
-- Replaced keyword grepping for committed credentials with a scan for
-  credential shapes: provider key formats, and secret-named assignments
-  filtered by Shannon entropy. Entropy is applied only to those
-  assignments, because the repository commits SHA-256 artifact hashes by
-  design.
+### Added
 
-## 2026-08-25 — Reproducibility, evaluation reports, and constrained explanations
+- A dedicated durable-history evaluation and
+  [machine-readable report](reports/durable-history-fallback.json).
+- Missing entries for tuning verification and the minimum-fresh
+  experiment in the evaluation index.
+- A guard that requires every committed report to appear in the
+  evaluation index.
 
-- Retrieval quality: the item tower now derives a per-article content
-  vector from each article's title and abstract, replacing a
-  representation that reduced 51,282 articles to 284 distinct vectors.
-  Retrieval depth raised from 50 to 1,000 candidates on tuning-fold
+### Corrected
+
+- The README's container command now names Redis explicitly.
+- End-to-end, explanation, replay, ablation, and service-latency
+  evaluations were rerun where this serving correction could affect
+  their results.
+
+The behavior was found in a maintainer-led review and is tracked as
+`SERVING-DURABLE-HISTORY-69`. It was not an independent audit.
+
+## August 27, 2026 — Documentation and secret checks
+
+- Added regression checks for duplicated words and inconsistent
+  component terminology.
+- Replaced broad credential keywords with checks for provider key
+  formats and high-entropy values assigned to secret-like names.
+- Kept SHA-256 artifact hashes out of secret alerts because the
+  repository publishes those hashes intentionally.
+
+## August 25, 2026 — Reproducibility and explanation controls
+
+### Retrieval and artifacts
+
+- Added article title and abstract features to the item tower. The old
+  category-only representation gave 51,282 articles only 284 distinct
+  vectors.
+- Increased serving retrieval depth from 50 to 1,000 using tuning-fold
   evidence.
-- Persisted the fitted article-content transformation to ensure
-  identical feature coordinates across training, index construction,
-  evaluation and serving, with article ordering and dimensions
-  validated on load.
-- Dependency lock rebuilt for Linux against CPU-only PyTorch and
-  installed with hash verification in CI and in the container image;
-  the container previously resolved its own dependencies independently
-  of the tested set. Base image pinned by digest.
-- Removed the unused `httpx2` dependency and declared `httpx`
-  explicitly.
-- The default test suite no longer requires the licensed dataset.
-- Serving-artifact manifest extended to cover the content artifact,
-  retrieval and reranking configuration, feature dimensions, transform
-  seeds, the dependency-lock digest and the source commit. The
-  explanation model is no longer labelled an embedding model.
-- Explanations are produced from structured facts and approved
-  templates; generative rewriting is opt-in and off by default, because
-  the available automated check is lexical and cannot validate meaning.
-  The reported metric is renamed to a lexical-policy pass rate.
-- Serving-path evaluation orders impressions deterministically, scores
-  all impressions sharing a timestamp before applying any of their
-  events, and reconciles point-in-time state from authoritative history.
-- Replay events carry ids derived from their own immutable fields, so a
-  repeated replay is idempotent; the idempotency window is documented as
-  bounded by claim retention.
-- Published machine-readable evaluation reports under `reports/` with
-  source commit, artifact hashes, configuration, seeds, denominators,
-  metric definitions and limitations, plus schema validation.
-- The demo states explicitly when a user is receiving global
-  cold-start popularity recommendations rather than personalized ones.
-- Timezone handling gained real DST-boundary tests covering ambiguous
-  and nonexistent local times; the previous test was renamed to
-  describe what it actually verified.
+- Persisted and validated the fitted content transformation so
+  training, index construction, evaluation, and serving use the same
+  coordinates.
+- Extended the serving manifest to cover content, model, reranking and
+  retrieval settings, feature sizes, seeds, dependency lock, and source
+  commit.
 
-## 2026-08-24 — Retrieval quality, restart idempotency, and supply-chain verification
+### Evaluation
 
-Closes the substantive items left open by the engineering review below.
-Full detail: `docs/engineering-review-and-hardening.md`.
+- Enforced deterministic chronological ordering.
+- Scored all impressions at one timestamp before applying any events
+  from that timestamp.
+- Reconciled point-in-time feature state from authoritative history.
+- Published validated JSON reports with source commit, artifact hashes,
+  settings, seeds, denominators, metric definitions, and limitations.
+- Made the normal test suite independent of the licensed dataset.
+
+### Explanations
+
+- Moved factual explanation content into structured facts and approved
+  templates.
+- Kept optional generative rewriting off by default because lexical
+  checks cannot verify meaning.
+- Renamed the reported measure to lexical-policy pass rate.
+
+### Supply chain and serving
+
+- Split runtime and development dependency locks.
+- Added hash verification and the CPU-only PyTorch index to CI and the
+  container build.
+- Pinned the container base by digest.
+- Removed unused `httpx2` and declared `httpx` directly.
+- Added deterministic replay event IDs for bounded idempotency.
+- Made the demonstration explicit when a user receives global
+  popularity rather than personalized retrieval.
+- Added DST-boundary tests for ambiguous and nonexistent local times.
+
+## August 24, 2026 — Engineering hardening
+
+This entry combines two related maintenance passes from the same date.
+The figures below are historical and are retained only to explain the
+changes made then.
 
 ### Retrieval
 
-- **Item tower now carries per-article content features.** Category and
-  subcategory alone take 284 distinct values across 51,282 items, so the
-  tower emitted 284 distinct vectors and retrieval could identify a
-  topic but never an article within it. Each article now also carries a
-  dense vector from its own title and abstract. Distinct catalog
-  embeddings: **284 → 50,704**. Retrieval metrics improved 7.6x–13.5x
-  (hit rate@100 0.0044 → 0.0336).
-- **Retrieval depth raised from 50 to 1,000 candidates**, decided on the
-  tuning fold rather than `validation`. The clicked item reaches the
-  ranker on 5.8% → 20.9% of tune-fold impressions, for about 4 ms of
-  end-to-end p50 latency.
-- **Cold-start retrieval no longer queries the index with a zero
-  vector.** A user with no history produced a zero-norm query, against
-  which an inner-product index scores every item identically — every
-  such user got the same arbitrary slate with identical scores. It now
-  draws from training-set popularity.
-- Retrieval, ranking, reranking, ablation, and end-to-end evaluations
-  were re-run, and the figures published at that time came from those
-  runs.
+- Added per-article content features. Distinct catalog embeddings
+  increased from 284 to 50,704.
+- Historical hit rate@100 increased from 0.0044 to 0.0336 under that
+  date's retrieval protocol.
+- Increased candidate depth from 50 to 1,000. On the tuning fold,
+  clicked-item containment increased from 5.8% to 20.9%.
+- Replaced zero-vector index queries for featureless users with an
+  explicit training-popularity fallback.
 
-### Serving-path evaluation
+### Point-in-time evaluation
 
-- **Point-in-time state is now seeded correctly.** The isolated store
-  started empty, so most impressions were scored with an empty history —
-  the same zero-vector degeneracy as above. Recent-feature coverage
-  8.2% → 97.8%.
-- **New `retrieval_contained_a_click_rate` diagnostic** separates a
-  retrieval miss from a ranking miss, via an opt-in `capture_candidates`
-  parameter following the existing `stage_timings` idiom.
-- End to end on 2,000 impressions: retrieval-contained-a-click
-  0.2% → **12.2%**, hit rate@10 0.0005 → **0.0145**, MRR 0.000125 →
-  **0.0074**.
+- Seeded isolated state from each impression's own history instead of
+  starting almost every user empty.
+- Added `retrieval_contained_a_click_rate` to separate retrieval misses
+  from ranking misses.
+- Added chronological processing and per-impression isolated state to
+  prevent future events from changing an earlier recommendation.
+- Replaced selection rules that could not distinguish parameter values.
 
-### Streaming
+The historical 2,000-impression run changed from 0.2% to 12.2%
+clicked-item containment, from 0.0005 to 0.0145 hit rate@10, and from
+0.000125 to 0.0074 MRR. Later representative sampling replaced these
+figures; they are not current results.
 
-- **Atomic event claims provide bounded restart and redelivery
-  idempotency within the configured retention window.**
-  `claim_event` stores the resulting state inside a single atomic
-  `SET NX` claim, so a message redelivered after a crash between the
-  Redis write and the Kafka offset commit is repaired rather than
-  applied twice.
+### Streaming and API
 
-### Evaluation integrity
+- Added atomic Redis claims so restart redelivery can repair saved
+  state without applying an event twice.
+- Keyed replay events by user rather than item.
+- Removed raw user IDs from fallback logs.
+- Narrowed successful fallback to known dependency failures. Unexpected
+  ranking or feature errors now remain errors.
+- Preserved request correlation in response headers and error logs.
+- Standardized internal clock handling on UTC and stopped treating
+  unknown item age as zero.
 
-- **Both selection rules that could not discriminate were replaced.**
-  Each bounded the *benefit* along an axis that moves monotonically with
-  the parameter, so every candidate cleared the bar. The diversity rule
-  now bounds relevance cost and genuinely separates cap values
-  (85% → cap 2, 90% → cap 3, 95% → cap 5, 99% → none). The retrieval-depth
-  latency budget did not bind either, and is reported as a tradeoff
-  table rather than presented as having selected anything.
+### Reproducibility, security, and CI
 
-### Supply chain and CI
+- Regenerated the dependency lock after finding that `skops` was
+  missing.
+- Added locked-install, dependency-audit, container, and integration
+  checks to CI.
+- Added a non-root container user, a health check, an exec-form
+  entrypoint, and an explicit source-commit build argument.
+- Replaced a single-file model version with a full serving-artifact
+  manifest.
+- Added a 60% coverage floor.
 
-- **`requirements-lock.txt` is now hash-verified**, generated by
-  `pip-compile --generate-hashes`; CI installs it with
-  `--require-hashes`. Verified from a clean Python 3.11 environment.
-- **`pip-audit` runs as a blocking CI check** against those pinned
-  versions. It cannot run on the maintainer's machine (TLS interception
-  defeats its direct PyPI queries), so CI is where it genuinely runs.
-- **The containerized API is now tested in CI**, against synthetic
-  artifacts from `recommender.data.synthetic` so no licensed data is
-  needed: health check, non-root user, live `/recommend` with an
-  `X-Request-ID`, a clean 422 on a malformed request, and
-  `serving_version` in `/metrics`.
-- Added a DST-transition test for the UTC clock handling (POSIX-only;
-  skips on Windows, runs in CI).
+The first lock correction on this date was version-pinned but not yet
+hash-verified. Hash verification was added in the later August 24 work
+and clarified on August 25. This note resolves the apparent
+contradiction between the original same-day entries.
 
-## 2026-08-24 — Engineering hardening and evaluation-integrity improvements
-
-A maintainer-led engineering review across serving-path correctness,
-evaluation methodology, reproducibility, and privacy handling. Full
-detail: `docs/engineering-review-and-hardening.md`.
-
-- Replaced the explanation-faithfulness heuristic with a
-  closed-vocabulary allow-list; redesigned the evaluation script's own
-  check as an independent blacklist mechanism.
-- Rebuilt the tuning-fold decision checks to refit held-out models and
-  compare against real alternative values under a predefined rule.
-- Rewrote the serving-path end-to-end evaluation to be point-in-time
-  correct: chronological processing, per-impression isolated state,
-  no future leakage into an earlier recommendation.
-- Regenerated `requirements-lock.txt` (it was missing `skops`) and
-  added a CI job that installs from it exactly.
-- Fixed a raw-user-id logging leak on the fallback path.
-- Moved internal clock handling to UTC throughout; unknown item age is
-  no longer treated as zero (artificially fresh).
-- Narrowed `safe_recommend`'s exception handling to a dedicated
-  dependency-failure type, so a real programming bug can no longer be
-  silently reported as a successful fallback.
-- Preserved the request-ID header and a correlated error log line on
-  unhandled exceptions.
-- Fixed Kafka replay event keying (per-user, not per-item) and
-  disclosed the real at-least-once restart-duplication window with a
-  demonstrating test.
-- Replaced single-artifact model-version fingerprinting with a full
-  serving-artifact manifest; added explicit `GIT_COMMIT_SHA`
-  propagation for containers.
-- Corrected README and CI-related documentation to state exactly what
-  CI runs versus what remains a local, maintainer-verified check;
-  added a container health check, non-root user, and exec-form
-  entrypoint.
-- Removed audit-history narration from source comments in favor of
-  stating the current invariant directly; softened overclaimed result
-  language across several docs.
-- Added a CI coverage floor (`--cov-fail-under=60`).
-
-See `docs/engineering-review-and-hardening.md` for verification
-commands actually run and real, disclosed limitations (notably that
-`requirements-lock.txt` is not hash-verified).
-
-### Follow-up: diagnosing the zero serving-path metrics
-
-- Fixed a real evaluation bug: the isolated state store started empty,
-  so most impressions were scored with an empty click history, which
-  produces a zero-norm two-tower vector and therefore an identical,
-  arbitrary candidate list for every such user. Seeding from each
-  impression's own point-in-time `history` field raised recent-feature
-  coverage from 8.2% to 97.8% and roughly quadrupled catalog coverage.
-- Fixed the same zero-vector condition on the live serving path:
-  cold-start retrieval now draws candidates from training-set
-  popularity instead of querying an inner-product index with a vector
-  that scores every item identically.
-- Added a `retrieval_contained_a_click_rate` diagnostic separating a
-  retrieval miss from a ranking miss. It shows the clicked item reaches
-  the ranker in only 0.2% of impressions, identifying candidate
-  generation as the ceiling.
-- Added a blocking `pip-audit` check to the `locked-install-test` CI
-  job, closing a check that cannot run on the maintainer's machine due
-  to local TLS interception.
+See the [engineering review method](docs/engineering-review-and-hardening.md)
+and [review register](docs/engineering-review-register.md) for
+verification evidence and remaining limits.

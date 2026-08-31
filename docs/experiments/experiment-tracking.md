@@ -1,62 +1,66 @@
-# Experiment Tracking
+# Experiment tracking
 
-Every evaluation result across this project, so far, has lived in its
-own report JSON with its own shape — numbers, but scattered, with
-no way to compare two runs without opening both files by hand.
-Implementation: `src/recommender/tracking/experiment_log.py`,
-backfilled by `src/recommender/tracking/backfill.py`.
+Machine-readable reports keep complete evidence for one evaluation.
+The experiment log puts selected parameters and metrics from many runs
+into one comparable table.
 
-## MLflow was evaluated, and rejected, with evidence
+Implementation:
 
-This project's own complexity-boundary policy is to introduce a tracking
-tool only if it actually reduces manual tracking. A dry-run install
-(`pip install mlflow --dry-run`) against this project's real
-environment showed the cost: it would downgrade the pinned
-`pandas` from 3.0.5 to 2.3.3, and pull in roughly 60 additional
-packages — Flask, aiohttp, matplotlib, OpenTelemetry, a full web
-server stack — for a solo project with about a dozen real experiments
-total and no team collaboration surface to justify a tracking UI.
-That's a measured cost, not a guess, and it doesn't clear this
-project's own complexity-boundary policy: no tool without a measured
-requirement. (Two `.gitignore` entries anticipating MLflow, `mlruns/`
-and `mlflow.db`, left over from the project's original stack outline,
-were removed as part of this decision — dead configuration
-for a tool this project isn't using.)
+- `src/recommender/tracking/experiment_log.py`
+- `src/recommender/tracking/backfill.py`
 
-## What was built instead
+## Why the project does not use MLflow
 
-A single append-only JSONL log. `log_run(run_name, params, metrics,
-notes)` appends one record — including the exact git commit the project
-was at when the run was recorded, real reproducibility identity at
-essentially no dependency cost. `load_runs()` reads every record back
-into one flat, queryable table, one row per run, every metric and
-parameter as its own column. That table is the actual payoff a tracking
-tool is supposed to provide: comparing runs side by side became one
-function call instead of opening N separate files.
+A dry-run MLflow installation would:
 
-## Backfilled with real historical results, measured, not estimated ones
+- downgrade pandas from 3.0.5 to 2.3.3; and
+- add about 60 packages, including a web server and telemetry stack.
 
-`backfill.py` reads the real, already-computed report files from all
-the preceding work — the three baselines, the retrieval
-evaluation, the ranking comparison, the reranking result —
-and logs each as a structured run. Two pairs of runs share a
-near-identical name in the source data but measure genuinely different
-things, and are kept explicitly distinct here rather than collapsed:
+The project has one maintainer, a small experiment set, and no need for
+a shared tracking service. That dependency cost is not justified.
+Unused `mlruns/` and `mlflow.db` ignore rules were removed.
 
-- `retrieval_full_catalog_n100` (`docs/experiments/retrieval-evaluation.md`) — the
-  two-tower model alone, searching the whole ~51,000-item catalog.
-  Weak: 0.44% hit rate.
-- `retrieval_score_as_sort_key_k10` (`docs/experiments/ranking-evaluation.md`) —
-  the same model's raw
-  score, used only to sort MIND's own small, already-narrowed candidate
- pool. A much easier task, and a much higher number (66.9% hit rate)
-  — the exact asymmetry documented in `docs/operations/inference-path.md`.
+## JSONL log
 
-As a real cross-check, `ranking_model_k10` and
-`reranking_ranked_only_k10` — logged from two entirely separate report
-files, produced by two separate evaluation scripts run at different
-times — came back with identical metrics (68.3% hit rate, 0.367 NDCG),
-since the second is defined as the ranking model's own output before
-reranking is applied. Two independently-produced files agreeing exactly
-is a small, genuine confirmation that both pipelines are measuring the
-same thing correctly.
+`log_run(run_name, params, metrics, notes)` appends one JSON record with:
+
+- run name;
+- parameters;
+- metrics;
+- notes; and
+- Git commit.
+
+`load_runs()` returns a flat table with one row per run and one column
+per parameter or metric.
+
+The JSONL file is an index for comparison. The validated files under
+`reports/` remain the authoritative publication records.
+
+## Backfilled runs
+
+`backfill.py` reads existing report JSON rather than copying values by
+hand.
+
+Two similarly named entries remain separate because they measure
+different tasks:
+
+| Run | Candidate pool | Hit rate |
+|---|---|---:|
+| `retrieval_full_catalog_n100` | Full 51,282-item catalog, N=100 | 3.36% |
+| `retrieval_score_as_sort_key_k10` | MIND's supplied candidates, K=10 | 66.89% |
+
+The large difference is expected. In the second run, the clicked item is
+usually already present in a small candidate list.
+
+## Cross-check
+
+`ranking_model_k10` and `reranking_ranked_only_k10` come from separate
+reports and evaluation commands. Both record about 68.3% hit rate and
+0.3671 NDCG because the latter is defined as the ranker's slate before
+reranking.
+
+That agreement checks that both publication paths refer to the same
+candidate-list output.
+
+See [evaluation index](../evaluation.md) and
+[full-catalog retrieval](retrieval-evaluation.md).

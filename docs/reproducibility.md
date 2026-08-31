@@ -1,120 +1,92 @@
-# Clean-environment installation and serving verification
+# Reproduce the environment
 
-The README's "Getting started" instructions are a claim until someone
-starts from nothing and checks them. This document records a
-maintainer-run check from a second `git clone` into an empty directory:
-a new virtual environment, a dependency install, the full test suite,
-and the containerized service — not a re-run inside the already-working
-development copy. It was not performed by an independent third party.
+This page records a maintainer-run check from a new clone in an empty
+directory. The check used a new virtual environment, installed all
+dependencies, ran the full test suite, and started the containerized
+service. It was not an independent third-party review.
 
-## Scope: what this does and does not establish
+## What the check proves
 
-| Aspect | Verified here? |
-|---|---|
-| **Environment reproducibility** — a clean clone installs and its tests pass | Yes |
-| **Artifact portability** — previously generated artifacts load and serve in a fresh clone | Yes |
-| **Experiment reproducibility** — training and evaluation rebuilt from the licensed download | No |
+| Claim | Verified? | Meaning |
+|---|---|---|
+| A clean clone installs and passes its tests | Yes | No existing project environment was reused |
+| Existing artifacts load and serve from a clean clone | Yes | The trained files are portable |
+| Published experiment results can be rebuilt from the licensed data | No | Training and evaluation were not rerun |
 
-The offline artifacts were copied into the clean clone rather than
-regenerated, so nothing here re-derives any published metric. Licensed
-data was never copied and never redistributed.
+The check copied existing offline artifacts into the new clone. It did
+not reproduce any published metric, and it did not copy or redistribute
+the licensed MIND dataset.
 
-## What was done
+## Clean-clone check
 
-1. `git clone` the public repository into a directory that had never
-   held any part of this project before.
-2. A brand-new Python virtual environment, dependencies installed with
-   `pip install -e ".[dev]"` and no prior pip cache assumptions beyond
-   the standard package index.
-3. `pytest -q` and `ruff check .` — both run before anything else
-   touched the real dataset.
-4. The already-produced offline artifacts (trained model, Faiss
-   indexes, splits, reports — never the raw licensed dataset itself)
-   copied into the fresh clone's `data/` directory, then
-   `docker compose up -d --build` from that same fresh clone.
-5. Live requests against the freshly built container:
-   `GET /ready` and `GET /demo/{user_id}`.
+The maintainer:
 
-## A reproducibility defect this check found
+1. Cloned the public repository into an empty directory.
+2. Created a new Python 3.11 virtual environment.
+3. Installed the project with `pip install -e ".[dev]"`.
+4. Ran the tests and lint check shown below.
+5. Copied only existing derived artifacts into `data/`.
+6. Started the services with `docker compose up -d --build`.
+7. Called `GET /ready` and `GET /demo/{user_id}`.
 
-The virtual-environment creation failed outright:
-`ERROR: Package 'recommender' requires a different Python: 3.14.2 not
-in '<3.12,>=3.11'`. The README's "Getting started" section said
-`python -m venv .venv` with no mention of which Python version that
-command needs to resolve to — on this machine, plain `python` resolves
-to 3.14, not the pinned 3.11 the project requires (chosen
-originally because PyTorch, Faiss, and this project's other heavier
-dependencies typically lag behind the newest CPython release). This
-was a real, silent assumption baked into every earlier setup in this
-project (the working development environment already had a 3.11 venv
-from the research contract, so the gap was never surfaced until a genuinely fresh
-environment was checked). Fixed by adding the explicit version
-requirement to the README's quickstart.
+Use these commands to check the code without the licensed dataset:
 
-## Results: the suite passes with no licensed data
-
-The full suite runs from a clean clone with no `data/` directory
-present, which is what a public clone actually receives. Verified in a
-`python:3.11-slim` container installing only from the hash-verified
-lock.
-
-Exact counts are deliberately not written into prose here -- they go
-stale on the next commit and then quietly misreport. The authoritative
-figures are the CI run itself (the badge in `README.md`) and the
-machine-readable reports under `reports/`.
-
-```
+```bash
 pytest -q
 pytest -q --cov=recommender --cov-report=term-missing --cov-fail-under=60
 ruff check .
 ```
 
-Three tests previously required the licensed dataset, which contradicted
-this claim. They now use temporary synthetic artifacts and injected
-catalog data instead.
+The suite passes when `data/` is absent. Tests that once needed MIND now
+use temporary synthetic artifacts and an injected catalog. Exact test
+counts are omitted because they change as the suite grows. The CI badge
+in the [README](../README.md) and the files under `reports/` are the
+current records.
 
-Every dependency `pyproject.toml` declares was sufficient on its own —
-nothing "worked" only because it happened to already be present from
-an earlier install. No file under `data/raw/` or any real MIND content
-was needed for this to pass, confirming the CI-mirroring claim in
-`docs/operations/ci-automation.md` holds for a genuinely fresh environment too,
-not only inside GitHub's own runners.
+## Python version requirement
 
-## Results: the containerized services, from the fresh clone
+The first clean-clone attempt exposed a real setup problem. The plain
+`python` command on the test machine selected Python 3.14, while this
+project requires Python 3.11:
 
-The original repository's running containers were stopped first (to
-free the fixed host ports and container names both copies use), then
-`docker compose up -d --build` was run directly from the fresh clone.
-Results: `recommender-kafka`, `recommender-redis`, and
-`recommender-api` all reported healthy; `GET /ready` returned
-`{"ready": true, ...}`; `GET /demo/U73700` returned the same real
-ranked slate and explanations as the original build (per-stage latency
-within normal machine-timing variance of the numbers already recorded
-in `docs/demonstration-guide.md`). The original repository's
-own containers were rebuilt and restored afterward.
+```text
+ERROR: Package 'recommender' requires a different Python: 3.14.2 not in '<3.12,>=3.11'
+```
 
-## Exact dependency versions (requirements-lock.txt)
+The README now names Python 3.11 explicitly. This version is required
+because packages such as PyTorch and Faiss may not support the newest
+CPython release immediately.
 
-`pyproject.toml` declares only lower bounds (`pandas>=2.2`, and so on)
-with no upper bound, so a fresh install can silently resolve to a newer,
-untested version of any dependency — the exact-version story above is
-about *this project's own code*, not about pinning what it depends on.
+## Container result
 
-There are two lock files, and the split is deliberate.
-`requirements-lock.txt` holds runtime dependencies only — the exact set
-the container installs. `requirements-dev-lock.txt` is a strict superset
-adding the test and audit toolchain, and is what CI and local
-development use.
+The existing project containers were stopped to release their fixed
+ports and names. The clean clone then started:
 
-A single combined lock previously put `pytest`, `bandit`, `pip-audit`,
-`ruff` and `pip-tools` into the production image: roughly thirty
-packages that never execute in serving, are present to be exploited if
-any of them carries a vulnerability, and are re-downloaded on every
-image build.
+- `recommender-kafka`;
+- `recommender-redis`; and
+- `recommender-api`.
 
-Both are generated from `pyproject.toml` and must be regenerated
-together — a dependency added to one and not the other is exactly what
-the `locked-install-test` CI job exists to catch:
+All three reported healthy. `GET /ready` returned
+`{"ready": true, ...}`. `GET /demo/U73700` returned the same ranked
+slate and explanations as the original build, with normal machine-level
+latency variation. The original containers were rebuilt and restored
+afterward.
+
+## Choose the correct dependency lock
+
+The project has two lock files:
+
+| File | Use |
+|---|---|
+| `requirements-lock.txt` | Runtime packages installed in the production container |
+| `requirements-dev-lock.txt` | Runtime packages plus tests, linting, and audit tools |
+
+Keeping them separate avoids installing `pytest`, `bandit`,
+`pip-audit`, `ruff`, and `pip-tools` in the production image.
+`pyproject.toml` declares flexible lower bounds, while the lock files
+record exact packages for repeatable installation.
+
+Regenerate both lock files after any deliberate dependency change:
 
 ```bash
 pip-compile --generate-hashes --allow-unsafe \
@@ -128,30 +100,21 @@ pip-compile --generate-hashes --allow-unsafe --extra dev \
   --output-file requirements-dev-lock.txt pyproject.toml
 ```
 
-The PyTorch index is not optional. Without it the resolver takes
-`torch` from PyPI, whose wheel bundles the entire CUDA toolchain —
-several gigabytes of GPU libraries this CPU-only service never loads.
+The extra PyTorch index is required. Without it, the resolver may select
+a PyPI wheel that includes several gigabytes of unused CUDA libraries.
 
-**Every pin carries the SHA-256 of each artifact pip is permitted to
-install.** Installing with `--require-hashes` therefore fails outright
-if a package published under one of these versions is not byte-for-byte
-what was resolved here. That is a stronger guarantee than version
-pinning alone: a plain `pip freeze` lock pins *which* version to fetch
-but cannot detect that the artifact behind that version changed.
+Every pinned package includes allowed SHA-256 hashes. Installation with
+`--require-hashes` stops if a downloaded artifact does not match. This
+checks both the version and the file contents; `pip freeze` checks only
+the version.
 
-Two problems this file has caught, both worth recording rather than
-quietly fixing:
+The locked installation previously found two defects:
 
-- An earlier version omitted `skops` entirely — added to
-  `pyproject.toml`'s runtime dependencies but never re-frozen — which
-  broke a from-scratch install with test-collection errors. The flexible
-  install path could never have caught it, since it always resolves
-  *some* working set on its own.
-- An earlier fresh-environment check silently used Python 3.14 rather
-  than the required 3.11, and so verified nothing meaningful. The
-  verification below now pins the interpreter explicitly.
+- `skops` was declared in `pyproject.toml` but missing from the old
+  lock; and
+- an earlier check used Python 3.14 instead of Python 3.11.
 
-Verified from a genuinely clean Python 3.11 virtual environment:
+Verify the development lock in a clean Python 3.11 environment:
 
 ```bash
 pip install --require-hashes -r requirements-dev-lock.txt
@@ -159,10 +122,8 @@ pip install --no-deps -e .
 pytest -q
 ```
 
-The runtime lock is verified separately, in its own virtualenv, by
-importing the serving application from it — an install with no test
-toolchain present cannot run `pytest`, and the property being checked is
-that the serving path needs nothing the runtime lock lacks:
+Verify the smaller runtime lock in a separate environment by importing
+the serving application:
 
 ```bash
 python -m venv /tmp/runtime-env
@@ -171,26 +132,18 @@ python -m venv /tmp/runtime-env
 /tmp/runtime-env/bin/python -c "import recommender.serving.app"
 ```
 
-All pinned packages installed cleanly under hash verification and the
-full suite passed. `pyproject.toml`'s loose lower bounds remain the
-default install path; this file is the exact-reproduction option, not a
-replacement. CI runs both, and additionally audits the locked set with
-`pip-audit` — see `.github/workflows/ci.yml` and
-`docs/operations/ci-automation.md`.
+Both locked installations completed successfully, and the full suite
+passed. CI also checks both installation paths and scans the locked set
+with `pip-audit`. See the
+[CI automation guide](operations/ci-automation.md).
 
-To regenerate after a deliberate dependency change, re-run **both**
-`pip-compile` commands above; do not hand-edit either file, since the
-hashes must match artifacts that actually exist.
+Do not edit lock files by hand. Their hashes must match real published
+artifacts.
 
-## The one honest limitation this doesn't remove
+## Remaining limit
 
-The licensed MIND dataset itself was not re-downloaded for this
-check — the already-produced, already-verified offline artifacts were
-reused directly, matching the project's own no-redistribution policy
-(`docs/data-card.md`). A genuinely first-time user still needs to
-obtain the dataset following `docs/dataset-source.md` -- the official
-MIND site is the authoritative source; this project downloaded from
-the verified Hugging Face mirror documented there -- and run the
-offline pipeline themselves before the live services will
-serve real personalized recommendations; the test suite alone requires
-nothing beyond a clean clone.
+This check did not download MIND or rebuild the offline artifacts. A new
+user must obtain MIND by following the
+[dataset source and license guide](dataset-source.md), then run the
+offline pipeline before the service can return real personalized
+recommendations. The test suite itself needs only a clean clone.

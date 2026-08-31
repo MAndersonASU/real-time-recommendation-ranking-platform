@@ -1,59 +1,61 @@
-# A Compact Dashboard
+# Service dashboard
 
-One real HTML page, `GET /dashboard`, showing the handful of numbers
-that actually reveal whether this system is healthy and whether
-recommendation behavior is drifting — not all fifteen-plus metrics
-`/metrics` exposes, dumped without curation.
-Implementation: `src/recommender/monitoring/dashboard.py`.
+`GET /dashboard` renders a small HTML summary from the same in-process
+Prometheus objects exposed at `GET /metrics`. It does not maintain a
+second metric store.
 
-## Eleven numbers, not fifty
+Implementation:
+`src/recommender/monitoring/dashboard.py`.
 
-Recommend attempts, error rate, mean latency, fallback rate,
-empty-response rate, durable/recent cache hit rates, mean score, mean
-diversity, catalog coverage, and top-10 concentration — read live,
-directly from the same in-process Prometheus objects `/metrics` already
-exposes, not a second, separately-computed store.
+## Displayed values
 
-"Recommend attempts" (labeled "Total requests" until HTTP-METRICS-SCOPE-66)
-is scoped to valid `/recommend` attempts that reached the handler --
-every row on this page is about recommendation behavior, not raw HTTP
-traffic, so that scope matches the rest of the page. It is not the
-total request count for this service: a malformed request FastAPI
-rejects with a 422 before the handler runs, or a middleware-level 500,
-is real traffic this row never counted, because `recommend_requests_total`
-(what it reads) never saw it either. The true, all-routes total --
-every response this service sends, by route template, method and
-status class -- is `http_requests_total`, at `/metrics` only; it isn't
-curated onto this page because it's an operations signal, not a
-recommendation-behavior one.
+The page shows 11 indicators:
 
-## An honest substitute for real percentiles
+| Area | Indicators |
+|---|---|
+| Traffic | Recommendation attempts, error rate |
+| Performance | Mean latency |
+| Response behavior | Fallback rate, empty-response rate |
+| Features | Durable and recent cache hit rates |
+| Model output | Mean score, mean diversity, catalog coverage, top-10 concentration |
 
-A real p95/p99 needs a query engine evaluating many scrape intervals —
-what a real Prometheus server plus PromQL's `histogram_quantile()`
-does. This page has no server sitting in front of it scraping over
-time; it can only read its own histogram's running sum and count right
-now. Reporting a fabricated percentile from a single process's
-snapshot would be a number that means something different from
-what a p95 normally promises. Mean latency is the honest, simpler
-number this page can compute — the full histogram, for real
-percentile queries, is still there at `/metrics`.
+“Recommendation attempts” means valid `/recommend` requests that reached
+the handler. It is not the count of every HTTP request. Use
+`http_requests_total` at `/metrics` for all routes, validation failures,
+and unmatched paths.
 
-## Zero is not the same as no data yet, twice over
+## Why the page shows mean latency
 
-Two bugs of the same shape were caught before this page ever
-served a request: `Histogram` has no direct observation-count
-attribute (only `_sum` and per-bucket values), so computing mean
-latency from a wrong count would have quietly divided by the wrong
-number. And the four Gauge-backed quality signals have no "unset"
-state distinct from a real `0.0` — shown only once at least one real
-request has actually been recorded, rather than trusting a bare zero
-to mean "no data," which is exactly the mistake `docs/operations/ml-quality-signals.md` already caught once for `catalog_coverage` alone.
+The process can read its histogram's accumulated sum and observation
+count, so it can calculate a running mean.
 
-## Verified against the real running container
+Reliable percentiles require Prometheus to scrape the histogram and
+evaluate its buckets over a time window. The dashboard does not invent
+a p95 or p99 from one in-process snapshot. Query
+`recommend_request_latency_seconds` in Prometheus when percentiles are
+needed.
 
-Before any request: total requests read `0`, and every other row
-correctly showed no data at all. After three real requests: every
-number came back real and non-degenerate — 10.9ms mean latency, 66.7%
-durable cache hit rate, 2.33 mean diversity, 93.3% top-10
-concentration (expected to run high at this small a sample size).
+## Missing data
+
+Before recommendation traffic arrives, calculated rates and quality
+values appear as an em dash. This distinguishes “not measured yet” from
+a real zero.
+
+Prometheus gauges themselves begin at zero, so the renderer uses
+request activity to decide when the quality section can be displayed.
+
+## Example verification
+
+One container-backed check produced these values after three requests:
+
+- 10.9 ms mean latency;
+- 66.7% durable-feature hit rate;
+- 2.33 mean category diversity; and
+- 93.3% top-10 concentration.
+
+The high concentration is expected for such a small sample. These
+figures demonstrate the page with live data; they are not thresholds or
+service targets.
+
+See [operational metrics](operational-metrics.md) and
+[ML quality signals](ml-quality-signals.md).

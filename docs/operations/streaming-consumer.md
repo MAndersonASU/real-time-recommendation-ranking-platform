@@ -1,148 +1,121 @@
-# Streaming Consumer
+# Consume interaction events
 
-Turns raw Kafka messages into recent per-user state and global monitoring
-counters: validate, deduplicate, transform. Implementation:
-`src/recommender/streaming/consumer.py`.
+The consumer validates Kafka messages, prevents duplicate updates, and
+maintains recent user state. The main implementation is
+`src/recommender/streaming/consumer.py`. Redis synchronization is in
+`src/recommender/features/live_sync.py`.
 
-## Three separate jobs, in order
+## Message handling
 
-- **Validate** — every message off the broker is just bytes, with no
-  guarantee it parses as JSON or matches the current schema. Anything
-  that fails to parse or carries the wrong `schema_version` is counted as
-  rejected and discarded, never raised — one bad message must never take
-  the whole pipeline down.
-- **Deduplicate** — Kafka's own delivery guarantees mean a message can
-  legitimately arrive more than once (a producer retry, a consumer that
-  committed late). The event schema's `event_id` (`docs/operations/event-schema.md`)
-  exists specifically for this: a set of every event id already processed
-  means a redelivered message updates state exactly zero additional times.
-- **Transform** — what survives both checks updates per-user recent state
-  (a bounded rolling window of the last 20 clicked items, plus running
-  impression/click counts — the same fixed-history idea already used
-  offline for the two-tower model's user tower, `docs/experiments/retrieval-model.md`,
-  now built live from a stream instead of a pre-collected string) and
-  global monitoring counters (event counts by type, rejection counts,
-  duplicate counts, distinct users/items seen).
+For each message, the consumer:
 
-State lives entirely in one Python process's memory, deliberately. A
-durable, low-latency external store is a separate, later, explicitly
-named component of its own; building it here would blur which operation is
-responsible for what, and validating this consumer's own logic doesn't
-need it.
+1. Parses the JSON and validates the event contract.
+2. Rejects an unsupported schema version.
+3. Skips an event ID already seen within the active deduplication
+   window.
+4. Updates user state and monitoring counters.
+5. Commits the Kafka offset.
 
-Offsets are committed only after `process()` actually runs on a message,
-not the instant it's polled — so a crash between poll and commit leaves
-the offset unmoved, and a restarted consumer picks the same message back
-up rather than silently skipping it. This is what makes the recovery
-testing that follows this check meaningful.
+A malformed message is counted and discarded. It does not stop the
+consumer.
 
-## Restart idempotency: bounded, not absolute
+User state contains:
 
-This section describes `SyncingStreamConsumer`
-(`recommender.features.live_sync`, `docs/experiments/live-feature-sync.md`),
-the Redis-backed subclass built on top of the in-memory `StreamConsumer`
-documented above — not the base class itself, which has no restart
-guarantee of its own beyond Kafka's offset commit ordering.
+- the 20 most recent clicked article IDs;
+- impressions seen;
+- clicks seen; and
+- the last event time.
 
-The Redis state mutation and the Kafka offset commit are two separate
-operations. A crash between them redelivers the message after restart,
-and the in-process dedup set (`_seen_event_ids`) does not survive a
-restart either, since a new process starts it empty. That combination
-once counted the same real click twice.
+`StreamConsumer` keeps this state only in memory and is intended for
+finite verification runs. `SyncingStreamConsumer` writes through to
+Redis and uses its in-memory state as a disposable cache.
 
-Neither ordering of the two writes fixes it on its own. Marking the
-event processed first can lose its effect entirely if the crash lands
-before the state write; writing state first can apply the event twice.
-An earlier fix stored the resulting state *inside* the claim key itself
-and, on an already-claimed event, restored that stored state — which
-rolled the user back to whatever they looked like the moment the
-original event was applied, discarding every event processed since.
+## Memory limits
 
-`claim_and_apply_event` (`recommender.features.state_store`) closes it
-with one atomic Lua script that loads current state itself, rather than
-trusting a caller-computed value:
+The base consumer limits several in-process collections:
 
-1. Check the claim key. If it already exists, the event is a duplicate:
-   return the state key's **current** contents, not whatever was stored
-   with the original event.
-2. Otherwise, load the state key (or start from empty state for a new
-   user), apply this event's own delta to it, and write both the claim
-   key and the updated state key — all inside the one atomic script.
+| Collection | Limit | Eviction |
+|---|---:|---|
+| Seen event IDs | 100,000 | Oldest insertion |
+| Distinct users | 100,000 | Oldest insertion |
+| Distinct articles | 100,000 | Oldest insertion |
+| Cached user states | 100,000 | Least recently used |
+| Click history per user | 20 | Oldest click |
 
-Because the script derives state from whatever is current *inside*
-itself rather than from a value the caller already computed, there is
-no stale local basis a concurrent writer could race against. A crash
-between polling the message and committing its offset is therefore
-self-healing: the redelivery replays the same event against the atomic
-script, which recognises the claim and returns the current state
-unchanged. Nothing is applied twice and nothing is lost.
+These limits change how the counters should be read. Distinct-user and
+distinct-article values cover the retained window, not the entire life
+of a long-running process. The base consumer can also forget an evicted
+user's state. The Redis-backed consumer reloads that state when the user
+appears again.
 
-The claim carries a TTL rather than accumulating forever, so the
-processed-event set stays bounded on its own. That TTL is the real,
-remaining bound on the guarantee: a redelivery arriving after it expires
-would be treated as new. It is set to a day, far longer than any
-realistic restart-and-redelivery window.
+## Offset commits
 
-### The bound, stated plainly
+Automatic commits are disabled. `run_consumer()` commits synchronously
+after processing each message.
 
-Atomic event claims provide **bounded** restart and redelivery
-idempotency within the configured retention window. Two limits define
-that bound, and neither is hidden:
+If a commit fails, the consumer tries three times with bounded backoff.
+It then stops instead of processing later messages. Kafka commits are
+cumulative, so a later successful commit could otherwise hide the
+earlier failure.
 
-- **The claim expires after 24 hours.** A redelivery arriving later than
-  that is treated as new. The window has to exceed the Kafka retention
-  and any realistic restart gap to be meaningful; at a day it comfortably
-  does for this project's replay-driven workload, but it is a
-  configuration value, not a proof.
-- **It protects the recent-feature state, not arbitrary side effects.**
-  What the claim makes idempotent is the Redis state write. Anything
-  else a future consumer might do on an event would need its own
-  treatment.
+A new consumer group may return an empty first poll while Kafka assigns
+partitions. The loop allows up to five empty polls before the first
+message. After consumption has started, an empty poll ends the finite
+verification run.
 
-Replay events carry ids derived from their own immutable fields
-(`stable_event_id`), so re-running the same historical replay is
-idempotent too -- previously those ids were random, and a second replay
-of the same day looked like entirely new traffic that no duplicate
-detection could recognise.
+## Restart-safe Redis updates
 
-`tests/test_live_sync.py` covers both halves — that a redelivery does
-not double-count, and that the consumer's in-process state is left
-correct afterwards so the next genuine event applies on top of the right
-value.
+Redis state mutation and Kafka offset commit are separate operations. A
+crash after the Redis write but before the commit causes Kafka to send
+the event again.
 
-## A bug, found by testing against a live broker, not assumed away
+`claim_and_apply_event()` handles that case with one atomic Lua
+operation:
 
-The first verification run against the real broker reported zero messages
-processed even though 4,000 were waiting. Traced directly: the *first*
-`poll()` call on a fresh consumer group can return `None` simply because
-group/partition assignment hasn't finished yet, not because the topic is
-empty — confirmed by polling the same topic by hand and watching the
-first call return `None` while every subsequent call succeeded. The
-original loop treated any `None` as end-of-stream and broke immediately,
-silently skipping the entire backlog. Fixed by only treating `None` as
-genuine end-of-stream once at least one real message has already been
-received; before that, a bounded number of empty polls are tolerated as
-ordinary rebalance warm-up.
+1. Check the event's processed-claim key.
+2. If it is new, load the current user state inside Redis, apply the
+   event, save the state, and create the claim.
+3. If it is already claimed, leave the user unchanged and return the
+   current state.
 
-## Results
+Loading and changing state inside the same operation prevents two
+consumers from overwriting each other's updates.
 
-Consuming the 4,000 events the replay producer published
-(`docs/operations/replay-producer.md`), fresh consumer group, from the beginning:
+An earlier fix stored the resulting state inside the event claim. On a
+duplicate, that design restored the old snapshot and discarded newer
+events for the same user. The current operation returns the current
+state instead. In other words, a duplicate returns the current state,
+not the state recorded when that event first arrived.
 
-| | |
-|---|---|
+Both the processed claim and recent state expire after 24 hours by
+default. The idempotency guarantee is therefore bounded: a delivery
+after the claim expires is treated as new. The guarantee covers the
+Redis feature update, not unrelated side effects that might be added in
+the future.
+
+Replay IDs are deterministic, so running the same historical replay
+again is also recognized within that retention window.
+
+## Verified run
+
+One broker-backed check consumed the 4,000 events described in the
+[replay producer](replay-producer.md):
+
+| Result | Value |
+|---|---:|
 | Messages polled | 4,000 |
-| Messages processed | 4,000 |
+| Newly processed | 4,000 |
 | Impressions | 2,000 |
 | Clicks | 87 |
 | Skips | 1,913 |
-| Malformed rejected | 0 |
-| Duplicates skipped | 0 |
-| Distinct users | 50 |
-| Distinct items | 441 |
+| Malformed messages | 0 |
+| Duplicates | 0 |
+| Retained distinct users | 50 |
+| Retained distinct articles | 441 |
 
-Exact match to the replay producer's own production counts — nothing
-lost, nothing duplicated, on a genuine round trip through a genuine
-broker. Verified with 8 unit tests (`tests/test_consumer.py`) covering
-validation, schema-version rejection, duplicate suppression, the bounded
-recent-items window, and independent per-user state.
+These are results from that verification run, not fixed runtime
+targets.
+
+See [event contract](event-schema.md),
+[state store](state-store.md), and
+[recovery testing](recovery-testing.md).

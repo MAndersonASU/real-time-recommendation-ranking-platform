@@ -1,86 +1,60 @@
 # Engineering review
 
-Current status of the maintainer-led review of this repository. This was
-not an independent audit; no third party verified these findings.
+This page summarizes the repository's maintainer-led engineering review.
+It was not an independent audit, and no third party verified the
+findings.
 
-## Where it stands
+## Current status
 
 Of **35 primary findings**: 32 verified closed, 1 partially closed by an
-explicit scope decision, 2 accepted limitations, 0 open. This grew from
-the 23 primary findings the original review raised, through two further
-verification rounds (`docs/engineering-review-register.md`'s "Follow-up
-findings" sections) that raised eleven more and then one more, and
-reopened several of the original 23 before closing them again -- this
-is the register's own current tally, not the original review's, and
-`docs/engineering-review-register.md`'s "Current aggregate status"
-section is the authoritative source it is generated from.
+explicit scope decision, 2 accepted limitations, 0 open.
 
-| Item | Status |
-|---|---|
-| STREAM-COMMIT-04 — commit-failure behaviour against a live broker | partially closed by scope |
-| DOC-RERANK-CONTRADICTION-24 | verified by review cross-check at `80fbf52` |
-| DOC-RETRIEVAL-SUPERSEDED-25 | verified by review cross-check at `80fbf52` |
-| DOC-UNTOUCHED-TERM-26 | verified by review cross-check at `80fbf52` |
+The [review register](engineering-review-register.md) is authoritative.
+It lists every finding, its evidence, its final status, and the commit
+that addressed it.
 
-A documentation review on 2026-08-26 reopened the three findings above,
-which had been marked closed on incomplete evidence, and raised further
-findings covering stale metric tables, stale architecture and
-serving-contract text, an unrenamed explanation metric, and overstated
-reproducibility and CI claims. A subsequent maintainer-led review,
-read-only against the merged state, verified all three -- not an
-independent or third-party check.
-
-That same review found eleven further review findings, from false
-sampling-provenance claims in the explanation and latency reports through
-construction-era vocabulary in source code the documentation guards
-never reached. All eleven are verified closed, each against a fix
-commit recorded in `docs/engineering-review-register.md`, including two
-evaluations rerun from a clean commit under corrected sampling and
-republished rather than reworded around unchanged numbers.
+The original review contained 23 findings. Later verification added 12
+more and reopened several earlier findings whose evidence was
+incomplete. The reopened documentation findings and all later findings
+are now verified closed.
 
 ## Evidence status
 
-The thirteen headline evaluation result families listed in
-`docs/evaluation.md` now each have a committed, provenance-valid
-machine-readable report. No report was backfilled with inferred or
-false provenance. Other historical and operational measurements
-throughout the documentation are real but are not part of this
-thirteen-report contract; each states its own verification scope in the
-document it appears in.
+Each headline result family in the
+[evaluation index](evaluation.md) has a committed machine-readable
+report with valid provenance. Historical and operational measurements
+outside that contract state their own verification limits.
 
-Publishing the last of them changed a result. The serving-latency
-measurement, re-run against the current artifact bundle, contradicts the
-table recorded on 2026-08-21: candidate retrieval is now the dominant
-stage, not reranking. The pipeline changed underneath that table, and
-`docs/experiments/serving-latency.md` records both measurements and the
-reason they differ.
+One rerun changed a published conclusion: candidate retrieval is now
+the largest service operation, rather than reranking. The
+[serving latency report](experiments/serving-latency.md) keeps both
+measurements and explains why they differ.
 
-Every review finding raised through this pass is now closed.
-STREAM-COMMIT-04 remains partially closed by an explicit scope decision,
-and the accepted limitations listed in the register are not counted as
-closed either -- neither is a documentation gap still being chased, both
-are permanent, disclosed properties of this project's scope.
+`STREAM-COMMIT-04` remains partially closed because live-broker
+commit-failure testing is outside the current scope. The two accepted
+limitations are disclosed properties of the project, not unresolved
+documentation work.
 
 ## Why reports are not backfilled
 
 `recommender.evaluation.reports.validate` refuses a report produced from
-a dirty working tree, because the commit it records would not describe
-the code that produced the numbers. Republishing an older local result
-under a current commit would assert a provenance that is not true — the
-exact failure EVAL-PROVENANCE-01 was raised about. The validator has not
-been weakened and no field has been hand-filled.
+a dirty working tree. Otherwise, the recorded commit would not fully
+describe the code that produced the result. Older local results were not
+relabeled under newer commits, and no provenance field was filled by
+hand.
 
-All seven outstanding evaluations were published exactly that way: the
-licensed-data artifacts were rebuilt from a clean commit, the bundle was
-validated, each evaluation was re-run with `--output-dir` pointing
-outside the tree, and the reports were committed in dedicated
-report-only commits whose recorded `source_commit` is the commit that
-computed them. Serving latency followed last, once a Redis instance was
-available; the artifact bundle was verified byte-identical to the build
-receipt before it ran, so its numbers are tied to the same build.
+For the missing reports, the maintainer rebuilt licensed-data artifacts
+from a clean commit, validated the bundle, ran each evaluation with its
+output outside the repository, and then committed the reports. Each
+report's `source_commit` identifies the code that computed it.
 
-## Full records
+Serving latency was run after Redis became available. Its artifact
+bundle matched the build receipt byte for byte.
 
-- [`engineering-review-register.md`](engineering-review-register.md) — every finding, with fix commits and verification
-- [`engineering-review-and-hardening.md`](engineering-review-and-hardening.md) — scope, methodology and disclosed limitations
-- [`limitations.md`](limitations.md) — accepted limitations that no fix is planned for
+## Review documents
+
+| Document | Purpose |
+|---|---|
+| [Review register](engineering-review-register.md) | Finding-by-finding evidence and status |
+| [Review method and hardening](engineering-review-and-hardening.md) | Scope, checks, and security review |
+| [Project limitations](limitations.md) | Accepted limits that are not planned fixes |
