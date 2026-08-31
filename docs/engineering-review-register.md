@@ -702,7 +702,7 @@ and a fail-then-pass regression test on the branch that became
 verified against real CI (run 33134350323, all four jobs green) and
 merged.
 
-**A further external review of that merged state found three of the
+**Follow-up verification of that merged state found three of the
 eleven fixes were themselves incomplete** -- `REDIS-DEGRADED-PATH-61`
 (the circuit breaker's probe claim was not concurrency-safe),
 `TIMESTAMP-CONTRACT-64` (the RFC3339 check still accepted several
@@ -717,7 +717,7 @@ are marked verified closed against the same `PR #6` CI run. The three
 reopened findings stayed at `open` until their new fixes had their own
 green CI run, not asserted from local runs alone.
 
-**A second external review, of the fixes that landed in
+**A second verification pass, covering the changes that landed in
 [PR #7](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/7),
 found each of those same three findings still incomplete a further
 time** -- summarized on the follow-up paragraph of each entry below,
@@ -726,7 +726,8 @@ verified against [PR #8](https://github.com/MAndersonASU/real-time-recommendatio
 own CI run (33259679161, all four jobs green) before being marked
 verified closed here.
 
-**A third external review, of the fixes that landed in `PR #8`, found
+**A third verification pass, covering the changes that landed in
+`PR #8`, found
 `REDIS-DEGRADED-PATH-61`'s and `DEPLOYMENT-CONTRACT-62`'s fixes each
 still incomplete a further time, and found `TIMESTAMP-CONTRACT-64`'s
 underlying fix behaviourally correct but its own explanatory docstring
@@ -807,7 +808,7 @@ today (only `verify_*.py` scripts construct it).
 **Tests** `tests/test_cold_start.py`, `tests/test_serving_fallback.py`, `tests/test_redis_circuit_breaker.py`, `tests/test_deployment_contract.py`
 **CI** [PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9) run 33263672952 (all four jobs green); merged as `a52d04c`, confirmed again on `main` by run 33266339509
 
-**Reopened by external review of the merged fix.** `RedisCircuitBreaker.allow_request()`
+**Reopened during post-merge verification.** `RedisCircuitBreaker.allow_request()`
 computed `now - opened_at >= cooldown` fresh on every call with no
 memory of whether a probe had already been dispatched, so once the
 cooldown elapsed, every concurrent caller got the same `True` answer
@@ -842,7 +843,7 @@ leave `/ready` degraded but `/recommend` still personalized on durable
 features, with the circuit breaker measurably speeding up the third
 request onward (~3-4s for the first two, 0.29s for the third).
 
-**Reopened a second time by external review of `de457c3`.** The
+**Reopened a second time during verification of `de457c3`.** The
 concurrency-safe state machine correctly serialised the HALF_OPEN probe
 claim, but `get_online_features` only reported `record_success`/
 `record_failure` from an `except redis.exceptions.RedisError` clause --
@@ -865,7 +866,7 @@ failure, so it is not swallowed, only its effect on the breaker's
 bookkeeping is handled. `tests/test_cold_start.py::test_a_malformed_redis_record_still_lets_a_later_request_probe_again`
 covers exactly this case and fails on the pre-fix code.
 
-**Reopened a fourth time by external review of `5c32706`.** Releasing
+**Reopened a fourth time during verification of `5c32706`.** Releasing
 the probe slot by calling `record_failure()` from the
 `except Exception` branch does release it, but as a *failure* -- so a
 malformed stored record, which Redis successfully returned (the
@@ -899,7 +900,7 @@ of 2 -- all fail on the pre-fix code.
 **Tests** `tests/test_deployment_contract.py`
 **CI** [PR #9](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/pull/9) run 33263672952 (all four jobs green); merged as `a52d04c`, confirmed again on `main` by run 33266339509
 
-**Reopened by external review of the merged fix.** `build-image.sh`
+**Reopened during post-merge verification.** `build-image.sh`
 detected a dirty working tree but only printed a warning and continued
 to `docker compose build api` regardless -- Docker copies whatever is
 actually on disk into the image (`COPY src/ ./src/`, `COPY pyproject.toml
@@ -935,7 +936,7 @@ responses. Added `build-image.sh`, the committed wrapper that actually
 calls `git rev-parse HEAD` before building, and corrected the
 Dockerfile's claim.
 
-**Reopened a second time by external review of `81483fd`.** Two
+**Reopened a second time during verification of `81483fd`.** Two
 further gaps in the same script. First, `build-image.sh` had no
 directory of its own: every command inside it (`git status`,
 `git rev-parse`, `docker compose` reading `docker-compose.yml`)
@@ -973,7 +974,7 @@ this repository with a real Docker daemon: a genuinely dirty
 `README.md` refuses before Docker runs, and a clean tree completes a
 real image build end to end.
 
-**Reopened a third time by external review of `9cf0852`.** A bare
+**Reopened a third time during verification of `9cf0852`.** A bare
 `docker compose build api`, with no explicit `-f`/`--project-directory`,
 resolves its configuration from the *environment* as much as from this
 script's own directory. `COMPOSE_FILE` -- including one set from the
@@ -1046,7 +1047,7 @@ Corrected the `cache.py`/`pipeline.py` comments to state the real
 situation: UTC is a pragmatic, disclosed assumption this project makes
 for comparison purposes, not a documented dataset fact.
 
-**Reopened by external review of the merged fix.** "Parseable and
+**Reopened during post-merge verification.** "Parseable and
 timezone-aware" was still not "RFC3339": `datetime.fromisoformat` is
 intentionally more permissive than RFC3339's own grammar, so
 `_is_rfc3339` kept accepting real ISO 8601 forms RFC3339 excludes.
@@ -1061,7 +1062,7 @@ calendar-impossible date or time the regex alone can't catch. New
 tests cover both reported false positives plus lowercase separators, a
 colon-less offset, and impossible dates.
 
-**Reopened a third time by external review of `35c01b3`.** The
+**Reopened a third time during verification of `35c01b3`.** The
 structural regex matched an offset shaped like `[+-]\d{2}:\d{2}` without
 range-checking the hour or minute, and `datetime.fromisoformat` -- run
 afterward specifically to catch calendar-impossible values -- does not
@@ -1086,7 +1087,7 @@ narrower, fully-specified subset of RFC3339, not full RFC3339. New
 tests cover out-of-range offset hours and minutes on both signs and a
 leap-second timestamp, confirming all are rejected.
 
-**Reopened a fourth time by external review of `28d578d`.** The fix
+**Reopened a fourth time during verification of `28d578d`.** The fix
 above was behaviourally correct -- the canonical profile still
 correctly rejects a lowercase separator, a leap second and an
 out-of-range offset -- but `_is_rfc3339`'s own docstring still claimed
@@ -1580,7 +1581,7 @@ still unbounded after an earlier pass had bounded everything else), five
 medium, and three low. All eleven fixes were verified against real CI
 (`PR #6`, run 33134350323, all four jobs green) and merged.
 
-**A further external review of that merged state found three of the
+**Follow-up verification of that merged state found three of the
 eleven fixes were themselves incomplete**: `REDIS-DEGRADED-PATH-61`'s
 circuit breaker allowed a thundering herd of probes past cooldown
 instead of exactly one (no lock, no memory of an in-flight probe);

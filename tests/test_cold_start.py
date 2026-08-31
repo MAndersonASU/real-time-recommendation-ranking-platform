@@ -183,8 +183,9 @@ def test_an_open_circuit_breaker_skips_the_redis_call_entirely():
 
 
 def test_a_malformed_redis_record_still_lets_a_later_request_probe_again():
-    """Regression test for a real bug, found by external review: a probe
-    attempt that raises something other than `RedisError` -- here,
+    """Regression test for a real bug identified during follow-up
+    verification: a probe attempt that raises something other than
+    `RedisError` -- here,
     malformed JSON actually stored under the key, which `load_recent_features`
     parses with a bare `json.loads` -- reached neither `record_success`
     nor `record_failure`, since the `except RedisError` clause doesn't
@@ -226,8 +227,9 @@ def test_a_malformed_redis_record_still_lets_a_later_request_probe_again():
 
 def test_a_malformed_redis_record_does_not_trip_the_breaker_as_a_connectivity_failure():
     """Regression test for REDIS-DEGRADED-PATH-61 reopened a third time,
-    found by external review: the previous fix released the probe slot
-    by calling `record_failure()` from the `except Exception` branch --
+    identified during follow-up verification: the previous fix released
+    the probe slot by calling `record_failure()` from the `except Exception`
+    branch --
     which does release it, but as a *failure*, indistinguishable from a
     real connectivity problem. A single malformed stored record (Redis
     answered; the value it stored is corrupt, which says nothing about
