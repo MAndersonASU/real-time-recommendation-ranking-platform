@@ -1,58 +1,68 @@
 # Operations
 
-How the system runs: streaming, serving, observability and containers.
-Detail lives under [`docs/operations/`](operations/); this page is the map.
+This page points to the runtime documentation. The project has no
+production deployment; these pages describe the local container stack,
+the API, Kafka replay, Redis state, and the checks run in CI.
 
-There is no production deployment. Everything below describes a local
-containerized stack and the code paths it exercises.
+## Run or inspect the API
 
-## Serving
+| Need | Document |
+|---|---|
+| Request and response fields | [Serving contract](operations/serving-contract.md) |
+| What one recommendation request does | [Inference path](operations/inference-path.md) |
+| Behavior during known dependency failures | [Serving fallback](operations/serving-fallback.md) |
+| Cache contents and freshness | [Serving cache](operations/serving-cache.md) |
+| `/health` and `/ready` behavior | [Health checks](operations/health-checks.md) |
+| Settings and defaults | [Configuration](operations/configuration.md) |
 
-The API loads a versioned artifact bundle read-only and validates every
-member's checksum at startup. It needs Redis for recent user state; it
-does not need Kafka at request time.
+At startup, the API validates its artifact bundle and loads it
+read-only. Redis supplies recent user behavior but is not required for
+the API to answer. Kafka is not part of the request path.
 
-- [`serving-contract.md`](operations/serving-contract.md) — request and response types
-- [`inference-path.md`](operations/inference-path.md) — retrieval, ranking and reranking in one request
-- [`serving-fallback.md`](operations/serving-fallback.md) — fallback behavior for explicitly recognized dependency failures
-- [`serving-cache.md`](operations/serving-cache.md) — what is cached, and how stale it can be
-- [`health-checks.md`](operations/health-checks.md) — liveness and readiness
-- [`configuration.md`](operations/configuration.md) — settings and their defaults
+## Run or inspect streaming
 
-## Streaming
+| Need | Document |
+|---|---|
+| Event fields and validation | [Event schema](operations/event-schema.md) |
+| Local Kafka setup | [Kafka locally](operations/kafka-local.md) |
+| Historical event replay | [Replay producer](operations/replay-producer.md) |
+| Validation, deduplication, and offsets | [Streaming consumer](operations/streaming-consumer.md) |
+| Durable and recent user data | [Online features](operations/online-features.md) |
+| Redis storage behavior | [State store](operations/state-store.md) |
 
-Historical interaction replay through Kafka into a validating,
-deduplicating consumer that maintains recent user state in Redis.
+Historical events are replayed through Kafka. The consumer validates
+them, ignores duplicates within the retention window, and updates recent
+user state in Redis.
 
-- [`event-schema.md`](operations/event-schema.md) — the event contract
-- [`kafka-local.md`](operations/kafka-local.md) — running a broker locally
-- [`replay-producer.md`](operations/replay-producer.md) — chronologically paced replay
-- [`streaming-consumer.md`](operations/streaming-consumer.md) — validation, deduplication, offset handling
-- [`online-features.md`](operations/online-features.md) — durable and recent features
-- [`state-store.md`](operations/state-store.md) — the Redis layer
+## Diagnose failures
 
-## Failure behaviour
+- [Recovery testing](operations/recovery-testing.md) covers malformed
+  messages, redelivery, rebalances, and consumer restarts.
+- [Restart and failure testing](operations/restart-and-failure-testing.md)
+  covers stopped services, missing artifacts, and container restarts.
 
-- [`recovery-testing.md`](operations/recovery-testing.md) — rebalance, malformed message, redelivery, consumer restart
-- [`restart-and-failure-testing.md`](operations/restart-and-failure-testing.md) — container restart paths
+Commit failure against a live Kafka broker is not fully verified. The
+review register records this as `STREAM-COMMIT-04`, partially closed by
+scope.
 
-Commit-failure behaviour against a live broker is **not** fully verified.
-That gap is recorded as STREAM-COMMIT-04 in the
-[review register](engineering-review-register.md), partially closed by an
-explicit scope decision.
+## Observe the service
 
-## Observability
+| Need | Document |
+|---|---|
+| Latency, throughput, errors, and cache metrics | [Operational metrics](operations/operational-metrics.md) |
+| Recommendation-quality indicators | [ML quality signals](operations/ml-quality-signals.md) |
+| Request-correlated JSON logs | [Structured logging](operations/structured-logging.md) |
+| Compact operator view | [Dashboard](operations/dashboard.md) |
 
-- [`operational-metrics.md`](operations/operational-metrics.md) — latency, throughput, error rate
-- [`ml-quality-signals.md`](operations/ml-quality-signals.md) — quality signals distinct from operational health
-- [`structured-logging.md`](operations/structured-logging.md) — request-correlated JSON logs
-- [`dashboard.md`](operations/dashboard.md) — the compact operator view
+Operational health and recommendation quality are separate. A healthy
+API can still serve poor recommendations, so the project reports both.
 
-## Containers and CI
+## Build and verify containers
 
-- [`containerization.md`](operations/containerization.md) — image, compose stack, non-root user
-- [`ci-automation.md`](operations/ci-automation.md) — the four jobs and what each proves
+- [Containerization](operations/containerization.md) describes the
+  image, Compose services, health checks, and non-root user.
+- [CI automation](operations/ci-automation.md) explains the four
+  GitHub Actions jobs and what each proves.
 
-CI runs on pushes to `main` and pull requests targeting `main`. It
-exercises the container against synthetic artifacts only; it reproduces no
-published number.
+CI uses synthetic artifacts to test wiring and contracts. It does not
+download MIND or reproduce any licensed-data quality result.

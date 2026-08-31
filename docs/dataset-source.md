@@ -1,88 +1,99 @@
-# Dataset Source and License
+# Dataset source and license
 
-## Identity
+This project uses the Microsoft News Dataset (MIND). The repository does
+not include the raw dataset.
 
-- Name: Microsoft News Dataset (MIND)
-- Citation: Wu et al., ACL 2020, "MIND: A Large-scale Dataset for News Recommendation"
-- Official site: https://msnews.github.io/
-- Versions used: MIND-small for development; MIND-large only for
- justified, explicitly-scoped scale testing (the scale and performance work), per
-  [`docs/research-scenario.md`](research-scenario.md)
+## Dataset identity
 
-## Download source (verified 2026-08-16)
+| Item | Value |
+|---|---|
+| Name | Microsoft News Dataset (MIND) |
+| Paper | Wu et al., *MIND: A Large-scale Dataset for News Recommendation*, ACL 2020 |
+| Official site | [msnews.github.io](https://msnews.github.io/) |
+| Development dataset | MIND-small |
+| Scale-validation dataset | MIND-large |
 
-This project downloaded MIND from the Recommenders Hugging Face mirror,
-confirmed against the `recommenders-team/recommenders` library's own
-`mind.py` loader. The official MIND site and the Microsoft Research
-License remain the authoritative sources for dataset identity and
-licensing; Microsoft also distributes MIND through Azure Open Datasets.
-The files this project actually fetched were:
+MIND-small is the main development dataset. MIND-large is used only when
+the added scale supports a specific experiment. See the
+[research scenario](research-scenario.md) for the project scope.
 
-- MIND-small train: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_train.zip`
-- MIND-small dev: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_dev.zip`
-- MIND-large train: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDlarge_train.zip`
-- MIND-large dev: `https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDlarge_dev.zip`
+## Where the files came from
 
-Total size across the Hugging Face-hosted files: approximately 1.89 GB.
-The checksums recorded below cover exactly these downloaded files and do
-not assert anything about other distributions of MIND.
+The project downloaded MIND from the
+[Recommenders/MIND mirror on Hugging Face](https://huggingface.co/datasets/Recommenders/MIND).
+Microsoft's Recommenders library uses the same mirror.
 
-Downloading via msnews.github.io additionally requires interactively
-accepting the Microsoft Research License Terms (a checkbox agreement)
-before the official download links activate. This check cannot be
-automated from a scripted ingestion pipeline.
+Files verified on August 16, 2026:
 
-## License
+- [MINDsmall_train.zip](https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_train.zip)
+- [MINDsmall_dev.zip](https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDsmall_dev.zip)
+- [MINDlarge_train.zip](https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDlarge_train.zip)
+- [MINDlarge_dev.zip](https://huggingface.co/datasets/Recommenders/MIND/resolve/main/MINDlarge_dev.zip)
 
-Governed by the **Microsoft Research License Terms**
-(full text: `https://github.com/msnews/MIND/blob/master/MSR%20License_Data.pdf`,
-reviewed in full 2026-08-16). Key terms:
+The four archives require about 1.89 GB in total.
 
-- **Permitted**: non-commercial, non-revenue-generating research use —
-  teaching, academic research, public demonstrations, personal
-  experimentation, analysis and testing; publishing results derived from
-  the dataset.
-- **Not permitted**: redistributing the dataset itself; including any
-  material portion of the dataset in a publication or presentation;
-  altering copyright/trademark/patent notices; implying Microsoft
-  endorsement; use in malicious, deceptive, or unlawful programs.
-- The dataset is licensed, not sold — Microsoft retains all rights not
-  explicitly granted.
-- Provided "as is," no warranty, liability capped at $5 USD, binding
-  arbitration for US residents.
+The official MIND site and its license remain the authoritative sources.
+The Hugging Face links identify the exact mirror used by this project. The
+official site requires a person to accept the license before downloading,
+so that download cannot be automated by this repository.
 
-This project's use — non-commercial research, offline/replay
-experimentation, no redistribution of the raw dataset, no publication of
-raw article text or full behavior logs — fits within the granted rights as
-reviewed. This summary is not legal advice; the linked PDF is the
-authoritative text.
+## License summary
+
+MIND is provided under the
+[Microsoft Research License Terms](https://github.com/msnews/MIND/blob/master/MSR%20License_Data.pdf).
+Read the full license before using the data.
+
+In plain language, the license allows:
+
+- noncommercial and nonrevenue research;
+- teaching and public demonstrations;
+- personal testing; and
+- publication of results derived from the dataset.
+
+It does not allow:
+
+- redistributing the dataset or a substantial part of it;
+- removing or changing license notices;
+- implying endorsement by Microsoft; or
+- malicious, deceptive, or unlawful use.
+
+The data is licensed, not sold, and provided as-is. The terms also include
+limits on liability and US arbitration provisions. The project's research
+and demonstration use is consistent with these terms, but this summary is
+not legal advice.
 
 ## Checksums
 
-Microsoft does not publish checksums for the original files. The Hugging
-Face mirror does, indirectly: each file's HTTP response carries an
-`X-Linked-ETag` header that matches its SHA-256 content hash exactly
-(verified 2026-08-16 by computing `sha256sum` on both downloaded files and
-comparing against the `X-Linked-ETag` seen in a `HEAD` request against the
-same URLs — both matched). This project treats that ETag as the reference
-integrity value for files fetched from this specific mirror, and records
-the hashes below:
+Microsoft does not publish checksums for these archives. For the two
+MIND-small files used most often, the computed SHA-256 value matched the
+Hugging Face `X-Linked-ETag` header on August 16, 2026.
 
 | File | SHA-256 |
 |---|---|
 | `MINDsmall_train.zip` | `6ef97a271580b98ccfc4301ada55cc639423cb0576a78b8dcfcf74a4dbcc3194` |
 | `MINDsmall_dev.zip` | `d6ce515dcaa6b6d47ddf0a326eebc8a31b84735ae410285c9882ca2a06eec669` |
 
-This confirms the specific bytes this project ingested match what Hugging
-Face served at download time; it is not an assertion that this matches
-whatever Microsoft's own original files' hashes would be, since Microsoft
-does not publish those for comparison.
+These values confirm only that a local file matches the mirror bytes used
+for this project. They do not prove that Microsoft published the mirror.
 
-## What stays local-only
+To verify a download on Linux or macOS:
 
-Per the license's no-redistribution term and this project's own
-source-separation rule (see [`docs/architecture.md`](architecture.md)):
-the raw and validated MIND files are never committed to this repository.
-Only code, schemas, small illustrative examples that do not constitute a
-material portion of the dataset, and derived metrics/reports are
-committed.
+```bash
+sha256sum MINDsmall_train.zip MINDsmall_dev.zip
+```
+
+On PowerShell:
+
+```powershell
+Get-FileHash -Algorithm SHA256 MINDsmall_train.zip, MINDsmall_dev.zip
+```
+
+## What stays outside the repository
+
+Raw and validated dataset files remain local and are excluded by
+`.gitignore`. The repository contains only:
+
+- download and validation code;
+- schemas and small illustrative examples;
+- configuration files; and
+- derived reports that do not reproduce the source dataset.

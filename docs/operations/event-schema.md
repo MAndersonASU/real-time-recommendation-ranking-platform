@@ -1,61 +1,79 @@
-# Event Schema
+# Interaction event contract
 
-The streaming pipeline turns MIND's behavior logs from a finished table into a stream of
-individual interaction events — what a real system would receive one at a
-time, in order, as it happens. This check defines the message format all
-the streaming components (Kafka broker, replay producer, streaming
-consumer) shares. Implementation: `src/recommender/streaming/schema.py`.
+The streaming pipeline converts MIND behavior rows into individual
+interaction events. Kafka, the replay producer, and the consumer all use
+the contract in `src/recommender/streaming/schema.py`.
 
-## Four event types, and an honest gap
+## Event types
 
-| Type | Meaning | MIND support |
+| Type | Meaning | Available from MIND |
 |---|---|---|
-| `impression` | An item was shown to a user as a candidate | Direct — every exploded impression row |
-| `click` | The user clicked a shown item | Direct — the `clicked=1` flag |
-| `skip` | The user was shown an item and didn't click it | Derived — `clicked=0` on an impression row |
-| `view` | The item was seen/dwelled on, short of a click | Not available at all |
+| `impression` | An article was offered to a user | Yes |
+| `click` | The user clicked an offered article | Yes |
+| `skip` | The user did not click an offered article | Derived from `clicked=0` |
+| `view` | The user saw or read an article without clicking | No |
 
-All four are defined because a real event schema should describe every
-interaction a production system might one day emit, not only the ones one
-dataset happens to support. But the gap is real and disclosed rather than
-implied away: MIND has no signal for "the user actually looked at this"
-separate from "the user clicked it" — no dwell time, no scroll depth,
-nothing. The replay producer (`docs/operations/replay-producer.md`) only ever emits `impression`,
-`click`, and the derived `skip`. `view` stays in the schema as a defined,
-unpopulated type — the same disclosed-limitation pattern already applied
-to article freshness in the ranking model and reranking.
+The replay producer emits `impression`, `click`, and `skip` events. It
+does not emit `view` because MIND has no dwell-time, scroll, or reading
+signal.
 
-## Fields on every event
+## Required fields
 
-- **`event_id`** — a globally unique identifier for this specific event,
-  what the recovery testing's duplicate detection checks against (`docs/operations/recovery-testing.md`), not the impression
-  or item id.
-- **`event_type`** — one of the four types above.
-- **`schema_version`** — which version of this event format the message
-  conforms to, so a future consumer can detect a layout change rather than
-  silently misreading an old or new message.
-- **`user_id`, `item_id`, `impression_id`** — carried directly from MIND's
-  own identifiers, no new ID scheme invented where a real one exists.
-- **`timestamp`** — when the interaction happened: the original MIND
-  impression time during replay, not the time the message happens to be
-  produced.
-- **`source`** — where the event actually came from. Defaults to a literal
-  value naming historical replay, not a live feed, keeping the schema
-  itself honest about what this system is — matching the frozen research
-  scope's own "replayed-stream, not live production" boundary.
+| Field | Purpose |
+|---|---|
+| `event_id` | UUID for one interaction |
+| `event_type` | One of the four event types |
+| `schema_version` | Message format version |
+| `user_id` | MIND user identifier |
+| `item_id` | MIND article identifier |
+| `impression_id` | Non-negative MIND impression identifier |
+| `timestamp` | Time of the original interaction |
+| `source` | Approved event origin |
 
-`InteractionEvent` is a frozen dataclass with `to_json`/`from_json` for
-Kafka message (de)serialization. By default, `make_event` assigns
-`event_id` a **deterministic** id (`stable_event_id`, a `uuid5` derived
-from this event's own immutable fields — type, user, item, impression,
-timestamp, source): identical inputs produce the identical id, on any
-run, on any machine. That is deliberate, not incidental — replay is
-re-runnable by design, and a random id would make the same historical
-event look brand new every time it replayed, defeating the duplicate
-detection this schema exists to support
-(`docs/operations/streaming-consumer.md`). A caller representing
-genuinely new, live traffic can pass its own `event_id` instead of
-relying on the default. Verified with 3 tests: a JSON round-trip
-preserves every field including the event-type enum (not a bare
-string); identical inputs produce the identical id; ids differ when any
-identifying field differs.
+`InteractionEvent` is an immutable dataclass. `to_json()` serializes it,
+and `from_json()` rejects unknown or invalid fields before the message
+reaches Redis or downstream logic.
+
+User and article IDs may contain letters, numbers, periods, underscores,
+colons, and hyphens. Each ID is limited to 128 characters.
+
+## Time format
+
+Historical replay keeps MIND's dataset-local timestamp, such as:
+
+```text
+2019-11-14 08:00:00
+```
+
+The dataset does not state a timezone, so the project does not invent
+one. Any other approved source must use the project's strict,
+timezone-aware RFC 3339 form, for example:
+
+```text
+2019-11-14T08:00:00Z
+2019-11-14T08:00:00-05:00
+```
+
+The only approved sources are `mind_historical_replay` and
+`synthetic_test`.
+
+## Stable replay identity
+
+`make_event()` uses `stable_event_id()` unless the caller provides an
+ID. The function creates a UUID from the immutable event fields:
+source, type, user, article, impression, and timestamp.
+
+This makes replay repeatable: identical inputs produce the identical id
+on every run and machine. The consumer can therefore recognize a
+redelivery or repeated replay as a duplicate. A caller representing new
+traffic may supply its own UUID.
+
+## Compatibility rule
+
+The current schema version is `1`. A consumer rejects a different
+version instead of guessing how to interpret it. A schema change should
+update the version, producer, consumer, tests, and this page together.
+
+See [replay producer](replay-producer.md),
+[streaming consumer](streaming-consumer.md), and
+[recovery testing](recovery-testing.md).

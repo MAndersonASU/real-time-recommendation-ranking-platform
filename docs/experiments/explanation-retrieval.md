@@ -1,9 +1,9 @@
-# Retrieving Support Context
+# Explanation evidence lookup
 
-The "retrieval" half of this project's RAG extension is a lookup
-against a catalog this project already governs, not a new knowledge
-base built specifically for it. Implementation:
-`src/recommender/explanation/retrieval.py`.
+Explanations use the existing article catalog. They do not create a
+second document index or knowledge base.
+
+Implementation: `src/recommender/explanation/retrieval.py`.
 
 ## What gets retrieved
 
@@ -21,32 +21,28 @@ class SupportContext:
     user_history_length: int
 ```
 
-`retrieve_support_context(request, news_by_id)` looks up the
-recommended item's real title, category, subcategory, and abstract
-from `news.parquet` — the same governed catalog every component since
-data ingestion has used (`docs/dataset-source.md`), indexed once by `news_id`
-per the same convention `ServingContext.category_by_id` already uses.
-The four ranking signals are carried straight through from
-`ExplanationRequest.matched_signals` (`docs/experiments/explanation-boundary.md`),
-never recomputed.
+`retrieve_support_context(request, news_by_id)` looks up the recommended
+article by `news_id` in `news.parquet`. Title, category, subcategory, and
+abstract come from that catalog.
+
+Category match, content similarity, retrieval score, and history length
+come directly from `ExplanationRequest.matched_signals`. Explanation code
+does not recalculate the ranking evidence.
 
 ## Why no new knowledge base
 
-Standing up a separate document index or vector store for this would
-introduce a second copy of data this project already licenses,
-governs, and has fully described the limitations of. Reusing the one
-real source makes "governed knowledge source" literally true rather
-than a description of a newly introduced, separately-tracked dataset.
+The existing catalog already has documented source, license, and
+limitations. Copying it into another store would add synchronization and
+governance work without adding evidence.
 
 ## Why the abstract is truncated at retrieval time, not later
 
-A raw `abstract` field is unbounded. Handed straight into a generation
-prompt, a very long abstract could crowd out the actual instruction in
-a small model's limited context window, and different articles would
-produce wildly different prompt sizes. Truncating at 300 characters
-here, before the value ever leaves this check, keeps every later stage's
-input size predictable regardless of which article gets recommended. A
-missing abstract (`None` in the raw catalog) is treated as an empty
-string, not passed through as `None` — a generation routine should never
-have to special-case a null value that only ever means "no abstract
-exists for this item."
+Abstracts are limited to 300 characters during lookup. This keeps later
+input sizes predictable and prevents one long article from dominating
+the explanation request.
+
+A missing abstract becomes an empty string. Later code therefore handles
+one string type instead of treating `None` as a special case.
+
+See the [dataset source](../dataset-source.md) and
+[explanation boundary](explanation-boundary.md).

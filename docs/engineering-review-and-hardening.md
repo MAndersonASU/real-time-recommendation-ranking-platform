@@ -1,346 +1,173 @@
-# Engineering Review and Hardening
+# Engineering review method and hardening
 
-## 1. Purpose
+This page explains how the maintainer-led engineering review was
+performed and what areas it strengthened. It is not an independent
+audit or an external certification.
 
-This document records a maintainer-led engineering review and hardening
-pass. The review examined serving correctness, temporal evaluation
-integrity, reproducibility, dependency management, streaming
-reliability and operational observability.
+Finding-by-finding status belongs in the
+[review register](engineering-review-register.md). Detailed experiment
+results belong in the [evaluation index](evaluation.md). Keeping those
+details in their primary documents prevents this page from becoming a
+second, stale copy.
 
-It is not a third-party or independent audit, and nothing here is
-certified by anyone outside this project. What it is: a record of what
-was examined, what changed, what was verified and how, and which
-limitations remain open.
+## Review record
 
-## 2. Scope and baseline
-
-| | |
+| Item | Value |
 |---|---|
-| **Baseline commit** | `cd8a4d776ad81b47313e2761e2ba9c3918293c26` |
-| **Last updated** | 2026-08-26 |
-| **Review period** | 2026-08-24 to 2026-08-26 |
-| **Environments** | Windows 11 (development), `python:3.11-slim` containers (clean-environment checks), Ubuntu GitHub Actions (CI) |
+| Baseline commit | `cd8a4d776ad81b47313e2761e2ba9c3918293c26` |
+| Review period | August 24–26, 2026 |
+| Editorial update | August 30, 2026 |
+| Development system | Windows 11 |
+| Clean-environment system | `python:3.11-slim` container |
+| CI system | Ubuntu GitHub Actions |
 
-**Components examined**: the serving request path, the offline and
-serving-path evaluation harnesses, the retrieval and ranking model
-artifacts, the streaming consumer and replay producer, dependency
-resolution and packaging, the container image, and the documentation
-set.
+The review covered:
 
-**Explicit exclusions**:
+- the live recommendation request;
+- offline and serving-path evaluation;
+- retrieval and ranking artifacts;
+- the streaming consumer and replay producer;
+- dependencies, packaging, and the container image;
+- operational visibility; and
+- repository documentation.
 
-- The MIND dataset is licensed and is not distributed in this
-  repository, so no recommendation-quality number here can be
-  reproduced from a public clone without supplying the dataset locally.
-- Public CI verifies wiring against synthetic artifacts. It does not
-  reproduce any published quality metric.
-- No production deployment exists. Nothing here is a statement about
-  behaviour under real traffic, real concurrency or real infrastructure
-  latency.
+## What was outside the review
 
-## 3. Review methodology
+- The licensed MIND dataset is not distributed here. A public clone
+  cannot reproduce quality metrics until the user supplies it locally.
+- Public CI uses synthetic artifacts to verify wiring. It does not
+  reproduce published recommendation-quality metrics.
+- There is no production deployment. The review therefore makes no
+  claim about real traffic, concurrency, or infrastructure latency.
 
-- **Static source review** across the serving path, evaluation
-  harnesses and streaming components.
-- **Clean-environment installation**: a `python:3.11-slim` container
-  with no `data/` directory, installing only from the hash-verified
-  lock, to reproduce what a public clone actually receives.
-- **Unit and integration tests**, including fail-then-pass verification
-  for regression tests: each was run against the unfixed code to
-  confirm it actually catches the defect it describes.
-- **Temporal-leakage analysis** of the serving-path evaluation,
-  including a prefix-invariance check.
-- **Adversarial explanation testing** against the wording-acceptance
-  gate.
-- **Kafka/Redis restart and redelivery testing**.
-- **Container smoke tests** against the real built image.
-- **Dependency and security scanning** (`pip-audit`, `bandit`, `ruff`).
-- **Documentation consistency review** across the whole repository, not
-  only this document.
+## How the review was performed
 
-## 4. Hardening summary
+The maintainer used:
 
-| Area | Engineering improvement | Verification |
+- static source review of serving, evaluation, and streaming code;
+- a clean `python:3.11-slim` installation with no `data/` directory;
+- unit and integration tests;
+- fail-then-pass checks for new regression tests;
+- temporal-leakage and prefix-invariance checks;
+- adversarial tests for explanation wording;
+- Kafka and Redis restart and redelivery checks;
+- smoke tests against the built container;
+- `pip-audit`, Bandit, and Ruff scans; and
+- a cross-document consistency review.
+
+## What changed
+
+| Area | Improvement | Verification |
 |---|---|---|
-| Retrieval quality | Per-article content features in the item tower, ending the 284-distinct-vector collapse; retrieval depth raised on tuning-fold evidence | Retrieval and end-to-end evaluations re-run on real data |
-| Evaluation integrity | Chronological ordering with a deterministic secondary key, timestamp-group barrier, reconciled point-in-time state, tuning-fold separation | Prefix-invariance, equal-timestamp and out-of-order tests |
-| Explanation safety | Structured facts, approved templates, validated substitution; generative rewriting opt-in and off by default | Adversarial tests demonstrating the lexical gate's limits |
-| Reproducibility | Persisted, validated content transform; Linux CPU-only hash-verified lock; container installs that lock | Clean-container install, `pip check`, suite from a no-data clone |
-| Streaming | User-keyed events, atomic event claims, deterministic replay ids | Restart, redelivery and repeated-replay tests |
-| Serving | Narrow dependency fallbacks, request-id correlation on failure paths, honest cold-start labelling | API failure-path and cold-start tests |
-| Security | Non-root container, digest-pinned base, blocking dependency audit | CI container and audit jobs |
-| Observability | Complete serving-artifact manifest with lock digest and source commit | Per-field version-change tests |
+| Retrieval | Added per-article content features and increased retrieval depth | Retrieval and end-to-end evaluation on local licensed data |
+| Evaluation | Added deterministic chronological ordering, timestamp barriers, point-in-time state, and a separate tuning fold | Prefix-invariance, equal-time, and out-of-order tests |
+| Explanations | Moved factual claims into structured facts and approved templates; optional rewriting remains off by default | Adversarial wording tests |
+| Reproducibility | Persisted the content transform and added Linux CPU-only, hash-verified locks | Clean-container install, `pip check`, and the no-data test suite |
+| Streaming | Added user-keyed events, atomic event claims, and deterministic replay IDs | Restart, redelivery, and repeated-replay tests |
+| Serving | Narrowed dependency fallbacks and added request correlation and accurate cold-start labels | API failure and cold-start tests |
+| Security | Runs as a non-root container, pins the base image by digest, and blocks on dependency audit failures | CI container and audit jobs |
+| Observability | Records a complete artifact manifest with lock digest and source commit | Tests that change each tracked field |
 
-## 5. Verification evidence
+## Where to verify the claims
 
-The CI status and software-verification statements in this section come
-from the linked GitHub Actions run for the published commit, not from a
-local machine. The licensed-data quality metrics in Section 6 come from
-the committed machine-readable reports under `reports/` and are **not**
-reproduced by public CI, which runs against synthetic artifacts only.
+- [GitHub Actions](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml)
+  is the source for current CI status, test counts, and coverage.
+- `reports/*.json` contains machine-readable experiment results with
+  commits, artifact hashes, settings, seeds, denominators, definitions,
+  and limitations.
+- The `api-container-test` job builds the real image, waits for health,
+  checks the non-root user, and sends valid and invalid API requests.
+- The `integration-smoke-test` job checks Kafka produce/consume and
+  Redis read/write behavior.
+- `pip-audit` blocks CI for known vulnerabilities in packages it can
+  inspect.
+- `bandit -ll` blocks CI for medium- and high-severity findings.
 
-- **CI**: [GitHub Actions](https://github.com/MAndersonASU/real-time-recommendation-ranking-platform/actions/workflows/ci.yml) — the badge in `README.md` reflects current status.
-- **Test counts and coverage**: reported by the `lint-and-test` job.
-  Deliberately not transcribed into prose here, because a hardcoded
-  count goes stale on the next commit and then quietly misreports.
-- **Ruff**: passes.
-- **Bandit**: no medium- or high-severity findings, which is what the
-  `lint-and-test` job enforces (`bandit -ll`). Low-severity findings
-  remain and were reviewed by category — see below. The count is
-  deliberately not transcribed here, for the same reason the test counts
-  above are not: it changes with every commit that adds a `subprocess`
-  import, and a stale number in prose misreports with more authority
-  than no number at all. An earlier version of this document said "six"
-  and was wrong within a few commits.
-- **pip-audit**: runs as a blocking CI check against the hash-verified
-  lock. See the caveat below regarding `torch`.
-- **Container test**: the `api-container-test` job builds the real
-  image, waits on its health check, asserts a non-root user, and makes
-  live requests including a `/recommend` call checked for an
-  `X-Request-ID` header and a malformed request checked for a clean 422.
-- **Integration test**: the `integration-smoke-test` job runs real
-  Kafka produce/consume and Redis read/write round trips.
-- **Machine-readable evaluation reports**: `reports/*.json`, each
-  carrying the source commit, artifact hashes, configuration, seeds,
-  denominators, metric definitions and limitations.
+Counts are not copied into this page because they change as the code and
+test suite change.
 
-### Bandit low-severity findings
+## Bandit low-severity findings
 
-This table is reviewed by category, not transcribed as a one-time
-snapshot: `evaluation/generate_reports.py` alone carries three separate
-B603/B607 locations by itself (its own commit-ancestry check, added for
-EVAL-PROVENANCE-58, calls `git` twice more), and an earlier version of
-this table listed three files for that category where six now exist
-(BANDIT-REVIEW-65 -- found by re-running Bandit directly rather than
-trusting the table already matched the source). The category-level
-assessment below still holds for all six; a new call site in a
-seventh file would need the same review, not an assumption that the
-category's rationale still applies without checking.
+Low-severity findings were reviewed by category. The table lists every
+current file for the subprocess category and is checked against a fresh
+Bandit scan by the test suite.
 
 | ID | Location | Assessment |
 |---|---|---|
 | B105 | `data/schema.py`, `evaluation/publish.py` | False positives — Bandit matches identifiers containing "pass". One is a regex for a MIND impression token (`<news_id>-<0\|1>`); the other is the metric key `lexical_policy_pass_rate`. Neither is a credential. |
-| B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py`, `evaluation/build_receipt.py`, `evaluation/generate_reports.py`, `features/verify_aof_recovery.py` | Real category, low risk. Each calls `git` or `docker` with a fully static argument list and no user input, to record the commit a result came from or to verify a real container's recovery behaviour. Left unsuppressed rather than silenced, since the category is legitimate even where these instances are safe. |
+| B404, B603, B607 | `monitoring/artifact_manifest.py`, `tracking/experiment_log.py`, `evaluation/reports.py`, `evaluation/build_receipt.py`, `evaluation/generate_reports.py`, `features/verify_aof_recovery.py` | Low risk. Each calls `git` or `docker` with a fixed argument list and no user input, either to record result provenance or verify container recovery. The findings remain visible so future call sites receive review. |
 
-B101 (`assert` used outside a test) doesn't appear above because it no
-longer exists, not because it was ever reviewed and accepted:
-`tracking/recent_features_ablation.py` used a bare `assert` for a real
-evaluation invariant (the paired-sample digest check), which `python -O`
-compiles out entirely -- an unpaired comparison could have silently
-continued and published. Fixed by replacing it with an explicit
-`ValueError` (BANDIT-REVIEW-65).
+A previous B101 finding was corrected. Production code used a bare
+`assert` for the paired-sample digest check in
+`tracking/recent_features_ablation.py`. Python can remove assertions
+when run with optimization, so the code now raises `ValueError`
+explicitly. A test prevents production code from reintroducing a bare
+assertion.
 
-### `pip-audit` caveat
+## `pip-audit` limit
 
-`pip-audit` reports no known vulnerabilities, but it **skips `torch`**:
+`pip-audit` reports no known vulnerabilities in the packages it can
+inspect, but it skips the CPU-only PyTorch package:
 
-```
+```text
 torch  Dependency not found on PyPI and could not be audited: torch (2.13.0+cpu)
 ```
 
-The CPU-only wheel comes from PyTorch's own index and carries a local
-version identifier that has no PyPI entry, so the advisory database
-cannot be queried for it. This is a consequence of the CPU-only
-choice: the largest dependency in the tree is version-pinned and
-hash-verified but not advisory-scanned. It is recorded here rather than
-left implicit in a "no known vulnerabilities" line.
+That wheel comes from PyTorch's own package index and uses a version that
+has no matching PyPI record. It is pinned and hash-verified, but it is
+not checked against the advisory database. This is a disclosed gap, not
+an all-clear claim.
 
-## 6. Evaluation results
+## Evaluation conclusions
 
-Results are separated by what they can support. They are not
-interchangeable and should not be read as one table.
+The review confirmed three important interpretation rules:
 
-### Post-selection development evaluation
+1. Development results are not untouched final estimates because the
+   validation data informed design choices.
+2. Public CI verifies software behavior with synthetic artifacts; it
+   does not reproduce licensed-data metrics.
+3. Different protocols answer different questions and must not be
+   combined into one quality claim.
 
-Measured on `validation`. The content-aware item tower and the
-retrieval-depth change were both developed after observing behaviour on
-this split, so these are development evidence, **not** untouched final
-generalization estimates.
+The minimum-fresh experiment is a useful example. All tested quotas met
+the predefined logged-click retention bounds, so the rule selected the
+largest tested value, 5. That boundary result does not prove that 5 is
+better for users. The deployed value remains 2 as a conservative
+product-policy choice. Full numbers, uncertainty bounds, and caveats are
+in the
+[freshness evaluation](experiments/reranking-freshness.md)
+and its
+[frozen protocol](experiments/min-fresh-experiment-protocol.md).
 
-| Measurement | Before | After |
-|---|---|---|
-| Retrieval hit rate@100 (30,270 impressions, full 51,282-item catalog) | 0.0044 | **0.0336** |
-| Distinct catalog embeddings | 284 | **50,704** |
-| End-to-end retrieval-contained-click rate, 1,000-candidate pool (5,000 impressions) | 0.002 | **0.1414** |
-| End-to-end hit rate@10 | 0.0005 | **0.0084** |
-| End-to-end MRR | 0.000125 | **0.0048** |
+The diversity cap remains 3. Its comparison uses predicted relevance,
+not logged outcomes, so it should not be presented as a user-benefit
+result. Retrieval depth uses clicked-item containment plus a latency
+budget and therefore answers a different question.
 
-Protocol: K=10, frozen evaluation contract (`docs/experiments/evaluation-protocol.md`).
-Full metric definitions and denominators: `reports/`.
+## Remaining limits
 
-### Tuning-fold evaluation
+The main limits are:
 
-Diversity cap, freshness threshold, minimum-fresh quota and retrieval
-depth were compared against alternatives on a fold carved from `train`,
-never on `validation` (`docs/experiments/evaluation-integrity.md`).
+- end-to-end recommendation quality remains low;
+- retrieval is the main quality ceiling;
+- users with no history receive the same global-popularity fallback;
+- chronological splits mix time effects with changes in user
+  composition;
+- several product settings depend on judgment-based budgets;
+- public CI cannot reproduce licensed-data quality results;
+- streaming idempotency is limited by claim retention;
+- PyTorch is not advisory-scanned;
+- lexical explanation checks cannot guarantee meaning; and
+- no untouched final evaluation split remains.
 
-These comparisons are now run against a feature table built from a
-retrieval model trained on the fit half alone
-(`recommender.retrieval.train_fit_only`). Previously the ranking model
-was refit on the fit half but `retrieval_score` came from a retrieval
-model trained on all of `train`, tuning fold included — the fold was
-held out from one model and not the other. The published report records
-which feature table produced it (`tune_fold_leakage: false`), so a run
-that fell back to the leaked table cannot be mistaken for a clean one.
+See [project limitations](limitations.md) for the plain-language
+explanation of each item.
 
-**One decision is more conservative than its own evidence selects.**
-The minimum-fresh quota is configured at 2. The selection rule — the
-largest quota whose mean slate relevance stays within a given budget of
-the unconstrained slate — chooses 5 at the 0.90 and 0.95 budgets and 3
-at 0.99, so `budgets_supporting_current_configuration` is empty.
+## Related records
 
-Stated precisely: **none of the three reported budgets selects 2.** That
-is narrower than "no budget supports 2", which an earlier version of
-this document claimed and which the data do not establish. Only three
-budgets were tested. Measured relevance retention relative to an
-unconstrained slate is approximately 100.02% at quota 2, 99.876% at
-quota 3 and 98.919% at quota 5, so a budget of 99.9% or 100% would
-select 2. The rule's output depends on where the budget is drawn, and
-the budgets tried simply do not go that high.
-
-Three further reasons the table does not settle the question:
-
-- The comparison ranks by **predicted score**, not by held-out hit rate
-  or NDCG. It measures what the model thinks, not what users did.
-- The gap between quota 2 and quota 3 is about **0.15%** of predicted
-  relevance, measured on a single 1,500-impression sample whose sampling
-  error is unquantified (`LIMIT-SAMPLING-UNCERTAINTY-44`).
-- Freshness swaps do not reapply the diversity cap, so raising the quota
-  also perturbs diversity behaviour, which this comparison does not
-  isolate.
-
-**That experiment has since been run**
-(`docs/experiments/min-fresh-experiment-protocol.md`, frozen before the run;
-`reports/min-fresh-experiment.json`). Complete tuning fold: 25,140
-impressions, 18,227 users, 125,700 slates, five quotas on identical
-impressions, judged on held-out clicks rather than predicted score, with
-one-sided 95% bounds from a paired bootstrap clustered by user.
-
-**The result did not reproduce the predicted-score finding.** Measured
-against observed clicks, a freshness quota costs essentially nothing:
-
-| Quota | NDCG@10 retention (95% LB) | Hit rate@10 retention (95% LB) |
-|---|---|---|
-| 1 | 1.00026 (0.99983) | 1.00066 (0.99989) |
-| 2 | 1.00046 (0.99968) | 1.00127 (0.99978) |
-| 3 | 1.00109 (0.99979) | 1.00183 (0.99950) |
-| 5 | 1.00056 (0.99849) | 0.99900 (0.99528) |
-
-Every quota clears both floors, so the rule selects the largest tried:
-**quota 5**, not the deployed 2.
-
-**A non-inferiority result with boundary selection, not evidence that 5
-is better.** The rule bounds what a quota *costs* and contains no
-benefit requirement, so once every candidate cleared the floors the
-selection fell on the largest value tested -- the boundary of the
-candidate set, not an interior optimum. That is the same
-monotone-trivial failure the diversity-cap rule made once
-(`docs/experiments/evaluation-integrity.md`), reappearing on the other side: there,
-a benefit-only rule always chose the largest; here, a cost-only rule did
-the same once the cost proved immeasurable.
-
-> The prospectively specified rule selected quota 5 because every tested
-> quota satisfied the offline relevance-retention bounds. This
-> establishes no measurable logged-click relevance loss up to quota 5
-> under the frozen candidate-list protocol; it does not establish that
-> quota 5 is optimal or valuable to users. Because the rule contained no
-> benefit, satisfiability, or diversity requirement, the deployed quota
-> remains 2 as an explicit conservative product-policy override.
-
-On the earlier predicted-score figure: its ~0.15% cost **did not
-translate into measurable logged-click loss under this candidate-list
-protocol**. That is a narrower statement than the cost being absent --
-this experiment scores MIND's own supplied candidate list, not the
-end-to-end retrieval protocol, so it does not speak to what the quota
-costs on a Faiss-retrieved slate.
-
-The diagnostics show what a higher quota does buy and cost: fresh items
-per slate rise from 3.11 at quota 0 to 4.34 at quota 5, while distinct
-categories fall from 5.05 to 4.87 and the share of slates actually
-meeting the quota drops from 97% at quota 1 to 61% at quota 5. A quota
-most slates cannot satisfy is a weaker guarantee than its number
-suggests.
-
-**The deployed value remains 2**, as an explicit conservative
-product-policy override rather than a data-selected value.
-
-The diversity cap is configured at 3 and is selected by the 0.90 budget
--- but that comparison still ranks by predicted relevance, so the same
-methodological concern applies to it.
-
-**Decision: not rerun, deliberately.** The documentation discloses that
-the cap's selection rests on predicted relevance rather than logged
-outcomes, so this is a disclosed property, not a hidden defect. Running
-a held-out version would be a separate research question rather than
-remediation, it would add scope without materially strengthening the
-evidence, and no untouched final split remains to validate the result
-against. Worth revisiting only if diversity-policy selection becomes a
-central claim of this project rather than one reranking parameter among
-several -- and then it would need its own benefit-aware protocol, frozen
-before any click outcome is observed.
-
-Retrieval depth is **not** in the same position: its comparison already
-uses clicked-item containment and a latency budget rather than predicted
-relevance, so rerunning it would reduce uncertainty on a different
-question, not correct a method.
-
-### Untouched final evaluation
-
-**None available.** No split remains that has not informed a design
-decision. This is stated rather than worked around: the original
-`validation` split informed some design decisions, and subsequent
-tuning-fold experiments reduce leakage risk but do not retroactively
-convert post-selection validation results into an untouched final
-estimate. A genuinely untouched test split would need to be carved and
-reserved before any future claim of final generalization performance.
-
-### Synthetic CI verification
-
-The `api-container-test` job exercises the real container against
-generated artifacts. It verifies wiring only — the synthetic model's
-scores are meaningless and no published number derives from them.
-
-## 7. Remaining limitations
-
-These are understood engineering boundaries and future work, not
-concealed failures.
-
-- **Recommendation quality remains low.** End-to-end hit rate@10 is
-  approximately 0.84%. This is a production-oriented reference
-  implementation with measured limitations, not a competitive
-  recommender.
-- **Retrieval is the primary ceiling.** The clicked item reaches the
-  ranker in about 14% of impressions, so no ranking or reranking work
-  can lift the end-to-end result past that.
-- **Cold-start recommendations are global popularity.** Every user
-  without features receives the same slate. This is deliberate;
-  fabricating per-user variation would be worse than an honest global
-  fallback.
-- **Chronological splits confound time with user composition**, so the
-  recency-leakage explanation for the popularity-feature result is
-  supported but not isolated.
-- **Several parameter choices rest on judgment budgets**, not on rules
-  the data can settle — the diversity relevance budget, the
-  minimum-fresh budget, and retrieval depth, whose predefined latency
-  budget did not bind at any depth tried.
-- **The deployed minimum-fresh quota (2) is not selected by any of the
-  three budgets tested** (see above). It is a deliberately conservative
-  choice, not a measured one; a stricter relevance budget would select
-  it, and none was tried.
-- **Public CI cannot reproduce licensed-data quality metrics.**
-- **Kafka idempotency is bounded by claim retention** (24 hours) and
-  covers the recent-feature state write, not arbitrary side effects.
-- **`torch` is not advisory-scanned** (see the `pip-audit` caveat above).
-- **A lexical policy check is not a semantic guarantee.** The
-  explanation gate verifies vocabulary, not meaning; this is why the
-  factual relationship is produced deterministically.
-- **Development-set results are not untouched final estimates.**
-
-## 8. Related records
-
-- `CHANGELOG.md` — user-visible and architectural changes.
-- `reports/` — machine-readable evaluation results with provenance.
-- `docs/experiments/evaluation-integrity.md` — tuning-fold methodology, including
-  two selection rules that failed and how they were replaced.
-- `docs/experiments/retrieval-evaluation.md`, `docs/experiments/serving-path-end-to-end-evaluation.md`
-  — current measurements in context.
+| Record | Contents |
+|---|---|
+| [Engineering review](engineering-review.md) | Current status summary |
+| [Review register](engineering-review-register.md) | Every finding and its evidence |
+| [Evaluation index](evaluation.md) | Current result pages and reports |
+| [Change log](../CHANGELOG.md) | User-visible and architectural changes |

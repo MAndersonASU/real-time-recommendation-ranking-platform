@@ -1,24 +1,28 @@
-# Retrieval Evaluation
+# Full-catalog retrieval evaluation
 
-The two-tower model plus exact Faiss search, run against the same frozen
-`validation` split as all three baselines
-(`docs/experiments/evaluation-protocol.md`) — but a genuinely different
-task: searching the full 51,282-item catalog rather than ranking a
-roughly 37-item pre-filtered candidate list. Evaluated at N=100 (the
-retrieval-stage candidate count, distinct from K=10 per
-`docs/research-scenario.md`), not at K=10 — these numbers are not
-directly comparable to the baseline table without accounting for that
-difference. Exact search deliberately, not the approximate index, to
-isolate model quality from the index's already-measured approximation
-cost (`docs/archive/faiss-index.md`). Implementation:
+Source: [`reports/retrieval-evaluation.json`](../../reports/retrieval-evaluation.json).
+
+This evaluation asks whether the clicked article appears among 100
+candidates retrieved from the full 51,282-item catalog.
+
+It is not the same task as the baseline evaluation:
+
+| Evaluation | Candidate source | Output size |
+|---|---|---|
+| Baselines | About 37 candidates already supplied by MIND | K = 10 |
+| Retrieval | Full 51,282-item catalog through exact Faiss search | N = 100 |
+
+The values are therefore not directly comparable. Exact search is used
+to measure model quality without approximate-index error.
+
+Implementation:
 `src/recommender/evaluation/evaluate_retrieval.py`.
 
-## Results
+## Result
 
-30,270 validation impressions, N=100. The "before" column is the
-category/subcategory-only item tower this project originally shipped;
-"after" is the same evaluation once the item tower gained per-article
-content features (`docs/experiments/retrieval-model.md`).
+The run covers all 30,270 validation impressions. “Before” is the
+category-and-subcategory-only item tower. “After” adds a content vector
+from each article's title and abstract.
 
 | Metric | Before | After | Change |
 |---|---|---|---|
@@ -29,81 +33,49 @@ content features (`docs/experiments/retrieval-model.md`).
 | Catalog coverage@100 | 0.2194 | **0.3313** | 1.5x |
 | Distinct items recommended | — | 16,990 | — |
 
-The architecture limitation that produced the "before" column is gone:
-the item tower now emits **50,704 distinct embedding vectors** across
-51,282 catalog items, against 284 before. Retrieval is making an
-item-level decision rather than a category-level one for the first time.
+Distinct catalog vectors increased from 284 to 50,704 across 51,282
+articles. The model can now distinguish almost every article instead of
+mostly distinguishing category pairs.
 
-These numbers are still low in absolute terms, and that is worth stating
-plainly rather than dressing up: hit rate@100 of 3.4% means the user's
-actual next click is absent from a 100-item candidate set from a
-51,282-item catalog about 97% of the time. It is roughly 17x random
-chance (a random top-100 would hit about 0.195%) where the previous
-model managed 2.25x. Real, large, and still not a solved retrieval
-problem.
+## Read the result carefully
 
-## Why the original result happened, and what changed
+The correction produced large relative gains but low absolute quality.
+A hit rate@100 of 0.0336 means the clicked article is absent from the
+100 retrieved candidates about 96.6% of the time.
 
-The original result was not a mystery — it followed directly from a
-limitation documented in `docs/archive/faiss-index.md`: the item tower encoded
-every catalog item purely from category and subcategory, collapsing
-51,282 items into 284 distinct embedding vectors. Retrieval was
-functionally a *category-level* guess. At best it identified which
-cluster a user's next click fell into, with no signal at all to
-distinguish the roughly 180 articles sharing each cluster's identical
-vector, and it then had to arbitrarily select 100 of however many tied
-items existed there.
+Randomly choosing 100 of 51,282 articles would hit about 0.195% of the
+time. The current 3.36% is about 17 times that chance rate; the older
+0.44% was about 2.25 times chance.
 
-That chained three independently-verified findings into one explanation:
-the baseline evaluation (`docs/experiments/baselines.md`) found SVD item factors
-existed for only 29.2% of validation candidates (data sparsity); the
-index investigation (`docs/archive/faiss-index.md`) found the 284-vector
-collapse (architecture); this evaluation showed the architecture
-limitation was severe enough to suppress item-level retrieval almost
-entirely.
+Coverage moved by 1.5×, not by the 7.6–13.5× range observed for the four
+relevance measures.
 
-**The named fix has now been made.** `docs/archive/faiss-index.md` scoped it as
-"enrich the item tower with per-article features (e.g., title-derived
-text signal)", and that is exactly what changed: each article now
-carries a dense content vector reduced from the TF-IDF of its own title
-and abstract, alongside the existing category and subcategory
-embeddings (`build_item_content_matrix` in
-`src/recommender/retrieval/features.py`). The vector is content-derived
-rather than id-derived, so an article never seen in training still gets
-a real embedding and the item tower keeps working for cold items.
+## What caused the older result
 
-The measured effect is the "after" column above. The remaining gap is no
-longer explained by the embedding collapse, which is fixed; what limits
-the result now is the modest capacity of a 32-dimensional two-tower
-model trained on the five-day `train` split (2019-11-09 to 2019-11-13,
-`docs/experiments/splits.md`), which is a different and smaller claim
-than the original diagnosis.
+The former item tower encoded only category and subcategory. Those two
+fields produced 284 distinct vectors, so roughly 180 articles shared a
+vector on average. Faiss could identify a topic but had little basis for
+choosing one article from a large tied group.
 
-## Interpretation: RQ1
+The current tower adds deterministic TF-IDF and SVD features from title
+and abstract. The features are content-based rather than article-ID
+embeddings, so an article without training clicks can still receive a
+vector.
 
-RQ1 asks how much learned embeddings and candidate retrieval improve
-recommendation quality over simple baselines. Four statements hold
-together:
+The vector collapse is measurably gone. This evaluation does not isolate
+the cause of the remaining quality ceiling, so the documentation does
+not assign one.
 
-1. **The original collapse was fixed.** The item tower once embedded only
- category and subcategory, producing 284 distinct catalog embeddings
- across the 51,282-item catalog. Per-article content vectors removed
- that degeneracy: there are now 50,704 distinct embeddings across
- those same 51,282 items.
-2. **Retrieval improved substantially.** Hit rate@N rose from 0.0044 to
- 0.0336, a 7.6x improvement, with comparable 8.8x-13.5x gains across
- recall, NDCG and MRR. Catalog coverage improved too, but by much
- less -- 1.5x, not a comparable gain.
-3. **Absolute retrieval quality remains low.** Hit rate@N is 0.0336,
- Recall@N 0.0229 and NDCG@N 0.0060. Retrieval alone does not yet beat
- the baselines on this dataset.
-4. **The remaining gap is not the old defect.** Whatever explains the
- current ceiling, it is not the 284-vector collapse, which is measurably
- gone. Naming a cause would require an experiment this project has not
- run.
+## Answer to RQ1
 
-These are post-selection development results under the candidate-list
-protocol, not a final generalization estimate; no untouched evaluation
-split remains. See
-[`docs/experiments/evaluation-protocol.md`](evaluation-protocol.md) for
-what that protocol does and does not support.
+- Per-article content features removed the category-level vector
+  collapse.
+- Hit rate, Recall, NDCG, and MRR improved by 7.6–13.5×.
+- Catalog coverage improved by 1.5×.
+- Absolute full-catalog retrieval quality remains low.
+- These are post-selection development results, not a final
+  generalization estimate.
+
+See the [frozen evaluation protocol](evaluation-protocol.md),
+[retrieval model](retrieval-model.md), and
+[archived index investigation](../archive/faiss-index.md).

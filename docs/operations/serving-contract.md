@@ -1,50 +1,84 @@
-# Serving Contract
+# Serving API contract
 
-Typed request/response schemas for the online recommendation service,
-defined before any of the actual inference wiring (retrieval → ranking →
-reranking → response) is built. Implementation:
+Pydantic models validate the network boundary used by
+`POST /recommend`.
+
+Implementation:
 `src/recommender/serving/contract.py`.
 
-## Why schemas come before the endpoint
+## Request
 
-A request and response shape decided while writing the endpoint tends to
-follow whatever the code happens to produce, rather than what a caller
-needs. `RecommendationRequest`, `RecommendedItem` and
-`RecommendationResponse` were defined first, with validation, so every
-field and its constraints were decided deliberately. That gave the
-integration described in [`docs/operations/inference-path.md`](inference-path.md) a
-fixed target to build toward rather than a moving one.
+`RecommendationRequest` contains:
 
-The contract is implemented. `POST /recommend` serves it through FastAPI,
-alongside `/health`, `/ready`, `/metrics`, `/dashboard` and
-`/demo/{user_id}`.
+| Field | Rule |
+|---|---|
+| `user_id` | 1–128 characters matching `[A-Za-z0-9._:-]` |
+| `num_candidates` | Integer from 1 to 50; default K=10 |
+| `request_time` | Optional date and time |
 
-## Pydantic, not a plain dataclass
+The identifier allow-list rejects whitespace, control characters,
+zero-width characters, and bidirectional marks before they reach Redis
+keys, logs, or the demonstration page.
 
-`recommender.features.online_features` uses plain dataclasses, since
-those types only ever flow between trusted, internal Python code. A
-serving contract is different: it describes the shape of data crossing a
-real network boundary, arriving as untrusted JSON from a caller who might
-send a negative candidate count or an empty user id. Pydantic validates
-that shape at the boundary and raises a clear, structured error before any
-of that bad input reaches real logic — which is exactly why FastAPI (the
-framework `docs/operations/inference-path.md`'s endpoint is already built on)
-is built around it rather than a general-purpose framework.
+A timezone-aware `request_time` is converted to naive UTC at the API
+boundary because the MIND timestamps used by the pipeline are naive.
 
-## What's actually constrained, and why
+## Recommended item
 
-- `RecommendationRequest.num_candidates` is capped at 50 and must be
-  positive — an unbounded request could ask for the entire catalog,
- which is a cost/latency risk this contract closes off at the door
-  rather than downstream.
-- `RecommendedItem.score` is constrained to `[0, 1]` because the ranking
-  model (`docs/experiments/ranking-model.md`) is a calibrated logistic regression
-  probability, not an unbounded raw score. A score outside that range
-  would mean something upstream is already broken, not a valid case a
-  caller has to handle.
-- `RecommendationResponse.durable_features_used` /
- `recent_features_used` surface the online feature store's cold-start fallback signal
-  (`OnlineFeatureLookup.durable_is_fallback` / `recent_is_fallback`,
-  `docs/experiments/cold-start.md`) directly in the response, inverted to read from
-  the caller's point of view — so a heavily-fallback recommendation
-  never looks identical to a fully personalized one.
+`RecommendedItem` contains:
+
+| Field | Rule |
+|---|---|
+| `news_id` | Article identifier |
+| `score` | Calibrated probability from 0 to 1 |
+| `rank` | Positive, one-based position in this response |
+| `category` | Optional category |
+
+## Response
+
+`RecommendationResponse` contains:
+
+- the requested user ID;
+- the ranked article list;
+- whether durable features were found;
+- whether recent Redis features were found;
+- the retrieval history source;
+- generation time; and
+- optional matched signals for explanations.
+
+`retrieval_history_source` is one of:
+
+| Value | Meaning |
+|---|---|
+| `recent` | Usable recent Redis clicks drove retrieval |
+| `durable` | Saved offline history drove retrieval |
+| `global_popularity` | No usable history existed |
+
+This value is separate from `durable_features_used` and
+`recent_features_used`. Ranking can use a durable category feature even
+when candidate retrieval used another source.
+
+## Optional explanation evidence
+
+`matched_signals` is omitted by default. When
+`include_matched_signals=True`, it contains the real ranking features
+already used for each returned article. The explanation layer does not
+recompute them.
+
+## Why Pydantic is used here
+
+Internal feature objects are dataclasses because trusted Python code
+creates them. API JSON is untrusted. Pydantic rejects invalid sizes,
+patterns, ranges, and types before recommendation code runs, and FastAPI
+returns a structured validation response.
+
+Other endpoints:
+
+- `GET /health`
+- `GET /ready`
+- `GET /metrics`
+- `GET /dashboard`
+- `GET /demo/{user_id}`
+
+See [inference path](inference-path.md) and
+[cold-start behavior](../experiments/cold-start.md).

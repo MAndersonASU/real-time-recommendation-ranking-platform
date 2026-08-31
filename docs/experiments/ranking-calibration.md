@@ -1,22 +1,22 @@
-# Calibration and Score Inspection
+# Ranking calibration
 
-AUC (`docs/experiments/ranking-model.md`) only measures whether the ranking model puts
-clicked candidates above unclicked ones — it says nothing about whether a
-predicted "8% chance of a click" happens roughly 8% of the time. This check
-checks that separate property directly, plus the score distribution and
-feature correlations, on real validation predictions from the trained
-model. Implementation: `src/recommender/ranking/calibration.py`.
+AUC measures ordering. Calibration asks a different question: when the
+model predicts an 8% click probability, does a click occur about 8% of
+the time?
+
+This page checks calibration, score spread, and feature correlations on
+real validation predictions. Implementation:
+`src/recommender/ranking/calibration.py`.
 
 ## Method
 
-`calibration_bins` splits predictions into 10 equal-frequency groups
-(`pandas.qcut`, not equal-width) and compares each group's mean predicted
-probability against its actual observed click rate. Equal-frequency,
-specifically, because with a ~4% overall click rate almost every
-prediction is a small number clustered well under 0.5 — equal-width
-buckets would leave most of them nearly empty. `expected_calibration_error`
-reduces the table to one size-weighted number: the average gap between
-predicted and observed across all ten groups.
+`calibration_bins` divides predictions into ten groups with about the
+same number of rows using `pandas.qcut`. Equal-width probability ranges
+would be mostly empty because click probability is usually far below
+0.5.
+
+Each group compares mean predicted probability with observed click rate.
+Expected calibration error is the row-weighted average of those gaps.
 
 ## Results: calibration
 
@@ -33,22 +33,28 @@ predicted and observed across all ten groups.
 | 9 | 0.0544 | 0.0549 | 122,243 |
 | 10 | 0.0925 | 0.0878 | 122,243 |
 
-Expected calibration error: **0.0024** — every decile's predicted and
-observed rates agree to within half a percentage point. This is the
-direct payoff of the decision made while training
-(`docs/experiments/ranking-model.md`) not to use class-weight balancing: an unweighted
-fit on the true label distribution keeps predicted probabilities honest,
-and this check confirms that held rather than just assuming it.
+Expected calibration error is **0.0024**. Every group's prediction and
+observed rate differ by less than half a percentage point.
+
+This supports the [ranking model](ranking-model.md) choice not to use
+class balancing. The unweighted fit stays close to the real label rate.
 
 ## Results: score distribution and feature correlations
 
-Predicted probabilities across all 1,222,429 validation rows: mean 0.0406
-(matching the ~3.83% validation click rate), std 0.0265, ranging from
-0.00017 to 0.970 — a real, continuous spread, not a degenerate model that
-collapses toward one value.
+Across 1,222,429 validation rows:
 
-Pairwise correlations among the five model features, checked for any
-near-duplicate pair that would make the model unstable or hide a shortcut:
+| Statistic | Value |
+|---|---|
+| Mean | 0.0406 |
+| Standard deviation | 0.0265 |
+| Minimum | 0.00017 |
+| Maximum | 0.970 |
+
+The mean is close to the 3.83% validation click rate, and the broad
+range shows that the model does not collapse to one score.
+
+Pairwise correlations check whether two inputs carry almost the same
+signal:
 
 | | retrieval_score | category_match | content_similarity | user_history_length | hour_of_day |
 |---|---|---|---|---|---|
@@ -58,9 +64,7 @@ near-duplicate pair that would make the model unstable or hide a shortcut:
 | user_history_length | -0.001 | 0.053 | 0.276 | 1.000 | -0.008 |
 | hour_of_day | 0.041 | -0.016 | -0.015 | -0.008 | 1.000 |
 
-The highest correlation (0.352, `retrieval_score` vs `category_match`) is
-expected and benign: both are partly derived from category-level signal,
-and it's nowhere near the range that would indicate one feature is a
-near-duplicate of another. Nothing here points to a hidden shortcut beyond
-the one already found and removed (`popularity`) — the remaining five
-features each contribute a distinct signal.
+The largest value is 0.352 between `retrieval_score` and
+`category_match`. Both include category information, but the
+correlation is far from a near-duplicate. The five retained inputs carry
+distinct signals; the known `popularity` shortcut is not present.

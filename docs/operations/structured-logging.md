@@ -1,60 +1,76 @@
-# Structured Logging
+# Structured application logs
 
-Every log line is a real JSON object, correlated by a real per-request
-ID, with the user identifier hashed rather than stored raw.
-Implementation: `src/recommender/monitoring/structured_logging.py`,
-wired into `src/recommender/serving/app.py`.
+Application logs are JSON objects written through Python's logging
+system. Formatting helpers live in
+`src/recommender/monitoring/structured_logging.py`.
 
-## Request IDs, for real traceability
+## Request correlation
 
-A middleware generates a real UUID for every incoming request, stores
-it on `request.state`, and echoes it back as a real `X-Request-ID`
-response header. Every log line for that request — the access log at
-the end, and `recommend_served`'s own detail line — carries the same
-id. Given one id from a client bug report or an alert, every log line
-for that specific request can be found directly, not guessed at by
-timestamp.
+HTTP middleware creates a UUID for every request. The value is:
 
-This holds for unhandled exceptions too, not just successful requests.
-The middleware wraps the downstream call in `try`/`except`: on an
-unhandled exception it still logs a `request_failed` line carrying the
-same request id, and still sets the `X-Request-ID` header on the 500
-response it returns — a caller reporting a failed request can always
-be traced to its server-side log line, and the response body never
-leaks the underlying exception's own text.
+- stored on the request;
+- included in application log records; and
+- returned in the `X-Request-ID` response header.
 
-## Sanitization: hashed, not raw, user identifiers
+A successful request produces a `request_completed` record. An
+unhandled exception produces `request_failed` with the same ID and an
+HTTP 500 response whose body does not contain the exception text.
 
-`recommend_served` logs `user_id_hash`, never the real `user_id`. MIND's
-ids are already synthetic, not real names, but logging the raw value
-repeatedly across every request would still let anyone with log access
-reconstruct one user's entire request history verbatim. A truncated
-SHA-256 (`hash_user_id`) gives an operator exactly what debugging
-needs — "these log lines are the same user" — without ever
-writing the reversible, raw identifier to a log file. Deterministic on
-purpose (the same input always hashes the same way), so correlation
-across many log lines still works.
+The access record includes:
 
-The fallback path (`safe_recommend`, `src/recommender/serving/fallback.py`)
-uses the same `hash_user_id` helper when it logs the reason a request
-fell back to popularity ranking — it previously logged the raw
-`user_id` directly on that path, inconsistent with the primary
-`recommend_served` line above. `tests/test_serving_fallback.py::test_safe_recommend_never_logs_the_raw_user_id` asserts the raw value
-never appears in that log record.
+- event name;
+- request ID;
+- method;
+- sanitized path;
+- status code; and
+- duration in milliseconds.
 
-## Real JSON, not a formatted string
+## Recommendation detail
 
-`JsonFormatter` builds one JSON object per log line directly from the
-standard library's own `logging` mechanism — everything passed via
-`extra={...}` at the call site becomes a real field in the object, with
-no per-call-site formatting logic to keep in sync. Any log aggregator
-can parse this directly; a hand-formatted f-string log line can't be
-queried the same way.
+A successful `/recommend` call also writes `recommend_served` with:
 
-## Verified against the real running container
+- requested and returned candidate counts;
+- fallback status and reason;
+- Redis degradation status; and
+- durable and recent feature-use flags.
 
-A real request against the rebuilt container produced two real,
-correlated JSON log lines sharing the identical request id, with the
-logged `user_id_hash` genuinely different from — and non-reversible to
-— the real `user_id` sent in the request, and the same id came back on
-the response's `X-Request-ID` header.
+Quality tracking and this detail log run after the response has been
+computed. If either observer fails, the completed recommendation is
+still returned.
+
+## User identifiers
+
+The service does not write the raw recommendation user ID in its normal
+application records. `hash_user_id()` stores the first 16 hexadecimal
+characters of a SHA-256 digest so records for the same user can be
+correlated.
+
+The `/demo/{user_id}` route places the identifier in the URL. Access
+logging replaces that path segment with the same digest, including the
+trailing-slash redirect form. Fallback logging also uses the digest.
+
+This is pseudonymization, not anonymity. Because the digest is
+deterministic and unkeyed, someone who can guess the source identifiers
+can test those guesses. Log access still needs normal security controls.
+
+## JSON format
+
+Every formatted application record includes:
+
+```json
+{
+  "timestamp": "...",
+  "level": "INFO",
+  "logger": "recommender.serving.app",
+  "message": "request_completed"
+}
+```
+
+Fields supplied through `extra` are added to the same object. Exception
+records also contain `exc_info` for server-side diagnosis.
+
+Tests verify unique request IDs, JSON parsing, identifier hashing,
+sanitized demo paths, and correlation of failed requests.
+
+See [operational metrics](operational-metrics.md) and
+[security policy](../../SECURITY.md).

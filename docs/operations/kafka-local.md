@@ -1,50 +1,61 @@
-# Running Kafka Locally
+# Run Kafka locally
 
-A real message broker, brought up in Docker, that the replay producer and
-the streaming consumer talk to independently
-through — neither ever calls the other directly. Implementation:
-`docker-compose.yml`,
-`src/recommender/streaming/kafka_client.py`,
-`src/recommender/streaming/verify_connectivity.py`.
+Kafka carries interaction events between the replay producer and the
+streaming consumer. The two processes do not call each other directly.
 
-## Setup
+Relevant files:
 
-Single-node Kafka in KRaft mode (`apache/kafka:3.8.0`) — one broker
-container acting as its own metadata controller, rather than the classic
-Kafka-plus-Zookeeper pair. KRaft is modern Kafka's own built-in
-replacement for Zookeeper: one moving part instead of two, with nothing
-lost for a single-node local setup. The same complexity-boundary judgment
-already applied throughout this project — the simpler, modern option when
-it's genuinely equivalent for the need.
+- `docker-compose.yml`;
+- `src/recommender/streaming/kafka_client.py`; and
+- `src/recommender/streaming/verify_connectivity.py`.
 
-Bring up: `docker compose up -d`. Health-checked via
-`kafka-broker-api-versions.sh` until the container reports `healthy`
-before anything tries to connect.
+## Start the broker
 
-`kafka_client.py` provides three small, reusable helpers every later
-streaming component builds on: `build_producer`, `build_consumer` (manual
-offset commits — `enable.auto.commit: False` — deliberately, since the
-recovery tests need direct control over exactly when an offset
-counts as processed), and `ensure_topic`.
+Run:
 
-## Real verification, not assumed
-
-`verify_connectivity.py` produces one real message to a real topic on a
-real running broker and consumes it back, raising rather than reporting a
-false pass if no broker is reachable. Results:
-
-```json
-{
-  "topic": "connectivity-check",
-  "bootstrap_servers": "localhost:9092",
-  "produced_partition": 0,
-  "produced_offset": 0,
-  "consumed_value_matches": true
-}
+```bash
+docker compose up -d kafka
 ```
 
-Nothing here is mocked — a genuine round trip through a genuine separate
-process (Docker Desktop started, healthcheck polled to `healthy`, message
-delivered and confirmed, then read back and compared byte-for-byte),
-reproducible via `python -m recommender.streaming.verify_connectivity`
-with a broker running.
+The Compose service uses Apache Kafka 3.8.0 in single-node KRaft mode.
+For local development, one container acts as both broker and metadata
+controller. ZooKeeper is not required.
+
+Wait until the service is healthy:
+
+```bash
+docker compose ps
+```
+
+The health check calls Kafka's broker API command on port `9092`.
+
+## Client helpers
+
+`kafka_client.py` provides:
+
+- `build_producer()` for publishing messages;
+- `build_consumer()` for reading messages; and
+- `ensure_topic()` for creating a topic when needed.
+
+The consumer disables automatic offset commits. It commits only after
+an event has been processed, which is required for controlled recovery
+and duplicate-delivery tests.
+
+## Verify the connection
+
+With Kafka running, execute:
+
+```bash
+python -m recommender.streaming.verify_connectivity
+```
+
+The command creates a test topic, publishes one message, consumes it,
+and compares the received value with the original. It fails when the
+broker cannot be reached or the message does not match.
+
+The committed verification report records the topic, broker address,
+partition, offset, and comparison result.
+
+See [replay producer](replay-producer.md),
+[streaming consumer](streaming-consumer.md), and
+[recovery testing](recovery-testing.md).

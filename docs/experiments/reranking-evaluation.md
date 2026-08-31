@@ -1,26 +1,28 @@
-# Reranking Tradeoffs
+# Reranking tradeoffs
 
-RQ3's exact question — can reranking improve diversity and freshness
-without unacceptable loss of relevance — measured directly: the plain
-ranking-model slate (`docs/experiments/ranking-model.md`) against the full reranking
-pipeline (diversity cap, then freshness quota:
-`docs/experiments/reranking-diversity.md`, `docs/experiments/reranking-freshness.md`), same 30,270
-validation impressions, same K=10, same candidates and scores throughout.
-Implementation: `src/recommender/evaluation/evaluate_reranking.py`.
+Source: [`reports/reranking-evaluation.json`](../../reports/reranking-evaluation.json).
 
-One methodological note, necessary and deliberate, not an inconsistency:
-MRR here is the rank of a click *within the 10-item slate produced*, not across the full candidate list the way earlier evaluations
-computed it — the reranked policy only ever returns 10 items, so there's
-no larger ordering to fall back to for a fair comparison. Recall and NDCG
-still use the true total click count from the full candidate set (the
-same correction built for retrieval's own top-N evaluation,
-`docs/experiments/retrieval-evaluation.md`), not whatever's visible in the 10-item
-slate alone — Regression identified before trusting the first run of this
-evaluation, see below.
+This evaluation compares the plain ranked top 10 with the top 10 after:
 
-## Results
+1. diversity constraints; and
+2. the freshness quota.
 
-Generated from [`reports/reranking-evaluation.json`](../../reports/reranking-evaluation.json).
+Both arms use all 30,270 validation impressions, the same candidates,
+the same ranking scores, and K=10.
+
+Implementation:
+`src/recommender/evaluation/evaluate_reranking.py`.
+
+## Metric scope
+
+MRR is the first clicked item within the returned 10-item slate. There
+is no longer ordering beyond that slate after reranking.
+
+Recall and NDCG still use the number of clicks in the full candidate
+list as their denominator. This prevents a 10-item slice from hiding
+relevant items that were not selected.
+
+## Result
 
 | Metric | Ranked only | Reranked | Change |
 |---|---|---|---|
@@ -34,55 +36,47 @@ Generated from [`reports/reranking-evaluation.json`](../../reports/reranking-eva
 | Slates below the fresh quota | 82.0% | 74.0% | −9.8% relative |
 | Catalog coverage@10 | 0.0678 | 0.0652 | −3.8% |
 
-## Reading these numbers honestly
+## Interpretation
 
-Relevance loss is real but small — every relevance metric dropped, none
-by more than about 2.6%. Diversity improved substantially: the average
-slate's dominant category shrank from 4.04 items to 2.82, and picked up
-nearly a full additional distinct category on average.
+| Area | Outcome |
+|---|---|
+| Relevance | Every measure declines, with the largest drop at 2.5% |
+| Category diversity | Distinct categories rise and category concentration falls |
+| Freshness proxy | Fresh share rises modestly; quota misses remain common |
+| Catalog coverage | Falls by 3.8% |
 
-The freshness mean fraction moved too, not just the quota-miss rate: from
-8.3% to 9.5% of a slate being fresh on average, a real if modest
-increase. The fraction of slates that failed to clear the floor
-entirely — the metric the quota is actually meant to move — dropped from
-82.0% to 74.0%, a real but modest relative reduction of about 9.8%, not
-the near-elimination a much larger swing would suggest.
+Category diversity improved substantially. The dominant category shrank
+from 4.04 to 2.82 items, while mean distinct categories rose from 4.70
+to 5.42.
 
-Catalog coverage moved the wrong way, stated plainly rather than glossed
-over: the diversity policy only ever reshuffles candidates *within* one
-impression's own already-narrow pool — it has no mechanism to introduce
-catalog items that weren't already candidates for that user. Making one
-slate more varied internally is a different property from making the
-whole system recommend more distinct items across everyone, and this
-result shows those two things don't automatically move together — a real,
-disclosed limitation of a per-impression policy, not a system-wide fix.
+Fresh share rose from 8.33% to 9.46%. Slates below the quota fell from
+82% to 74%, so the policy helps but often lacks enough known-age,
+eligible supply.
 
-## Regression identified before trusting the first run
+Catalog coverage measures variety across all users. The policy can only
+reorder candidates already present in one impression, so more variety
+within a slate does not guarantee more catalog-wide variety.
 
-The first run of this evaluation reported recall_at_k exactly equal to
-hit_rate_at_k for both policies — a red flag, not a coincidence worth
-ignoring. Traced to the same category of bug already diagnosed once for
-retrieval's own evaluation (`docs/experiments/retrieval-evaluation.md`):
-`recall_at_k`/`ndcg_at_k` infer the true relevant count
-from whatever array they're handed, correct only when that array is the
-complete candidate set. Both the ranked-only and reranked slates here are
-only 10-item slices of a larger ~37-item candidate pool, so passing the
-slice directly collapsed recall into hit rate and understated what a
-perfect slate could have achieved. Fixed by reusing
-`recall_at_n_known_total`/`ndcg_at_n_known_total`
-(`src/recommender/evaluation/retrieval_metrics.py`), passing the true click
-count from the full candidate group rather than inferring it from the
-10-item slate — confirmed with a targeted test asserting the corrected
-value (0.5) differs from what the naive slice-only calculation would have
-given (1.0) for a click that falls outside the slate.
+## Corrected recall and NDCG calculation
 
-## Interpretation: RQ3
+The first run passed only the returned 10 items to generic Recall and
+NDCG functions. The functions then treated the slate as the complete
+candidate set, making Recall equal Hit rate.
 
-For this implementation: yes, on diversity and on the freshness floor, at
-a relevance cost no more than approximately 2.6% on any metric measured
-— with one genuine,
-disclosed caveat, that catalog-wide coverage moved slightly the wrong
-direction, a limitation of a per-impression policy rather than a
-system-wide one. Whether that specific tradeoff is "acceptable" is
-ultimately a product decision this check can quantify but not resolve on
-its own.
+The evaluation now uses `recall_at_n_known_total` and
+`ndcg_at_n_known_total` with the true click count from the full
+candidate group. A regression test includes a relevant item outside the
+slate and confirms the correct Recall is 0.5 rather than 1.0.
+
+## Answer to RQ3
+
+For this candidate-list protocol, reranking produces better category
+diversity and a modest improvement in the freshness proxy at a relevance
+loss of no more than 2.5% on the reported measures. Catalog-wide
+coverage decreases.
+
+Whether that tradeoff is acceptable is a product choice, not a fact the
+offline evaluation can decide.
+
+See [diversity reranking](reranking-diversity.md) and
+[freshness reranking](reranking-freshness.md).

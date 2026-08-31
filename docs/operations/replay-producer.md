@@ -1,51 +1,69 @@
-# Replay Producer
+# Replay historical interactions
 
-Publishes the `replay` split (`docs/experiments/splits.md` — MIND's
-official dev day) to Kafka, in the exact chronological order the
-interactions actually happened, paced by a real-time-scaled sleep
-rather than sent as one batch. Implementation: `src/recommender/streaming/replay_producer.py`.
+The replay producer publishes MIND's reserved replay split to Kafka as a
+timed event stream. Its implementation is
+`src/recommender/streaming/replay_producer.py`.
 
-## Why paced replay, not a batch load
+## What it publishes
 
-Every other split has been loaded as a finished table and queried however
-was convenient. That's fine for offline evaluation, but it's the opposite
-of how a real system experiences data — one event at a time, with real
-gaps of silence in between. Loading `replay` as a single batch would let
-a consumer buffer and process everything instantly, which would make the
-recovery testing that follows this check meaningless — there'd be no
-"mid-stream" for a consumer to actually crash during.
+The producer expands every candidate in an impression into two events:
 
-The producer walks `replay`'s 73,152 impressions in true chronological
-order and sleeps between rows in proportion to the gap between their
-original timestamps, scaled down by a speed multiplier (default 3,600× —
-one real second per simulated hour, compressing the full day into about
-24 real seconds of waiting) while every event still arrives in true
-relative order and spacing.
+- one `impression`; and
+- one `click` or `skip`, based on MIND's clicked flag.
 
-Each candidate produces two events, not one: an `impression`, always,
-plus either a `click` or a derived `skip` (`docs/operations/event-schema.md`). MIND
-records no separate click timestamp relative to the impression, so both
-events honestly share the impression's own time rather than inventing a
-plausible-looking delay that isn't real data.
+MIND does not provide a separate click time. Both events therefore use
+the original impression time instead of an invented delay.
 
-## Results
+Events are ordered by timestamp and then impression ID. Kafka messages
+are keyed by user ID, so all events for one user remain on the same
+partition and keep their production order.
 
-2,000 chronologically-first rows from `replay`, speed 7,200× (roughly 2
-simulated hours per real second):
+## Replay timing
 
-| | |
-|---|---|
-| Rows replayed | 2,000 |
-| Events sent | 4,000 |
-| Impressions sent | 2,000 |
-| Clicks sent | 87 |
-| Skips sent | 1,913 |
+The producer pauses between rows in proportion to the original time
+gap. The `speed` value compresses that wait:
+
+- `3600` means one simulated hour per real second;
+- `7200` means two simulated hours per real second.
+
+This preserves relative timing while keeping a local run practical.
+
+## Run it
+
+Start Kafka, then run:
+
+```bash
+python -m recommender.streaming.replay_producer
+```
+
+The module's default command publishes the first 2,000 ordered
+candidate rows at `7200` speed. Call `load_replay_events(limit=None)`
+and `replay()` directly when the full expanded split is required.
+
+## Delivery checks
+
+The report distinguishes messages submitted to the producer from
+messages confirmed by Kafka. A successful run requires:
+
+- no delivery callback errors;
+- no messages left in the local queue after the 30-second flush; and
+- a confirmed-delivery count equal to the number produced.
+
+An earlier verification run of the default command recorded:
+
+| Result | Value |
+|---|---:|
+| Candidate rows replayed | 2,000 |
+| Events produced | 4,000 |
+| Impressions | 2,000 |
+| Clicks | 87 |
+| Skips | 1,913 |
 | Delivery errors | 0 |
-| Wall-clock seconds | 0.22 |
 
-87/2,000 = 4.35% click rate — consistent with the ~4% overall CTR already
-measured for this dataset (`docs/experiments/data-quality.md`), a real cross-check
-that the replayed sample isn't behaving anomalously. Zero delivery
-errors, confirming every event actually reached the broker. Reproducible
-via `python -m recommender.streaming.replay_producer` with a broker
-running (`docs/operations/kafka-local.md`).
+These numbers describe that run, not a fixed property of every replay.
+The command writes a fresh `replay_producer_report.json` in the local
+MIND data directory.
+
+See [event contract](event-schema.md),
+[local Kafka](kafka-local.md), and
+[streaming consumer](streaming-consumer.md).

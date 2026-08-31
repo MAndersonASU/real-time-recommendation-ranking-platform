@@ -1,23 +1,23 @@
-# Failure Case Analysis
+# Candidate-list failure analysis
 
-Generated from [`reports/failure-analysis.json`](../../reports/failure-analysis.json).
+Source:
+[`reports/failure-analysis.json`](../../reports/failure-analysis.json).
 
-Every metric reported so far is one aggregate number across 30,270
-validation impressions. This document segments the misses themselves:
-for each real impression the frozen K=10 evaluation protocol already
-scores, whether the real click landed in the reranked top-10 slate,
-grouped by three properties already computed as real ranking-model
-input features. Implementation:
+This report groups misses from the frozen K=10 reranking evaluation by
+user history, clicked-item training history, and category match.
+
+It analyzes MIND's supplied candidate lists. It does not describe
+end-to-end serving misses from full-catalog retrieval.
+
+Implementation:
 `src/recommender/evaluation/failure_analysis.py`.
 
-## Results: overall
+## Overall result
 
-30,270 impressions analyzed, the identical reranked served slate
-every other evaluation in this project scores. **Overall miss rate:
-33.3%** (consistent with the tracked hit rate of 0.6675 for the reranked
-system, `docs/experiments/reranking-evaluation.md`).
+The analysis covers all 30,270 validation impressions. The miss rate is
+33.3%, consistent with candidate-list hit rate@10 of 0.6675.
 
-## By user history length
+## User history
 
 | History length | Impressions | Miss rate |
 |---|---|---|
@@ -26,51 +26,46 @@ system, `docs/experiments/reranking-evaluation.md`).
 | 6-20 | 10,405 | 33.1% |
 | 20+ | 14,682 | 32.2% |
 
-Monotonic and unsurprising: the less history a user has, the more often
-the system misses. Consistent with every earlier finding about sparse
-per-user history in this dataset (`docs/experiments/data-quality.md`) and with
-the online feature store's own disclosed asymmetry between offline and online history
-depth.
+Miss rate falls as more user history becomes available. A user with no
+history misses 11.7 percentage points more often than a user with more
+than 20 history items.
 
-## By clicked-item coldness
+## Clicked-item training history
 
 | | Impressions | Miss rate |
 |---|---|---|
 | Cold item (never clicked in train) | 20,486 | 27.6% |
 | Warm item (clicked at least once in train) | 9,784 | 45.0% |
 
-**A real, counter-intuitive result, checked rather than reported
-blindly**: cold items miss *less* often than warm ones, the opposite of
-the naive expectation that an unseen item should be harder to recommend.
-Checked directly: the ranking model's own mean predicted score for the
-actually-clicked item is nearly identical either way (0.0560 warm vs.
-0.0554 cold) — the model itself does not treat cold and warm clicked
-items differently, consistent with `popularity` being excluded from its
-inputs entirely (`docs/experiments/ranking-model.md`). The real explanation is
-impression size: impressions where the real click lands on a warm item
-average **50.8 competing candidates**, versus **35.4** for a cold-item
-click — a warm item is more often clicked in an impression that is
-itself larger and more competitive, diluting its odds of landing in the
-top 10 purely by having more rivals for the same 10 slots, not because
-the model scores it worse.
+Warm clicked items miss more often, which at first appears
+counterintuitive. The ranker's mean score for the clicked item is almost
+the same:
 
-## By category match with user history
+| Clicked item | Mean predicted score | Mean candidates in impression |
+|---|---:|---:|
+| Warm | 0.0560 | 50.8 |
+| Cold | 0.0554 | 35.4 |
+
+The larger warm-item impressions create more competition for the same
+10 positions. The model does not directly use popularity, so it does not
+otherwise favor a training-clicked item.
+
+## Category match
 
 | | Impressions | Miss rate |
 |---|---|---|
 | Clicked item's category matched the user's dominant history category | 8,346 | 28.7% |
 | Did not match | 21,924 | 35.0% |
 
-A real, expected gap: `category_match` is one of the ranking model's own
-input features, so a click that agrees with the model's own signal
-should be, and is, easier to place in the top 10.
+This direction is expected because `category_match` is a ranker input.
 
-## What this adds beyond the aggregate number
+## Main takeaway
 
-An overall hit rate says the system works roughly two-thirds of the
-time; it says nothing about which third it fails. The clearest, most
-actionable segment here is user history length: a genuinely new user
-misses 11.7 percentage points more often than a well-established one,
-a concrete, quantified argument for where a future improvement (a
-stronger cold-start policy, not a general model change) would help
-most, feeding directly into the conclusions this component closes with.
+Within the supplied-candidate protocol, missing user history is the
+clearest weak segment. That supports work on a stronger cold-start
+policy.
+
+Do not turn the 66.75% candidate-list hit rate into a claim that the
+complete system succeeds two-thirds of the time. The
+[end-to-end evaluation](serving-path-end-to-end-evaluation.md) reports
+the full serving result separately.

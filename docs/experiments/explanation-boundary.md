@@ -1,11 +1,12 @@
-# The Explanation Boundary
+# Explanation boundary
 
-A generative layer added to an already-working recommendation system
-can, without a deliberate boundary, quietly become a second
-decision-maker. This document defines the contract that makes that
-structurally impossible rather than merely discouraged. Implementation:
-`src/recommender/explanation/contract.py`,
-`src/recommender/serving/contract.py`.
+Explanation code describes a completed recommendation. It cannot choose
+or reorder candidates.
+
+The type contract enforces this boundary:
+
+- `src/recommender/explanation/contract.py`
+- `src/recommender/serving/contract.py`
 
 ## The contract
 
@@ -28,30 +29,24 @@ class ExplanationResponse(BaseModel):
     evidence_used: list[str]
 ```
 
-## Why the request type can only ever hold one already-decided item
+## Why one request contains one item
 
-`ExplanationRequest` has no field that could hold a candidate pool or a
-user's raw history — only a single `RecommendedItem` and the
-`MatchedSignals` that produced its score. If this type accepted a list
-of candidates instead, nothing would stop a future caller from asking
-the explanation layer to also pick the best one, quietly turning a
-describe-only feature into a second, uncoordinated ranking path. Making
-the type itself unable to hold that information closes the door
-structurally, not just by convention.
+`ExplanationRequest` contains one already-ranked `RecommendedItem` and
+the signals that supported its score. It has no candidate pool and no
+raw user history.
+
+The explanation component therefore lacks the data needed to make
+another ranking decision.
 
 ## `MatchedSignals`: real values, never recomputed
 
-`recommend()` (`src/recommender/serving/pipeline.py`) gained an opt-in
-`include_matched_signals` parameter, defaulting to `False` so an
-ordinary request pays no extra cost. When `True`, it captures each
-recommended item's real `category_match`, `content_similarity`,
-`retrieval_score`, and `user_history_length` directly from the same
-feature row already used to produce that item's ranking score — not a
-second pass over the data, and not a value derived specifically for
-explanation purposes. These are four of the five features the trained
-model actually uses (`docs/experiments/ranking-features.md`):
-`hour_of_day` is not exposed here, and `popularity` is excluded from the
-trained model itself, not only from this explanation contract.
+`recommend()` accepts `include_matched_signals`, which defaults to
+`False`. When enabled, it copies category match, content similarity,
+retrieval score, and history length from the same feature row used for
+ranking.
+
+The explanation path does not rerun feature computation. `hour_of_day`
+is not exposed, and `popularity` is not a trained model input.
 
 ## `build_explanation_requests`: the boundary in code, not just in prose
 
@@ -59,17 +54,15 @@ trained model itself, not only from this explanation contract.
 def build_explanation_requests(response: RecommendationResponse) -> list[ExplanationRequest]:
 ```
 
-Takes an already-finished `RecommendationResponse` as its only input
-and raises if that response wasn't built with
-`include_matched_signals=True` — there is no code path from this
-function back into retrieval, ranking, or reranking. It can only ever
-describe a decision that has already, completely, been made elsewhere.
+This function accepts only a completed `RecommendationResponse`. It
+raises when matched signals were not requested. It has no route back
+into retrieval, ranking, or reranking.
 
 ## Why `refused` is a required field, not inferred from empty text
 
-This component's own requirement is an explicit refusal when
-evidence is insufficient to explain a recommendation, not a
-plausible-sounding guess produced anyway. Making `refused` a required
-boolean, rather than something a caller infers from an empty
-`explanation` string, means a caller can never mistake a refusal and a
-real explanation for the same kind of response.
+When evidence is insufficient, the response must say so.
+`refused` is required rather than inferred from empty text, so callers
+can reliably distinguish an explanation from a refusal.
+
+See [ranking features](ranking-features.md) and
+[explanation evaluation](explanation-evaluation.md).

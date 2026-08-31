@@ -1,40 +1,51 @@
-# Caching, With Explicit Freshness Rules
+# Serving cache rules
 
-Names, for every cached thing in the serving path, exactly how stale it
-is allowed to get and what makes it stop being valid — rather than
-"loaded once, never checked" being the only rule by accident.
-Implementation: `src/recommender/serving/cache.py`.
+Each in-process object has an explicit lifetime and refresh rule.
 
-## What's cached, and its explicit rule
+Implementation:
+`src/recommender/serving/cache.py`.
 
-| Cached thing | Rule |
+## Cached objects
+
+| Cached object | Validity and refresh |
 |---|---|
-| Two-tower model weights, Faiss index, ranking model | Correct exactly as long as the on-disk artifact hasn't changed since load. Invalidated by a service restart after retraining — no code enforces this, it's a documented operational rule. |
-| Durable per-user features (`DurableFeatureCache`) | Explicit 24-hour staleness **threshold**, checked via `is_stale()` against `data_as_of` — the newest event in the data, not the time the process loaded it. For this project the threshold is permanently exceeded: the MIND snapshot is from November 2019 and nothing refreshes it. `is_stale()` therefore returns `True` always, which is the Interpretation rather than a defect. Earlier wording here described a "refreshed daily" design intent and implied an automated refresh that does not exist. |
-| Recent per-user features | **Not cached at all in this layer** — the online feature store's Redis store already is the fresh, live source of truth for these; caching them again here would just be a second, competing copy with its own staleness to track. |
+| Two-tower model, content artifact, in-memory Faiss index, ranking model | Loaded together at startup; restart the service after publishing a new validated bundle |
+| `DurableFeatureCache` | Reports stale when `data_as_of` is more than 24 hours old; an external batch or operator must call `refresh()` |
+| Recent user features | Not cached here; Redis is the current source |
 
-## Why the cache doesn't refresh itself
+The Faiss index is derived in memory from the loaded model and content
+artifact. It is not a separately loaded disk cache.
 
-`DurableFeatureCache.is_stale()` reports staleness; it never triggers a
-refresh on its own. Recomputing durable features means re-reading a real
-offline split and rebuilding the whole per-user dictionary — genuine
-batch-shaped work, the kind of thing a live request path should never
-be the one to trigger. `refresh()` exists as a separate, explicit call a
-scheduled job or an operator makes, returning a new cache with a new
-timestamp rather than mutating the old one in place, so a caller
-already holding a reference to the previous cache keeps a consistent
-snapshot instead of values shifting under it mid-read.
+## Durable feature age
 
-## Why this, not a request-level response cache
+`data_as_of` is the newest source event represented in the cache.
+`built_at` is when the process created the cache. Restarting changes
+`built_at` but does not make old source data fresh.
 
-A cache that stored a full computed recommendation per user would need
-an explicit invalidation rule tied to the online feature store's live recent-feature
-writes — serving a cached response across a real click would directly
-defeat the purpose of the streaming work and the online feature store. Given this
-project's request latency is already dominated by candidate retrieval
-and reranking rather than any repeated per-request computation this
-cache could avoid (`docs/experiments/serving-latency.md`), a response cache would trade a
-small latency win for a real, hard-to-get-right freshness rule with
-no measured need behind it — exactly the kind of complexity the
-project's own no-added-tool-without-a-measured-requirement policy rules
-out.
+MIND data is from November 2019, so the 24-hour threshold is always
+exceeded in this research snapshot. `is_stale()` returning `True` is
+expected and visible, not evidence that an automated daily job exists.
+
+## Refresh behavior
+
+`is_stale()` only reports age. It does not start offline work from a
+request.
+
+`refresh()` builds and returns a new cache instead of mutating an object
+already being read. Call it from a scheduled batch or an operator
+workflow.
+
+## Why responses are not cached
+
+A saved recommendation would become invalid after a new click changes
+recent features. Correct invalidation would have to follow Redis writes
+for each user.
+
+Current latency is dominated by retrieval feature building and
+reranking, and no measured requirement justifies the added
+invalidation system. The service therefore caches artifacts and durable
+features, not complete responses.
+
+See [serving latency](../experiments/serving-latency.md),
+[online features](online-features.md), and
+[health checks](health-checks.md).

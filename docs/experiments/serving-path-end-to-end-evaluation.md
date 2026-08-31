@@ -1,54 +1,38 @@
-# Serving-Path End-to-End Evaluation
+# End-to-end serving evaluation
 
-`docs/experiments/ranking-features.md` already discloses a deliberate
-methodological choice: the ranking model is evaluated against MIND's own
-frozen impression candidate list, not against the retrieval model's own
-top-N output, specifically to isolate RQ1 (is retrieval any good) from
-RQ2 (does ranking improve on a candidate set). That choice is real,
-still valid for what it measures, and is not changed here.
+Source:
+[`reports/end-to-end-evaluation.json`](../../reports/end-to-end-evaluation.json).
 
-What this adds: a run of the real `/recommend` code path — retrieval,
-ranking, and reranking together — against real, chronologically ordered
-validation-split impressions, with point-in-time-correct state: each
-impression's durable features come only from that impression's own
-`history` field (never a later impression's), and its recent features
-come only from an isolated, in-run state store — seeded from that same
-point-in-time `history` field and updated with an impression's own
-events only after that impression has already been scored.
+This evaluation calls the same `safe_recommend()` path as the API:
+retrieval, ranking, and reranking together. It uses real historical
+validation impressions and reconstructed point-in-time feature state.
+
 Implementation:
-`src/recommender/evaluation/evaluate_end_to_end.py`. Tests:
-`tests/test_evaluate_end_to_end.py`.
+`src/recommender/evaluation/evaluate_end_to_end.py`.
+Tests: `tests/test_evaluate_end_to_end.py`.
 
-This is a name change from an earlier version of this document, which
-called this a "deployment-representative" evaluation. That term
-overstated what it measures: this is a real run of the serving code
-path against real historical data with real, reconstructed point-in-time
-state — not a claim about serving-path traffic, real request
-concurrency, real Kafka/Redis latency, or the real cadence a
-durable-feature batch job would run on.
+## How the run works
 
-## What it does
+For each sampled impression, in chronological order:
 
-For a sample of real `validation`-split impressions, sorted into real
-chronological order, each with a real click: builds a real
-`RecommendationRequest` (real user ID, real historical impression time)
-using durable features computed fresh from that one impression's own
-`history` field and recent features read from an isolated store
-containing only strictly earlier events from this same run, calls the
-real `safe_recommend()` — the same function `/recommend` calls — scores
-the returned slate against the real click, then applies this
-impression's own events to the isolated store so a later impression can
-see them. Uses the same metric functions already hand-verified for
-retrieval's own top-N evaluation (`recall_at_n_known_total`,
-`ndcg_at_n_known_total`, since a Faiss-retrieved top-K slate is a
-top-N slice of the full catalog, not the complete frozen impression
-list the original protocol scores).
+1. Build durable features from that impression's own prior history.
+2. Reconstruct recent features in an isolated store using only history
+   and earlier events available at that time.
+3. Call `safe_recommend()` with the real user and impression time.
+4. Score the returned top 10 against the recorded click.
+5. Apply the impression's events so later impressions can see them.
 
-## Results
+Events sharing one timestamp are scored before any event from that
+timestamp updates state.
 
-K=10, 5,000 impressions drawn by seeded uniform sampling from the
-30,270-impression validation split
-(`reports/end-to-end-evaluation.json`).
+This is a historical serving-code simulation. It does not reproduce
+live traffic, concurrency, Kafka or Redis network latency, or a real
+durable-feature refresh schedule.
+
+## Current result
+
+K=10. A seeded uniform sample selects 5,000 of the 30,270 validation
+impressions.
 
 | Metric | Result |
 |---|---|
@@ -64,17 +48,17 @@ K=10, 5,000 impressions drawn by seeded uniform sampling from the
 | NDCG@10 | **0.0042** |
 | MRR | **0.0048** |
 
-### The sample used to be a prefix, and that mattered
+The clicked article reaches the ranker in 14.1% of impressions and the
+final top 10 in 0.84%. Put another way, the final slate contains the
+recorded click about once per 119 impressions.
 
-Earlier versions of this table reported the chronologically *earliest*
-2,000 impressions, selected with `head(2000)`. That is not a sample of
-the split: it covers roughly the first hour of a single day and
-whichever users happened to be active in it. Selection is now a seeded
-uniform draw across the whole split, which spans 00:02 to 23:58 and
-4,612 distinct users.
+Retrieval containment is a hard ceiling. Ranking cannot promote an
+article that retrieval did not return.
 
-The correction was not cosmetic. Against the old prefix the same system
-measured:
+## Why the sample changed
+
+An older run selected `head(2000)` after chronological sorting. That
+was the earliest hour of the day, not a representative sample.
 
 | Metric | Prefix, n=2,000 | Representative, n=5,000 |
 |---|---|---|
@@ -83,125 +67,65 @@ measured:
 | NDCG@10 | 0.0061 | **0.0042** |
 | MRR | 0.0074 | **0.0048** |
 
-The prefix **overstated end-to-end hit rate by about 1.7x**. Note that
-the two directions disagree: retrieval looks *better* on the
-representative sample while every downstream metric drops. So the
-earliest impressions were not uniformly easier — they were harder to
-retrieve for and easier to rank within, and a prefix cannot show that
-because it holds the confound fixed. The published figures above are
-the representative ones.
+Uniform sampling increased retrieval containment but reduced every
+downstream measure. The old prefix overstated hit rate by about 1.7×.
 
-A further caveat on precision, now that it is visible: at a hit rate
-near 1%, the metric rests on a few dozen hits even at n=5,000. Sample
-size was raised from 500 for exactly this reason. Variance across
-several seeds has not been measured, so these figures are reproducible
-— the seed is recorded — but their sampling error is not quantified.
+The recorded seed makes this sample repeatable. Variation across
+multiple seeds has not been measured, so sampling uncertainty remains
+unquantified.
 
-`retrieval_contained_a_click` is the row that explains the rest: it
-reports how often the item the user actually clicked was among the
-candidates retrieval handed to the ranker. It is a hard ceiling, since
-ranking cannot promote an item it never received. Raising it from 0.2%
-to 14.1% is what moved every metric below it.
+## Corrections behind the current result
 
-Three separate changes produced this, and they are worth keeping
-distinct rather than credited as one:
+Three model and configuration changes increased clicked-item
+containment:
 
-1. **The item tower gained per-article content features**, ending the
-   284-distinct-vector collapse (`docs/experiments/retrieval-evaluation.md`).
-2. **Retrieval depth rose from 50 to 1,000 candidates**, decided on the
-   tuning fold rather than on `validation`
-   (`docs/experiments/evaluation-integrity.md`).
-3. **Two zero-vector defects were fixed**, described immediately below.
+- article text features removed the 284-vector item-tower collapse;
+- retrieval depth increased from 50 to 1,000 using tuning-fold
+  evidence; and
+- empty-history zero-vector behavior was corrected.
 
-Absolute quality remains low and should be read as such: a hit rate of
-0.84% means this system puts the user's real next click in a ten-item
-slate about once in every 119 impressions. That is a large relative
-improvement on a genuinely hard task (ten items chosen from 51,282), not
-a competitive recommender.
+The evaluation harness itself also had a zero-vector defect. Its recent
+store began empty, so many returning users looked historyless even
+though MIND supplied their prior history. Sixty impressions produced
+only one distinct candidate set under that design, compared with 50
+after correct seeding.
 
-### A real evaluation bug found and fixed while producing these numbers
+Seeding from an impression's own prior history is time-safe because MIND
+records that history before the impression. Recent-feature coverage is
+now 97.6%. Live featureless users use an explicit popularity fallback
+instead of querying Faiss with a zero vector.
 
-An earlier version of this evaluation reported 8.2% recent-feature
-coverage and 0.6% catalog coverage. Both were artifacts of a bug
-in the harness, not properties of the serving path.
+## Metric definitions
 
-The isolated state store started empty for every user, so any
-impression whose user had no *earlier in-window* event was scored with
-an empty recent-click list. `recommend()` builds its two-tower query
-from that list, and `TwoTowerModel.user_vector` averages the item
-vectors of the history — an empty history sums to exactly zero. An
-inner-product Faiss index scores every catalog item identically against
-a zero vector, so retrieval returned an arbitrary tie order, the same
-one for every history-less user, and the ranking model then saw a
-constant `retrieval_score` and assigned every candidate the same
-probability. Measured directly: 60 impressions produced **1** distinct
-candidate set under the empty store versus **50** once real history was
-supplied.
+The returned slate is a slice of the full catalog. Recall and NDCG use
+the known number of clicked articles from the original impression
+through `recall_at_n_known_total` and
+`ndcg_at_n_known_total`.
 
-MIND records, per impression, the clicks that happened strictly before
-it, so seeding the store from that field is point-in-time correct
-rather than leakage — it is exactly what a live store would already
-hold for a returning user. With the fix, recent-feature coverage rises
-to 97.6% and catalog coverage roughly quadruples. **The ranking metrics
-did not materially improve**, because the retrieval ceiling above is
-the real constraint; the fix makes this evaluation measure the actual
-serving path instead of a degenerate one, which is its own reason to
-have made it.
+Durable and recent feature coverage measure successful state
+reconstruction. They do not measure recommendation quality.
 
-The same zero-vector condition was a real defect on the live serving
-path too, not only in evaluation — see `docs/operations/serving-fallback.md` for
-the cold-start retrieval change it prompted.
+Catalog coverage measures distinct articles in the final served slates,
+not all retrieved candidates.
 
-## Reading these numbers honestly
+## What the result supports
 
-`docs/experiments/retrieval-evaluation.md` originally measured hit rate@100 at
-0.0044 against the full catalog and traced it to a named architecture
-limitation: the item tower's category/subcategory-only features
-collapsed 51,282 items into 284 distinct embedding vectors
-(`docs/archive/faiss-index.md`). That limitation propagated through this whole
-pipeline — ranking and reranking cannot recover a click that retrieval's
-candidate set never contained — which is why every metric here was once
-effectively zero. It was one problem observed twice, not two problems.
+- The complete serving code can be evaluated with chronological,
+  isolated feature state.
+- The current system remains weak in absolute quality.
+- Retrieval remains the main constraint.
+- Increasing depth to 1,000 costs about 4 ms in median end-to-end
+  latency compared with depth 50.
+- Candidate-list ranking results and end-to-end results answer different
+  questions; neither replaces the other.
 
-That cause has since been fixed rather than restated, and the numbers
-above are the result. What remains true, and should not be smoothed
-over:
+Validation already informed design choices, so this is post-selection
+development evidence rather than a final generalization estimate.
 
-- **This is still not a competitive recommender.** Hit rate@10 of 0.84%
-  means the user's real next click reaches their slate roughly once in
-  119 impressions.
-- **Retrieval is still the binding constraint.** The clicked item
-  reaches the ranker 14.1% of the time, so no ranking or reranking work
-  can lift the end-to-end result past that ceiling. Further gains have
-  to come from retrieval quality, not from the stages after it.
-- **Coverage numbers mean something specific here.** Durable- and
-  recent-feature coverage are high by construction, since both derive
-  from each impression's own `history` field, which MIND provides for
-  essentially every row. That is a statement about reconstruction
-  fidelity, not about personalization quality.
-- **Retrieval depth was changed deliberately, and not on this split.**
-  Raising it from 50 to 1,000 candidates was decided against the tuning
-  fold (`verify_retrieval_depth`), because choosing a hyperparameter by
-  looking at `validation` and then reporting against `validation` is
-precisely the leakage `docs/experiments/evaluation-integrity.md` exists
-to record. The cost is real and measured: about 4 ms of additional
-end-to-end p50 latency, since ranking and reranking both scale with
-candidate count even though index search itself stays under a
-millisecond.
+Related pages:
 
-## Status and limitations
-
-The point-in-time-correctness gaps found in review — durable features
-leaking a user's future history, recent features depending on ambient
-shared Redis state, and an empty seed producing a degenerate zero-vector
-query — are fixed and covered by regression tests proving chronological
-state evolution, isolation from the shared serving context, determinism,
-correct seeding, and the absence of future leakage.
-
-What this evaluation still does *not* establish: serving-path traffic
-patterns, concurrency, or infrastructure latency; a durable-feature
-refresh cadence matching any real deployment plan; or that the ranking
-quality reported above is adequate for any real use. It is reported
-alongside — not in place of — the frozen-candidate-list protocol, since
-the two measure genuinely different things and neither supersedes the
-other.
+- [candidate-list ranking](ranking-evaluation.md);
+- [retrieval evaluation](retrieval-evaluation.md);
+- [evaluation integrity](evaluation-integrity.md);
+- [serving fallback](../operations/serving-fallback.md); and
+- [limitations](../limitations.md).

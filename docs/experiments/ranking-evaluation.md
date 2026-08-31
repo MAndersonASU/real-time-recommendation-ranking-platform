@@ -1,22 +1,28 @@
-# Retrieval-Only vs Ranked
+# Candidate-list ranking evaluation
 
-The comparison this component was built toward: on the exact same candidates —
-the frozen `validation` split, MIND's own per-impression candidate list,
-K=10 (`docs/experiments/evaluation-protocol.md`) — does the trained ranking model
-(`docs/experiments/ranking-model.md`) order them better than the two-tower model's own
-retrieval score used alone? Implementation:
+Source: [`reports/ranking-evaluation.json`](../../reports/ranking-evaluation.json).
+
+This comparison asks whether the trained ranker orders a fixed candidate
+list better than the two-tower score alone.
+
+Both arms use:
+
+- all 30,270 validation impressions;
+- the same MIND candidate rows;
+- K = 10; and
+- the same frozen metric definitions.
+
+Only the sort value changes:
+
+| Arm | Sort value |
+|---|---|
+| Retrieval score only | Two-tower dot product |
+| Ranked | Predicted click probability from the five-input ranker |
+
+Implementation:
 `src/recommender/evaluation/evaluate_ranking.py`.
 
-Both orderings score identical rows; only the sort key differs
-(`retrieval_score` alone versus the ranking model's predicted click
-probability), so any difference in the result can only come from the four
-features the ranking model has beyond a raw retrieval score — category
-match, content similarity, history length, hour of day — not from a
-different candidate set or protocol.
-
-## Results
-
-Generated from [`reports/ranking-evaluation.json`](../../reports/ranking-evaluation.json).
+## Result
 
 | Metric | Retrieval score only | Ranked |
 |---|---|---|
@@ -26,13 +32,11 @@ Generated from [`reports/ranking-evaluation.json`](../../reports/ranking-evaluat
 | MRR | 0.3169 | 0.3340 |
 | Catalog coverage@10 | 0.0654 | 0.0678 |
 
-Evaluated on all 30,270 validation impressions. **The ranking model wins on
-every metric, consistently, not on a mixed or ambiguous set of numbers.**
-That is a direct, clean answer to RQ2 for this implementation: a dedicated
-ranking model does improve ordering quality over the retrieval score
-alone, given the same candidates.
+The ranker improves every reported measure on the same candidates. The
+difference comes from category match, content similarity, history
+length, and hour of day in addition to the retrieval score.
 
-## In context: every model measured so far
+## Comparison with baselines
 
 | Metric | Popularity | Content similarity | Collaborative | Retrieval score only | Ranked |
 |---|---|---|---|---|---|
@@ -42,45 +46,35 @@ alone, given the same candidates.
 | MRR | 0.2484 | 0.3236 | 0.2509 | 0.3169 | **0.3340** |
 | Catalog coverage@10 | 0.0370 | 0.0722 | 0.0389 | 0.0654 | 0.0678 |
 
-The ranked model beats every baseline in `docs/experiments/baselines.md` on every
-metric except catalog coverage, where it's within rounding of the
-content-similarity baseline's already-strongest result. This is the
-strongest result on record so far, and it did not require
-abandoning anything already built — it's a five-feature linear model
-sitting on top of three separate components (a popularity count from
-the baselines, a TF-IDF profile from the baselines, a trained embedding score from
-the retrieval model).
+The ranker has the best relevance values in this candidate-list
+comparison. Content similarity has slightly higher catalog coverage.
 
-## One more honest observation, not a new mystery
+## Why this does not equal full-catalog retrieval
 
-`retrieval_score` alone performs respectably here (0.6689 hit rate) —
-noticeably better than it did in the full-catalog retrieval
-evaluation as it then stood (0.0044 hit rate at N=100; now 0.0336 after the item-tower fix, `docs/experiments/retrieval-evaluation.md`). That
-is not a contradiction; it's exactly what the tied-vector limitation
-already found in the retrieval model ([`docs/archive/faiss-index.md`](../archive/faiss-index.md)) predicts. Searching the
-full 51,282-item catalog, that limitation is severe — the model can only
-identify a category cluster, then has no way to pick the right item among
-however many share that cluster's identical vector. Restricted instead to
-one impression's roughly 37 candidates (this component's evaluation, by the
-disclosed design choice in `docs/experiments/ranking-features.md`), the same coarse
-category signal has far fewer competing items to distinguish between, so
-it does meaningfully better — still a coarse signal, just operating over a
-much smaller, easier disambiguation problem. Both results are correct
-readings of the same underlying model; they are not directly comparable to
-each other because they answer different questions over different
-candidate pools.
+Hit rate@10 of 0.6689 for retrieval-score ordering is not comparable to
+hit rate@100 of 0.0336 in the
+[full-catalog retrieval evaluation](retrieval-evaluation.md).
 
-## What this settles
+Here, the clicked item is usually already included in a small
+MIND-supplied candidate list. Full-catalog retrieval must first find the
+item among 51,282 articles. These protocols measure different tasks.
 
-RQ2 — how much does a dedicated ranking model improve quality over
-retrieval scores alone — has a clear, positive, quantified answer for this
-implementation: yes, consistently, across every ranking metric measured,
-using features that stayed genuinely available at inference time and
-never leaked future information (`docs/experiments/ranking-features.md`). Every result
-along the way was checked before being trusted rather than assumed: real
-row-count and spot-check verification of the training data
-(`docs/experiments/ranking-dataset.md`), a real generalization-gap diagnosis that
-found and removed a harmful feature before it could distort the model
-(`docs/experiments/ranking-model.md`), and a real calibration check confirming
-predicted probabilities are honest, not just well-ordered
-(`docs/experiments/ranking-calibration.md`).
+The older category-vector collapse made full-catalog retrieval worse,
+but the candidate-pool difference remains even after that defect was
+corrected.
+
+## Answer to RQ2
+
+Given the same candidate list, the dedicated ranker improves ordering
+over the two-tower score alone across all five reported measures.
+
+This conclusion applies to the candidate-list protocol. For what a live
+request receives after retrieval and reranking, use the
+[serving-path evaluation](serving-path-end-to-end-evaluation.md).
+
+Supporting checks:
+
+- [ranking dataset](ranking-dataset.md);
+- [ranking features](ranking-features.md);
+- [ranking model](ranking-model.md); and
+- [calibration](ranking-calibration.md).
