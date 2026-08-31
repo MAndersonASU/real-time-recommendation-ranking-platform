@@ -266,8 +266,8 @@ def test_a_project_directory_ending_in_underscore_still_builds():
 
 
 def test_a_dirty_file_anywhere_in_the_tree_refuses_the_build():
-    """Regression test for a real bug, found by external review of the
-    prior fix: that version scoped the dirty check to a hand-enumerated
+    """Regression test for a real bug identified during verification of
+    the prior fix: that version scoped the dirty check to a hand-enumerated
     list of paths (src/, Dockerfile, pyproject.toml,
     requirements-lock.txt), which missed real build inputs --
     docker-compose.yml (the build context, args and Dockerfile path are
@@ -361,8 +361,9 @@ def test_a_dirty_dockerignore_file_refuses_the_build():
 
 
 def test_invocation_from_an_unrelated_directory_still_operates_on_this_repo():
-    """Regression test for a real bug, found by external review: every
-    command in this script (git status/rev-parse, docker compose
+    """Regression test for a real bug identified during follow-up
+    verification: every command in this script (git status/rev-parse,
+    docker compose
     reading docker-compose.yml) used to be relative to the caller's
     cwd, not the script's own location. Reproduced directly: running
     `bash build-image.sh` from a plain scratch directory failed with a
@@ -478,8 +479,9 @@ def _fake_docker_dir(capture_file: Path) -> Path:
 
 
 def test_compose_file_env_var_cannot_redirect_the_build_configuration():
-    """Regression test for a real bug, found by external review: a bare
-    `docker compose build api`, with no explicit `-f`/`--project-directory`,
+    """Regression test for a real bug identified during follow-up
+    verification: a bare `docker compose build api`, with no explicit
+    `-f`/`--project-directory`,
     resolves its configuration from the *environment* as much as from
     this script's own directory. `COMPOSE_FILE` -- including one set
     from the gitignored `.env` file Compose reads automatically -- can
